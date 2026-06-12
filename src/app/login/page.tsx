@@ -20,7 +20,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("E-mailadres of wachtwoord onjuist.");
     } else {
-      router.push("/digitalbakery");
+      router.push("/");
       router.refresh();
     }
   }

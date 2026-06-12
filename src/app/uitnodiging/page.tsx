@@ -58,7 +58,7 @@ function UitnodigingContent() {
       setStatus("done");
       // Auto-login
       await signIn("credentials", { email: data.email, password, redirect: false });
-      setTimeout(() => router.push("/digitalbakery/bestellingen"), 1500);
+      setTimeout(() => router.push("/bestellingen"), 1500);
     } else {
       setError(data.message ?? "Er is iets misgegaan.");
     }
