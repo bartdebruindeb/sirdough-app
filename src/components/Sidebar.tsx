@@ -25,7 +25,7 @@ const ROLE_COLORS: Record<AppRole, string> = {
   BEZORGER:     "#7c3aed",
 };
 
-export function Sidebar() {
+export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { role, canAccess, userName, loading } = useRole();
   const pathname = usePathname();
 
@@ -39,19 +39,25 @@ export function Sidebar() {
   const visibleNav = ALL_NAV.filter(item => canAccess(item.href));
 
   return (
-    <aside style={{
+    <aside className={`app-sidebar ${open ? "open" : ""}`} style={{
       width: 220, background: "var(--sidebar-bg)", color: "var(--sidebar-text)",
       display: "flex", flexDirection: "column", padding: 0, flexShrink: 0,
       position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 10,
     }}>
-      {/* Logo */}
-      <div style={{ padding: "1.75rem 1.5rem 1.25rem" }}>
-        <p style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--sidebar-active)", margin: 0 }}>
-          {bakeryConfig.businessName}
-        </p>
-        <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "3px 0 0" }}>
-          {bakeryConfig.tagline}
-        </p>
+      {/* Logo + mobile close button */}
+      <div style={{ padding: "1.75rem 1.5rem 1.25rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <p style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--sidebar-active)", margin: 0 }}>
+            {bakeryConfig.businessName}
+          </p>
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "3px 0 0" }}>
+            {bakeryConfig.tagline}
+          </p>
+        </div>
+        <button onClick={onClose} className="sidebar-close" aria-label="Menu sluiten"
+          style={{ display: "none", background: "none", border: "none", color: "var(--sidebar-text)", fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 4 }}>
+          ✕
+        </button>
       </div>
 
       {/* Nav */}
@@ -109,6 +115,9 @@ export function Sidebar() {
 
       <style>{`
         nav a:hover { background: rgba(255,255,255,0.08) !important; color: var(--sidebar-active) !important; }
+        @media (max-width: 860px) {
+          .sidebar-close { display: block !important; }
+        }
       `}</style>
     </aside>
   );
