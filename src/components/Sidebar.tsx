@@ -29,6 +29,10 @@ export function Sidebar() {
   const { role, canAccess, userName, loading } = useRole();
   const pathname = usePathname();
 
+  // Defense in depth: AppShell only renders Sidebar when authenticated,
+  // but guard here too in case Sidebar is ever used elsewhere.
+  if (!role) return null;
+
   // Strip basepath prefix if any
   const cleanPath = pathname.replace("/digitalbakery", "") || "/";
 

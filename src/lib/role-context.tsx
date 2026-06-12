@@ -68,28 +68,30 @@ export function hasPermission(role: AppRole, perm: Permission): boolean {
 }
 
 const RoleContext = createContext<{
-  role: AppRole;
+  role: AppRole | null;
   can: (perm: Permission) => boolean;
   canAccess: (path: string) => boolean;
   userName: string | null;
   loading: boolean;
 }>({
-  role: "OWNER",
-  can: () => true,
-  canAccess: () => true,
+  role: null,
+  can: () => false,
+  canAccess: () => false,
   userName: null,
   loading: false,
 });
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
+  const authenticated = status === "authenticated";
 
   const sessionRole = (session?.user as any)?.role as string | undefined;
-  const role: AppRole = (sessionRole && sessionRole !== "CUSTOMER" ? sessionRole : "OWNER") as AppRole;
+  const role: AppRole | null = (authenticated && sessionRole && sessionRole !== "CUSTOMER") ? (sessionRole as AppRole) : null;
   const userName = (session?.user as any)?.name ?? session?.user?.email ?? null;
 
-  const can = (perm: Permission) => hasPermission(role, perm);
+  const can = (perm: Permission) => !!role && hasPermission(role, perm);
   const canAccess = (path: string) => {
+    if (!role) return false;
     const pages = ROLE_PAGES[role] ?? [];
     return pages.some(p => path === p || (path.startsWith(p) && p !== "/"));
   };
