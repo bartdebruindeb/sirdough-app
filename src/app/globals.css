@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap');
+
+:root {
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --bg: #fdfaf4;
+  --surface: #ffffff;
+  --surface-2: #f7f2e8;
+  --border: #e4d9c5;
+  --border-strong: #c9b89a;
+  --text: #1c1009;
+  --text-muted: #6b5744;
+  --text-subtle: #9c8878;
+  --accent: #92400e;
+  --accent-hover: #78350f;
+  --accent-light: #fde68a;
+  --success-bg: #dcfce7;
+  --success: #166534;
+  --warn-bg: #fef3c7;
+  --warn: #92400e;
+  --danger-bg: #fee2e2;
+  --danger: #991b1b;
+  --sidebar-bg: #1c1009;
+  --sidebar-text: #c9b89a;
+  --sidebar-active: #fdfaf4;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.6; margin: 0; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 500; line-height: 1.2; margin: 0; }
+input, select, textarea, button { font-family: var(--font-body); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.btn-primary {
+  background: var(--accent); color: white; border: none;
+  border-radius: 8px; padding: 9px 18px; font-size: 14px; cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary {
+  background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+}
+.btn-secondary:hover { border-color: var(--border-strong); color: var(--text); }
+.input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+  font-size: 14px; background: var(--surface); color: var(--text); width: 100%;
+}
+.input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 13px; font-weight: 500;
+}
+.badge-amber { background: var(--accent-light); color: var(--accent); }
+.badge-green { background: var(--success-bg); color: var(--success); }
+
+@media print {
+  aside, nav, .no-print { display: none !important; }
+  body { background: white; }
+  .card { border: 1px solid #ccc; }
+}

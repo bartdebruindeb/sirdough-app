@@ -1,0 +1,407 @@
+"use client";
+import { useRole } from "@/lib/role-context";
+import { useEffect, useState } from "react";
+
+
+type RecipeFlour  = { id: string; name: string; percentage: number; sortOrder: number };
+type RecipeTopping = { id: string; name: string; gramsPerLoaf: number; waterRatio?: number; requiresKoking: boolean };
+type Recipe = {
+  waterPct: number; desemPct: number; zoutPct: number; inwasPct: number;
+  doughWeightPerLoaf: number; mixerGroup: string; notes?: string;
+  flourLines: RecipeFlour[]; toppings: RecipeTopping[];
+};
+type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; recipe: Recipe | null };
+
+function kg(g: number) { return g >= 1000 ? `${(g/1000).toFixed(2).replace(/\.?0+$/,"")} kg` : `${Math.round(g)} g`; }
+
+function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
+  const r = bt.recipe;
+  if (!r) return <p style={{ color: "var(--text-subtle)", fontSize: 13, fontStyle: "italic" }}>Geen recept</p>;
+  const n = qty || 1;
+  const totalDough = n * r.doughWeightPerLoaf;
+  const totalPct = 100 + r.waterPct + r.desemPct + r.zoutPct + r.inwasPct;
+  const flourTotal = (totalDough / totalPct) * 100;
+
+  return (
+    <div style={{ fontSize: 13 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+        <tbody>
+          {r.flourLines.map(f => (
+            <tr key={f.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{f.name}</td>
+              <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * f.percentage / 100)}</td>
+            </tr>
+          ))}
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>Water</td>
+            <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * r.waterPct / 100)}</td>
+          </tr>
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>Desem</td>
+            <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * r.desemPct / 100)}</td>
+          </tr>
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>Zout</td>
+            <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * r.zoutPct / 100)}</td>
+          </tr>
+          {r.inwasPct > 0 && (
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>Inwas</td>
+              <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * r.inwasPct / 100)}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {r.toppings.length > 0 && (
+        <>
+          <p style={{ fontWeight: 500, color: "var(--text-muted)", marginBottom: 4, marginTop: 8 }}>Toevoegingen</p>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {r.toppings.map(t => (
+                <tr key={t.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 0", color: "var(--text-muted)" }}>{t.name}</td>
+                  <td style={{ padding: "6px 0", textAlign: "right" }}>{kg(t.gramsPerLoaf * n)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {r.notes && <p style={{ color: "var(--text-subtle)", fontStyle: "italic", marginTop: 8, marginBottom: 0 }}>{r.notes}</p>}
+    </div>
+  );
+}
+
+function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }) {
+  const r = bt.recipe;
+  const [waterPct,  setWater]  = useState(r?.waterPct  ?? 71.5);
+  const [desemPct,  setDesem]  = useState(r?.desemPct  ?? 15);
+  const [zoutPct,   setZout]   = useState(r?.zoutPct   ?? 2);
+  const [inwasPct,  setInwas]  = useState(r?.inwasPct  ?? 6);
+  const [doughWeight, setDough] = useState(r?.doughWeightPerLoaf ?? 1000);
+  const [notes,     setNotes]  = useState(r?.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
+    r?.flourLines ?? [{ name: "Tarwebloem", percentage: 100 }]
+  );
+
+  const flourSum = flourLines.reduce((s, f) => s + f.percentage, 0);
+  const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct;
+
+  async function save() {
+    setSaving(true);
+    await fetch("/digitalbakery/api/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-role": "OWNER" },
+      body: JSON.stringify({
+        breadTypeId: bt.id, waterPct, desemPct, zoutPct, inwasPct,
+        doughWeightPerLoaf: doughWeight, notes,
+        flourLines: flourLines.map((f, i) => ({ ...f, sortOrder: i })),
+        toppings: r?.toppings ?? [],
+      }),
+    });
+    setSaving(false);
+    onSaved();
+  }
+
+  const inputStyle = { border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--surface)", width: "80px" };
+
+  return (
+    <div style={{ fontSize: 13 }}>
+      {/* Baker's percentages */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "6px 0", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>Ingredient</th>
+            <th style={{ textAlign: "right", padding: "6px 0", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flourLines.map((f, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "7px 0" }}>
+                <input value={f.name} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,name:e.target.value} : x))}
+                  style={{ ...inputStyle, width: "160px" }} />
+              </td>
+              <td style={{ padding: "7px 0", textAlign: "right" }}>
+                <input type="number" value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                  style={inputStyle} />
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <td colSpan={2} style={{ padding: "6px 0" }}>
+              <button onClick={() => setFlourLines(fl => [...fl, { name: "", percentage: 0 }])}
+                style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "var(--text-muted)" }}>
+                + Bloem toevoegen
+              </button>
+              {flourSum !== 100 && <span style={{ color: "var(--danger)", marginLeft: 8 }}>Som = {flourSum}% (moet 100% zijn)</span>}
+            </td>
+          </tr>
+          {[
+            ["Water", waterPct, setWater], ["Desem", desemPct, setDesem],
+            ["Zout",  zoutPct,  setZout],  ["Inwas", inwasPct, setInwas],
+          ].map(([label, val, setter]: any) => (
+            <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
+              <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{label}</td>
+              <td style={{ padding: "7px 0", textAlign: "right" }}>
+                <input type="number" step="0.5" value={val} onChange={e => setter(parseFloat(e.target.value)||0)} style={inputStyle} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+        <div>
+          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Deeggewicht / brood (g)</label>
+          <input type="number" value={doughWeight} onChange={e => setDough(parseFloat(e.target.value)||0)} style={{ ...inputStyle, width: "100%" }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Totaal % (= {totalPct.toFixed(1)}%)</label>
+          <input value={`${totalPct.toFixed(1)}%`} readOnly style={{ ...inputStyle, width: "100%", color: "var(--text-subtle)", background: "var(--surface-2)" }} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notities</label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+          style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
+      </div>
+
+      <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
+        {saving ? "Opslaan…" : "Recept opslaan"}
+      </button>
+    </div>
+  );
+}
+
+function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
+  onClose: () => void; onSaved: () => void; existingCategories: string[];
+}) {
+  const allCats = [...new Set(["boeren","baguette","spelt","volkoren","rogge","zoet",...existingCategories])];
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("boeren");
+  const [newCat, setNewCat] = useState("");
+  const [addingCat, setAddingCat] = useState(false);
+  const [weightGrams, setWeightGrams] = useState(1010);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function toSlug(n: string) {
+    return n.toLowerCase()
+      .replace(/[àáâã]/g,"a").replace(/[èéêë]/g,"e").replace(/[ìíî]/g,"i")
+      .replace(/[òóôõ]/g,"o").replace(/[ùúû]/g,"u")
+      .replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
+  }
+
+  async function save() {
+    if (!name.trim()) { setError("Naam is verplicht."); return; }
+    setSaving(true); setError("");
+    const res = await fetch("/digitalbakery/api/bread-types", {
+      method:"POST", headers:{"Content-Type":"application/json","x-role":"OWNER"},
+      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams }),
+    });
+    setSaving(false);
+    if (res.ok) onSaved();
+    else { const d=await res.json(); setError(d.message??"Opslaan mislukt."); }
+  }
+
+  const inp:React.CSSProperties = {border:"1px solid var(--border)",borderRadius:8,padding:"8px 12px",fontSize:14,background:"var(--surface)",width:"100%"};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(28,16,9,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:24}}>
+      <div style={{background:"var(--surface)",borderRadius:14,width:"100%",maxWidth:420,padding:"1.75rem",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h2 style={{margin:0,fontSize:20}}>Nieuw broodsoort</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"var(--text-subtle)"}}>×</button>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Naam</label>
+          <input value={name} onChange={e=>setName(e.target.value)} style={inp} placeholder="bijv. Spelt Rozijn" autoFocus />
+          {name&&<p style={{fontSize:11,color:"var(--text-subtle)",margin:"3px 0 0"}}>ID: {toSlug(name)}</p>}
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Categorie</label>
+          {addingCat?(
+            <div style={{display:"flex",gap:8}}>
+              <input value={newCat} onChange={e=>setNewCat(e.target.value)} style={{...inp,flex:1}} placeholder="Nieuwe categorie" />
+              <button onClick={()=>{if(newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} className="btn-primary" style={{fontSize:13,padding:"8px 12px"}}>OK</button>
+              <button onClick={()=>setAddingCat(false)} className="btn-secondary" style={{fontSize:13}}>✕</button>
+            </div>
+          ):(
+            <div style={{display:"flex",gap:8}}>
+              <select value={category} onChange={e=>setCategory(e.target.value)} style={{...inp,flex:1}}>
+                {allCats.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+              </select>
+              <button onClick={()=>setAddingCat(true)} className="btn-secondary" style={{fontSize:13,padding:"8px 10px",whiteSpace:"nowrap"}}>+ Nieuw</button>
+            </div>
+          )}
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
+          <input type="number" value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
+        </div>
+        {error&&<p style={{color:"var(--danger)",background:"var(--danger-bg)",padding:"8px 12px",borderRadius:8,fontSize:13,margin:0}}>{error}</p>}
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={onClose} className="btn-secondary">Annuleren</button>
+          <button onClick={save} disabled={saving} className="btn-primary">{saving?"Aanmaken…":"Aanmaken"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ReceptenPage() {
+  const { role, can } = useRole();
+  const isOwner = role === "OWNER";
+  const [breadTypes, setBreadTypes] = useState<BreadType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [qty] = useState(1);
+  const [editMode, setEditMode] = useState<Record<string, boolean>>({});
+  const [showNewBread, setShowNewBread] = useState(false);
+  const [showCatManager, setShowCatManager] = useState(false);
+
+  function load() {
+    setLoading(true);
+    fetch("/digitalbakery/api/recipes", { headers: { "x-role": role } })
+      .then(r => r.json())
+      .then(d => { setBreadTypes(d.breadTypes ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }
+  useEffect(() => { load(); }, []);
+
+  async function deleteBreadType(bt: BreadType) {
+    if (!confirm(`${bt.name} verwijderen? Dit kan niet ongedaan worden.`)) return;
+    await fetch(`/digitalbakery/api/bread-types?id=${bt.id}`, { method: "DELETE", headers: { "x-role": "OWNER" } });
+    load();
+  }
+
+  const categories = [...new Set(breadTypes.map(b => b.category))];
+
+  return (
+    <div style={{ padding: "2.5rem 3rem", maxWidth: 860 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 30, marginBottom: 4 }}>Recepten</h1>
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13 }}>
+            {isOwner ? "Bekijk en bewerk bakkers-percentages per broodsoort" : "Grammen en ml voor 1 brood"}
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {isOwner && (
+            <>
+              <button onClick={() => setShowCatManager(!showCatManager)} className="btn-secondary" style={{ fontSize: 13 }}>
+                {showCatManager ? "Sluit categorieën" : "Categorieën beheren"}
+              </button>
+              <button className="btn-primary" onClick={() => setShowNewBread(true)} style={{ fontSize: 13, padding: "8px 16px" }}>
+                + Nieuw broodsoort
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Category manager */}
+      {showCatManager && isOwner && (
+        <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Categorieën</h3>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {categories.map(cat => {
+              const count = breadTypes.filter(b => b.category === cat).length;
+              return (
+                <div key={cat} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px" }}>
+                  <span style={{ fontSize: 13 }}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>({count})</span>
+                  {count === 0 && (
+                    <button
+                      onClick={async () => { /* categories auto-disappear when empty */ }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 14, padding: 0 }}
+                      title="Categorie is al leeg — verdwijnt automatisch"
+                    >×</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
+            Categorieën verdwijnen automatisch als alle broodsoorten erin verwijderd zijn.
+          </p>
+        </div>
+      )}
+
+      {loading && <p style={{ color: "var(--text-subtle)", textAlign: "center", padding: "3rem 0" }}>Laden…</p>}
+
+      {!loading && categories.map(cat => {
+        const bts = breadTypes.filter(b => b.category === cat);
+        return (
+          <div key={cat} style={{ marginBottom: "2rem" }}>
+            <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: "0.75rem" }}>
+              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {bts.map(bt => {
+                const isOpen = expanded === bt.id;
+                const isEditing = editMode[bt.id];
+                return (
+                  <div key={bt.id} className="card" style={{ overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <button onClick={() => setExpanded(isOpen ? null : bt.id)} style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "1rem 1.25rem", background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                      }}>
+                        <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{bt.name}</span>
+                        <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
+                      </button>
+                      {isOwner && isOpen && (
+                        <div style={{ display: "flex", gap: 6, margin: "0 1rem" }}>
+                          <button
+                            onClick={() => setEditMode(m => ({ ...m, [bt.id]: !isEditing }))}
+                            className="btn-secondary"
+                            style={{ fontSize: 12, padding: "5px 12px" }}
+                          >
+                            {isEditing ? "Annuleer" : "Bewerken"}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Recept voor ${bt.name} verwijderen?`)) return;
+                              await fetch(`/digitalbakery/api/recipes?breadTypeId=${bt.id}`, { method: "DELETE", headers: { "x-role": "OWNER" } });
+                              load();
+                            }}
+                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: "pointer", color: "var(--danger)" }}
+                          >
+                            − Recept
+                          </button>
+                          <button
+                            onClick={() => deleteBreadType(bt)}
+                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "var(--danger-bg)", cursor: "pointer", color: "var(--danger)" }}
+                          >
+                            🗑 Verwijder
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {isOpen && (
+                      <div style={{ borderTop: "1px solid var(--border)", padding: "1rem 1.25rem", background: "var(--surface-2)" }}>
+                        {isOwner && isEditing
+                          ? <RecipeOwnerEdit bt={bt} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
+                          : <RecipeWorkerView bt={bt} qty={qty} />
+                        }
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* New bread type modal */}
+      {showNewBread && (
+        <NewBreadTypeModal onClose={() => setShowNewBread(false)} onSaved={() => { setShowNewBread(false); load(); }} existingCategories={categories} />
+      )}
+    </div>
+  );
+}

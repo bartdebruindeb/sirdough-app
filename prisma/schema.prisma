@@ -1,0 +1,378 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ORDER_TABLET
+  BAKKER
+  BEZORGER
+  CUSTOMER
+}
+
+// ─── Tenant ───────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("starter")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  breadTypes       BreadType[]
+  doughTypes       DoughType[]
+  winkeltemplates  WinkelTemplate[]
+  recurringOrders  RecurringOrder[]
+  oneOffOrders     OneOffOrder[]
+  productionDays   ProductionDay[]
+  customers        Customer[]
+  deliveryNotes    DeliveryNote[]
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  name         String?
+  role         Role     @default(BAKKER)
+  passwordHash String?  // bcrypt hash, null for SSO/invite-only users
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  customer Customer?
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+}
+
+// ─── Dough types (base recipes shared by multiple products) ─────────────────
+
+model DoughType {
+  id         String  @id @default(cuid())
+  tenantId   String
+  name       String  // "Boerenmix", "Baguettedeeg", "Spelt", "Volkoren", "Rogge"
+  slug       String  // "boeren", "baguette", "spelt", "volkoren", "rogge"
+  notes      String?
+  updatedAt  DateTime @updatedAt
+
+  // Baker's percentages (bloem = 100%)
+  waterPct   Float @default(71.5)
+  desemPct   Float @default(15)
+  zoutPct    Float @default(2)
+  inwasPct   Float @default(6)
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  flourLines DoughFlour[]
+  breadTypes BreadType[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model DoughFlour {
+  id          String @id @default(cuid())
+  doughTypeId String
+  name        String
+  percentage  Float
+  sortOrder   Int    @default(0)
+
+  doughType DoughType @relation(fields: [doughTypeId], references: [id], onDelete: Cascade)
+}
+
+// ─── Bread types ──────────────────────────────────────────────────────────────
+
+model BreadType {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  slug        String
+  category    String  @default("boeren")
+  weightGrams Int     @default(750)
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+  customerOrderable Boolean @default(false)
+  doughTypeId String?         // links to shared dough type
+  doughWeightPerLoaf Float @default(1010) // per loaf incl. fillings
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])
+  recipe           Recipe?
+  winkeltemplates  WinkelTemplate[]
+  recurringLines   RecurringOrderLine[]
+  oneOffLines      OneOffOrderLine[]
+  productionLines  ProductionDayLine[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+// ─── Recipes (baker's percentages) ───────────────────────────────────────────
+
+model Recipe {
+  id          String   @id @default(cuid())
+  tenantId    String
+  breadTypeId String   @unique
+  notes       String?
+  updatedAt   DateTime @updatedAt
+
+  // Baker's percentages (bloem = 100%)
+  waterPct    Float    @default(71.5)
+  desemPct    Float    @default(15)
+  zoutPct     Float    @default(2)
+  inwasPct    Float    @default(6)
+
+  // Weight per loaf in grams (used to compute total dough weight)
+  doughWeightPerLoaf Float @default(1000)
+
+  // Mixer group — loaves of the same group share mixer dough
+  mixerGroup  String   @default("boeren")  // boeren | baguette | spelt | volkoren | rogge
+
+  breadType   BreadType     @relation(fields: [breadTypeId], references: [id])
+  flourLines  RecipeFlour[]
+  toppings    RecipeTopping[]
+}
+
+// Individual flour components per recipe (tarwebloem, volkoren, rogge, tipo0, etc.)
+model RecipeFlour {
+  id         String @id @default(cuid())
+  recipeId   String
+  name       String  // "Tarwebloem", "Volkoren tarwe", "Rogge", "Tipo 0", etc.
+  percentage Float   // baker's percentage (all flour lines sum to 100)
+  sortOrder  Int     @default(0)
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+// Toppings per bread type (sesam, zaden, olijf, rozijn, etc.)
+model RecipeTopping {
+  id              String @id @default(cuid())
+  recipeId        String
+  name            String  // "Sesam", "Zadenmix", "Olijven zwart", etc.
+  gramsPerLoaf    Float
+  requiresKoking  Boolean @default(false)
+  waterRatio      Float?  // e.g. 0.2 for sesam coating water
+  sortOrder       Int     @default(0)
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+// ─── Winkel template (fixed shop quantities per weekday) ─────────────────────
+
+model WinkelTemplate {
+  id          String @id @default(cuid())
+  tenantId    String
+  shopName    String @default("Winkel Delft") // "Winkel Delft" | "Winkel Den Haag"
+  breadTypeId String
+  weekday     Int    // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+  quantity    Int    @default(0)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  breadType BreadType @relation(fields: [breadTypeId], references: [id])
+
+  @@unique([tenantId, shopName, breadTypeId, weekday])
+}
+
+// ─── Customers (horeca) ───────────────────────────────────────────────────────
+
+model Customer {
+  id        String  @id @default(cuid())
+  tenantId  String
+  name      String
+  city      String?
+  address   String?
+  cityOrder Int     @default(99)
+  email     String?
+  phone     String?
+  notes     String?
+  active    Boolean @default(true)
+  userId    String? @unique  // linked User account for customer portal
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  user            User?                @relation(fields: [userId], references: [id])
+  recurringOrders RecurringOrder[]
+  oneOffOrders    OneOffOrder[]
+  deliveryNotes   DeliveryNote[]
+
+  @@index([tenantId])
+}
+
+// ─── Recurring orders (vaste bestellingen) ───────────────────────────────────
+
+model RecurringOrder {
+  id         String  @id @default(cuid())
+  tenantId   String
+  customerId String
+  weekday    Int     // 1=Mon ... 7=Sun
+  active     Boolean @default(true)
+  notes      String?
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id])
+  customer Customer             @relation(fields: [customerId], references: [id])
+  lines    RecurringOrderLine[]
+  exceptions RecurringOrderException[]
+
+  @@unique([tenantId, customerId, weekday])
+}
+
+model RecurringOrderLine {
+  id               String @id @default(cuid())
+  recurringOrderId String
+  breadTypeId      String
+  quantity         Int    @default(0)
+
+  recurringOrder RecurringOrder @relation(fields: [recurringOrderId], references: [id], onDelete: Cascade)
+  breadType      BreadType      @relation(fields: [breadTypeId], references: [id])
+
+  @@unique([recurringOrderId, breadTypeId])
+}
+
+// ─── One-off orders (eenmalige bestellingen) ─────────────────────────────────
+
+model OneOffOrder {
+  id           String   @id @default(cuid())
+  tenantId     String
+  customerId   String
+  deliveryDate DateTime
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  customer Customer        @relation(fields: [customerId], references: [id])
+  lines    OneOffOrderLine[]
+
+  @@index([tenantId, deliveryDate])
+}
+
+model OneOffOrderLine {
+  id          String @id @default(cuid())
+  oneOffId    String
+  breadTypeId String
+  quantity    Int    @default(0)
+
+  oneOffOrder OneOffOrder @relation(fields: [oneOffId], references: [id], onDelete: Cascade)
+  breadType   BreadType   @relation(fields: [breadTypeId], references: [id])
+
+  @@unique([oneOffId, breadTypeId])
+}
+
+// ─── Production day (computed + saved snapshot) ───────────────────────────────
+
+model ProductionDay {
+  id             String   @id @default(cuid())
+  tenantId       String
+  productionDate DateTime // the date bread is BAKED
+  deliveryDate   DateTime // the date bread is DELIVERED
+  mixerCount     Int      @default(2)
+  notes          String?
+  locked         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  lines  ProductionDayLine[]
+
+  @@unique([tenantId, productionDate])
+  @@index([tenantId, deliveryDate])
+}
+
+model ProductionDayLine {
+  id              String @id @default(cuid())
+  productionDayId String
+  breadTypeId     String
+  winkelQty       Int    @default(0)
+  horecaQty       Int    @default(0)
+  totalQty        Int    @default(0)
+
+  productionDay ProductionDay @relation(fields: [productionDayId], references: [id], onDelete: Cascade)
+  breadType     BreadType     @relation(fields: [breadTypeId], references: [id])
+
+  @@unique([productionDayId, breadTypeId])
+}
+
+model WinkelLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  shopName    String   // "Winkel Delft" | "Winkel Den Haag"
+  date        DateTime
+  quantities  Json     // { breadTypeSlug: quantity }
+  weatherTemp Float?
+  weatherCode Int?     // WMO weather code
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, shopName, date])
+  @@index([tenantId, shopName, date])
+}
+
+model WinkelOverride {
+  id          String   @id @default(cuid())
+  tenantId    String
+  shopName    String
+  breadTypeId String
+  date        DateTime
+  quantity    Int
+
+  @@unique([tenantId, shopName, breadTypeId, date])
+  @@index([tenantId, shopName, date])
+}
+
+model InviteToken {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  token      String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([token])
+  @@index([tenantId, customerId])
+}
+
+model RecurringOrderException {
+  id               String   @id @default(cuid())
+  recurringOrderId String
+  date             DateTime // specific date to skip or activate
+  active           Boolean  // false = skip this date, true = activate this date
+
+  recurringOrder RecurringOrder @relation(fields: [recurringOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringOrderId, date])
+  @@index([recurringOrderId])
+}
+
+model DeliveryNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  date         DateTime // delivery date
+  customerId   String
+  note         String
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId, date])
+  @@index([tenantId, customerId])
+}
+
+model CityRoute {
+  id        String  @id @default(cuid())
+  tenantId  String
+  city      String
+  sortOrder Int     @default(99)
+
+  @@unique([tenantId, city])
+  @@index([tenantId])
+}
