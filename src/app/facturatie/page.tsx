@@ -36,14 +36,14 @@ export default function FacturatiePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/digitalbakery/api/customers?sort=name", { headers: { "x-role": role } })
+    fetch("/digitalbakery/api/customers?sort=name", { headers: { "x-role": role ?? "" } })
       .then(r => r.json()).then(d => setCustomers(d.customers?.filter((c: any) => c.active) ?? []));
   }, []);
 
   function load() {
     if (!customerId) return;
     setLoading(true); setError("");
-    fetch(`/digitalbakery/api/facturatie?customerId=${customerId}&from=${from}&to=${to}`, { headers: { "x-role": role } })
+    fetch(`/digitalbakery/api/facturatie?customerId=${customerId}&from=${from}&to=${to}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => { if (d.error) { setError(d.message ?? d.error); } else { setData(d); } setLoading(false); })
       .catch(e => { setError(String(e)); setLoading(false); });

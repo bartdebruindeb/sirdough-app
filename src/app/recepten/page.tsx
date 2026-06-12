@@ -265,7 +265,7 @@ export default function ReceptenPage() {
 
   function load() {
     setLoading(true);
-    fetch("/digitalbakery/api/recipes", { headers: { "x-role": role } })
+    fetch("/digitalbakery/api/recipes", { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => { setBreadTypes(d.breadTypes ?? []); setLoading(false); })
       .catch(() => setLoading(false));

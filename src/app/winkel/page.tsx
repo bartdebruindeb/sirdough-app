@@ -80,7 +80,7 @@ export default function WinkelPage() {
   const load = useCallback(() => {
     setLoading(true);
     Promise.all(
-      SHOPS.map(shop => fetch(`/digitalbakery/api/winkel?shop=${encodeURIComponent(shop)}`, { headers: { "x-role": role } }).then(r => r.json()))
+      SHOPS.map(shop => fetch(`/digitalbakery/api/winkel?shop=${encodeURIComponent(shop)}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()))
     ).then(results => {
       setShopsData(results); setLoading(false);
     }).catch(() => setLoading(false));
@@ -114,7 +114,7 @@ export default function WinkelPage() {
     setSaving(true);
     await fetch("/digitalbakery/api/winkel", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-role": role },
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ shopName, date: editDate, quantities: qty, weatherTemp: weather?.temp, weatherCode: weather?.code }),
     });
     setSaving(false);

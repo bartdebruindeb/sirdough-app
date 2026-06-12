@@ -86,7 +86,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
     setSaving(true); setError("");
     const res = await fetch("/digitalbakery/api/bestellingen", {
-      method: "POST", headers: { "Content-Type": "application/json", "x-role": role },
+      method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, deliveryDate: date, notes: notes||undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
@@ -152,7 +152,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
     setSaving(true); setError("");
     const res = await fetch("/digitalbakery/api/bestellingen/recurring", {
-      method: "POST", headers: { "Content-Type": "application/json", "x-role": role },
+      method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, weekday, notes: notes || undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
@@ -220,7 +220,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
   async function toggle() {
     setToggling(true);
     await fetch("/digitalbakery/api/bestellingen/recurring", {
-      method:"PATCH", headers:{"Content-Type":"application/json","x-role":role},
+      method:"PATCH", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ id:order.id, active:!order.active }),
     });
     setToggling(false); onChanged();
@@ -229,13 +229,13 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
   async function deleteOrder() {
     if (!confirm(`Vaste bestelling van ${order.customer.name} (${WEEKDAYS[order.weekday]}) definitief verwijderen?`)) return;
     setDeleting(true);
-    await fetch(`/digitalbakery/api/bestellingen/recurring?id=${order.id}`, { method:"DELETE", headers:{"x-role":role} });
+    await fetch(`/digitalbakery/api/bestellingen/recurring?id=${order.id}`, { method:"DELETE", headers:{"x-role":role ?? ""} });
     setDeleting(false); onChanged();
   }
 
   async function saveEdit() {
     await fetch("/digitalbakery/api/bestellingen/recurring", {
-      method:"POST", headers:{"Content-Type":"application/json","x-role":role},
+      method:"POST", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ customerId:order.customerId, weekday:order.weekday,
         lines: Object.entries(editQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
@@ -244,7 +244,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
 
   async function loadExceptions() {
     setLoadingEx(true);
-    const res = await fetch(`/digitalbakery/api/bestellingen/exceptions?recurringOrderId=${order.id}`, { headers:{"x-role":role} });
+    const res = await fetch(`/digitalbakery/api/bestellingen/exceptions?recurringOrderId=${order.id}`, { headers:{"x-role":role ?? ""} });
     const d = await res.json();
     setExceptions(d.exceptions??[]);
     setLoadingEx(false);
@@ -252,7 +252,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
 
   async function setException(date: string, active: boolean) {
     await fetch("/digitalbakery/api/bestellingen/exceptions", {
-      method:"POST", headers:{"Content-Type":"application/json","x-role":role},
+      method:"POST", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ recurringOrderId:order.id, date, active }),
     });
     loadExceptions();
@@ -387,18 +387,18 @@ export default function BestellingenPage() {
   const [tab, setTab] = useState<"eenmalig"|"vast">("eenmalig");
 
   function loadOneOff() {
-    fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role}})
+    fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setCustomers(d.customers??[]); setBreadTypes(d.breadTypes??[]); setLoading(false); });
   }
   function loadRecurring() {
-    fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role}})
+    fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>setRecurring(d.orders??[]));
   }
   useEffect(()=>{ loadOneOff(); loadRecurring(); },[fromDate,toDate]);
 
   async function deleteOrder(id: string) {
     if (!confirm("Bestelling verwijderen?")) return;
-    await fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role}});
+    await fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}});
     loadOneOff();
   }
 
@@ -411,7 +411,7 @@ export default function BestellingenPage() {
   async function saveOrderEdit(orderId: string) {
     setSavingEdit(true);
     await fetch("/digitalbakery/api/bestellingen/lines",{
-      method:"PUT", headers:{"Content-Type":"application/json","x-role":role},
+      method:"PUT", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body:JSON.stringify({ orderId, lines:Object.entries(editOrderQty).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
     setSavingEdit(false); setEditingOrderId(null); loadOneOff();

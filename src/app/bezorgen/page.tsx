@@ -63,7 +63,7 @@ export default function BezorgenPage() {
   function load(d: string) {
     setLoading(true); setError("");
     setBusOrder([]); setDelivered({});
-    fetch(`/digitalbakery/api/bezorgen?date=${d}`, { headers: { "x-role": role } })
+    fetch(`/digitalbakery/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.message ?? d.error); setLoading(false); return; }
@@ -113,7 +113,7 @@ export default function BezorgenPage() {
     setSavingNote(true);
     await fetch("/digitalbakery/api/delivery-notes", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-role": role },
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId: noteModal.customerId, date, note: noteText.trim() }),
     });
     setSavingNote(false);

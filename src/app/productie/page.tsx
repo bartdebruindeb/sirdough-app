@@ -424,8 +424,8 @@ export default function ProductiePage() {
     // Also fetch next production day for desem calculator
     const nextDate = (() => { const nd = new Date(d + "T12:00:00Z"); nd.setUTCDate(nd.getUTCDate() + 1); return nd.toISOString().slice(0,10); })();
     Promise.all([
-      fetch(`/digitalbakery/api/production?date=${d}`, { headers: { "x-role": role } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/production?date=${nextDate}`, { headers: { "x-role": role } }).then(r => r.json()),
+      fetch(`/digitalbakery/api/production?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/digitalbakery/api/production?date=${nextDate}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
     ]).then(([data, nextData]) => {
       if (data.error) { setError(data.message ?? data.error); setLoading(false); return; }
       setPlan({ ...data, breadLines: data.breadLines ?? [], mixerGroups: data.mixerGroups ?? [] });

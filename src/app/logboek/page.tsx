@@ -45,7 +45,7 @@ export default function LogboekPage() {
 
   function load() {
     setLoading(true);
-    fetch(`/digitalbakery/api/logboek?from=${from}&to=${to}`, { headers: { "x-role": role } })
+    fetch(`/digitalbakery/api/logboek?from=${from}&to=${to}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => {
         setEntries(d.entries ?? []);
