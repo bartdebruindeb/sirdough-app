@@ -20,6 +20,7 @@ export default function HomePage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [loadingAnnouncement, setLoadingAnnouncement] = useState(true);
 
   useEffect(() => {
@@ -36,14 +37,22 @@ export default function HomePage() {
   }, [role]);
 
   async function saveAnnouncement() {
-    setSaving(true);
-    const res = await fetch("/digitalbakery/api/announcement", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-      body: JSON.stringify({ message: draft }),
-    });
+    setSaving(true); setSaveError("");
+    try {
+      const res = await fetch("/digitalbakery/api/announcement", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+        body: JSON.stringify({ message: draft }),
+      });
+      if (res.ok) { setAnnouncement(draft); setEditing(false); }
+      else {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.message ?? d.error ?? `Opslaan mislukt (${res.status})`);
+      }
+    } catch (e) {
+      setSaveError(String(e));
+    }
     setSaving(false);
-    if (res.ok) { setAnnouncement(draft); setEditing(false); }
   }
 
   return (
@@ -74,6 +83,7 @@ export default function HomePage() {
               <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3}
                 placeholder="Bijv. 'Vrijdag extra bestellingen voor het weekend, check de planning!'"
                 style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 14, fontFamily: "var(--font-body)", resize: "vertical" }} />
+              {saveError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{saveError}</p>}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={saveAnnouncement} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
                   {saving ? "Opslaan…" : "Opslaan"}
