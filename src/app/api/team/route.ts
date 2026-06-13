@@ -5,6 +5,7 @@ import { prisma } from "@/server/config/db";
 import { parseJson } from "@/server/lib/validation";
 import { z } from "zod";
 import crypto from "crypto";
+import { bakeryConfig } from "@/config/bakery.config";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,20 @@ export async function GET(req: Request) {
       select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
     });
 
-    return Response.json({ users });
+    // Never expose the protected admin's real email address to the client
+    const mapped = users.map(u => {
+      const isProtectedAdmin = u.email === bakeryConfig.protectedAdminEmail;
+      return { ...u, email: isProtectedAdmin ? "—" : u.email, isProtectedAdmin };
+    });
+
+    return Response.json({ users: mapped });
   } catch (e) {
     return toResponse(e);
   }
 }
 
 const InviteWorkerSchema = z.object({
+  id: z.string().optional(),
   email: z.string().email(),
   name: z.string().optional(),
   role: z.enum(["OWNER","ORDER_TABLET","BAKKER","BEZORGER"]).default("BAKKER"),
@@ -42,9 +50,15 @@ export async function POST(req: Request) {
 
     const input = await parseJson(req, InviteWorkerSchema);
 
-    // Create user if not exists
-    let user = await prisma.user.findFirst({ where: { tenantId: tid, email: input.email } });
+    // If an id is given (regenerating a link for an existing user from the
+    // Team page), look up by id — this works even when the email shown to
+    // the client is masked (protected admin account).
+    let user = input.id
+      ? await prisma.user.findFirst({ where: { id: input.id, tenantId: tid } })
+      : await prisma.user.findFirst({ where: { tenantId: tid, email: input.email } });
+
     if (!user) {
+      if (input.id) return Response.json({ message: "Gebruiker niet gevonden." }, { status: 404 });
       user = await prisma.user.create({
         data: { tenantId: tid, email: input.email, name: input.name, role: input.role, active: false },
       });
@@ -79,6 +93,32 @@ export async function PATCH(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, UpdateWorkerSchema);
+
+    // Permanent admin account: never touchable, regardless of owner count.
+    const wouldChange = input.active !== undefined || input.role !== undefined;
+    if (wouldChange) {
+      const target = await prisma.user.findFirst({ where: { id: input.id, tenantId: tid } });
+      if (target?.email === bakeryConfig.protectedAdminEmail) {
+        return Response.json({ message: "Dit account kan niet worden gewijzigd." }, { status: 400 });
+      }
+    }
+
+    // Safety net: never allow the last active OWNER to be deactivated or
+    // demoted to a different role — there must always be at least one
+    // account that can manage the team.
+    const wouldRemoveOwnerStatus =
+      (input.active === false) || (input.role !== undefined && input.role !== "OWNER");
+
+    if (wouldRemoveOwnerStatus) {
+      const target = await prisma.user.findFirst({ where: { id: input.id, tenantId: tid } });
+      if (target?.role === "OWNER" && target.active) {
+        const activeOwners = await prisma.user.count({ where: { tenantId: tid, role: "OWNER", active: true } });
+        if (activeOwners <= 1) {
+          return Response.json({ message: "Er moet altijd minstens één actieve eigenaar zijn." }, { status: 400 });
+        }
+      }
+    }
+
     await prisma.user.updateMany({
       where: { id: input.id, tenantId: tid },
       data: {
@@ -101,6 +141,19 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
+
+    // Safety net: never allow the last active OWNER to be deleted.
+    const target = await prisma.user.findFirst({ where: { id, tenantId: tid } });
+    if (target?.email === bakeryConfig.protectedAdminEmail) {
+      return Response.json({ message: "Dit account kan niet worden verwijderd." }, { status: 400 });
+    }
+    if (target?.role === "OWNER" && target.active) {
+      const activeOwners = await prisma.user.count({ where: { tenantId: tid, role: "OWNER", active: true } });
+      if (activeOwners <= 1) {
+        return Response.json({ message: "Er moet altijd minstens één actieve eigenaar zijn." }, { status: 400 });
+      }
+    }
+
     await prisma.user.deleteMany({ where: { id, tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"] } } });
     return new Response(null, { status: 204 });
   } catch (e) { return toResponse(e); }

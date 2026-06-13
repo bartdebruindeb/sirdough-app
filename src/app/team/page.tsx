@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 const STAFF_ROLES: AppRole[] = ["OWNER", "ORDER_TABLET", "BAKKER", "BEZORGER"];
 
-type Worker = { id: string; email: string; name: string | null; role: AppRole; active: boolean; createdAt: string };
+type Worker = { id: string; email: string; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean };
 
 export default function TeamPage() {
   const { role: myRole } = useRole();
@@ -45,20 +45,24 @@ export default function TeamPage() {
   }
 
   async function toggleActive(w: Worker) {
-    await fetch("/digitalbakery/api/team", {
+    setError("");
+    const res = await fetch("/digitalbakery/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: w.id, active: !w.active }),
     });
+    if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
     load();
   }
 
   async function changeRole(w: Worker, role: AppRole) {
-    await fetch("/digitalbakery/api/team", {
+    setError("");
+    const res = await fetch("/digitalbakery/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: w.id, role }),
     });
+    if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
     load();
   }
 
@@ -67,7 +71,7 @@ export default function TeamPage() {
     const res = await fetch("/digitalbakery/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: w.email, name: w.name ?? undefined, role: w.role }),
+      body: JSON.stringify({ id: w.id, email: w.email, name: w.name ?? undefined, role: w.role }),
     });
     const data = await res.json();
     setRegenLoading(false);
@@ -161,7 +165,18 @@ export default function TeamPage() {
         <p style={{ color: "var(--text-subtle)", fontSize: 13 }}>Laden…</p>
       ) : (
         <div className="card" style={{ overflow: "hidden" }}>
-          {workers.map((w, i) => (
+          {error && (
+            <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>{error}</p>
+          )}
+          {workers.map((w, i) => {
+            const activeOwnerCount = workers.filter(x => x.role === "OWNER" && x.active).length;
+            const isLastOwner = w.role === "OWNER" && w.active && activeOwnerCount <= 1;
+            const isProtectedAdmin = !!w.isProtectedAdmin;
+            const isLocked = isLastOwner || isProtectedAdmin;
+            const lockReason = isProtectedAdmin
+              ? "Dit beheerdersaccount kan niet worden gewijzigd of verwijderd."
+              : "Er moet altijd minstens één actieve eigenaar zijn.";
+            return (
             <div key={w.id} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
               borderTop: i > 0 ? "1px solid var(--border)" : "none",
@@ -183,17 +198,22 @@ export default function TeamPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontWeight: 500, fontSize: 14 }}>{w.name ?? w.email}</span>
                   {!w.active && <span style={{ fontSize: 10, color: "var(--danger)", background: "var(--danger-bg)", padding: "2px 8px", borderRadius: 10 }}>Inactief</span>}
+                  {isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Beheerder</span>}
+                  {isLastOwner && !isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Laatste eigenaar</span>}
                 </div>
-                <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "2px 0 0" }}>{w.email}</p>
+                {!isProtectedAdmin && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "2px 0 0" }}>{w.email}</p>}
               </div>
 
               {/* Role selector */}
               <select
                 value={w.role}
                 onChange={e => changeRole(w, e.target.value as AppRole)}
+                disabled={isLocked}
+                title={isLocked ? lockReason : undefined}
                 style={{
                   fontSize: 12, padding: "5px 8px", borderRadius: 7, border: "1px solid var(--border)",
-                  background: "var(--surface)", color: "var(--text)", cursor: "pointer",
+                  background: "var(--surface)", color: "var(--text)", cursor: isLocked ? "not-allowed" : "pointer",
+                  opacity: isLocked ? 0.6 : 1,
                 }}
               >
                 {STAFF_ROLES.map(r => <option key={r} value={r}>{ROLE_ICONS[r]} {ROLE_LABELS[r]}</option>)}
@@ -202,18 +222,23 @@ export default function TeamPage() {
               <button onClick={() => regenerateLink(w)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                 🔗 Nieuwe link
               </button>
-              <button onClick={() => toggleActive(w)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
+              <button onClick={() => toggleActive(w)} disabled={isLocked}
+                title={isLocked ? lockReason : undefined}
+                className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px", cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.6 : 1 }}>
                 {w.active ? "Deactiveer" : "Activeer"}
               </button>
               <button onClick={async () => {
                 if (!confirm(`${w.name ?? w.email} definitief verwijderen?`)) return;
-                await fetch(`/digitalbakery/api/team?id=${w.id}`, { method: "DELETE" });
+                setError("");
+                const res = await fetch(`/digitalbakery/api/team?id=${w.id}`, { method: "DELETE" });
+                if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
                 load();
-              }} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: "pointer", color: "var(--danger)" }}>
+              }} disabled={isLocked} title={isLocked ? lockReason : undefined} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: isLocked ? "not-allowed" : "pointer", color: isLocked ? "var(--text-subtle)" : "var(--danger)", opacity: isLocked ? 0.5 : 1 }}>
                 Verwijder
               </button>
             </div>
-          ))}
+          );
+          })}
           {workers.length === 0 && (
             <p style={{ padding: "2rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>
               Nog geen teamleden.

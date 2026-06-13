@@ -46,6 +46,17 @@ export const bakeryConfig = {
 
   /** Cutoff time (24h) for customer order changes — day before delivery */
   orderCutoffHour: 4,
+
+  /**
+   * Email of the permanent admin/developer account for this deployment.
+   * This account can never be deleted, deactivated, or have its role
+   * changed away from OWNER, regardless of how many other owners exist —
+   * it's the guaranteed way back in if something goes wrong with the
+   * bakery's own accounts. Set this to your own email, then create the
+   * account via the Team page (e.g. name it "Bart (ontwikkelaar — support)"
+   * so it's clear to the bakery owner what it's for).
+   */
+  protectedAdminEmail: "bdb785@gmail.com",
 } as const;
 
 /** Convenience: shop names only, for places that need a simple list */
