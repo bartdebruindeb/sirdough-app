@@ -79,19 +79,25 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
   const [qty, setQty] = useState<Record<string,number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const hasLines = Object.values(qty).some(v => v > 0);
 
   async function save() {
     if (!customerId) { setError("Selecteer een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
-    setSaving(true); setError("");
+    setSaving(true); setError(""); setSuccess("");
+    const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
     const res = await fetch("/digitalbakery/api/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, deliveryDate: date, notes: notes||undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
     setSaving(false);
-    if (res.ok) { setQty({}); setNotes(""); onSaved(); }
+    if (res.ok) {
+      setQty({}); setNotes(""); onSaved();
+      setSuccess(`✓ Bestelling voor ${customerName} toegevoegd.`);
+      setTimeout(() => setSuccess(""), 4000);
+    }
     else { const d=await res.json(); setError(d.message??"Opslaan mislukt."); }
   }
 
@@ -127,6 +133,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
         ))}
       </div>
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
+      {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
       <button onClick={save} disabled={saving||!customerId||!hasLines} className="btn-primary" style={{ fontSize:13 }}>
         {saving?"Opslaan…":"Bestelling toevoegen"}
       </button>
@@ -145,19 +152,25 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
   const [qty, setQty] = useState<Record<string,number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const hasLines = Object.values(qty).some(v => v > 0);
 
   async function save() {
     if (!customerId) { setError("Selecteer een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
-    setSaving(true); setError("");
+    setSaving(true); setError(""); setSuccess("");
+    const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
     const res = await fetch("/digitalbakery/api/bestellingen/recurring", {
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, weekday, notes: notes || undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
     setSaving(false);
-    if (res.ok) { setQty({}); setNotes(""); setCustomerId(""); onSaved(); }
+    if (res.ok) {
+      setQty({}); setNotes(""); setCustomerId(""); onSaved();
+      setSuccess(`✓ Vaste bestelling voor ${customerName} (${WEEKDAYS[weekday]}) toegevoegd.`);
+      setTimeout(() => setSuccess(""), 4000);
+    }
     else { const d = await res.json(); setError(d.message ?? "Opslaan mislukt."); }
   }
 
@@ -195,6 +208,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         ))}
       </div>
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
+      {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
       <button onClick={save} disabled={saving||!customerId||!hasLines} className="btn-primary" style={{ fontSize:13 }}>
         {saving?"Opslaan…":"Vaste bestelling toevoegen"}
       </button>
