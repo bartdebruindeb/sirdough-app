@@ -267,6 +267,7 @@ export default function BezorgenPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ width: 80, padding: "8px" }}></th>
                     <th style={{ textAlign: "left", padding: "8px 14px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>Klant</th>
                     <th style={{ textAlign: "left", padding: "8px 8px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>Stad</th>
                     {activeBreadTypes.map(bt => (
@@ -274,7 +275,6 @@ export default function BezorgenPage() {
                         {shortName(bt.name)}
                       </th>
                     ))}
-                    <th style={{ width: 80, padding: "8px" }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -287,24 +287,7 @@ export default function BezorgenPage() {
                         background: isDone ? "var(--success-bg)" : inBus ? "#fffbeb" : "transparent",
                         opacity: isDone ? 0.5 : 1,
                       }}>
-                        <td style={{ padding: "9px 14px" }}>
-                          <span style={{ textDecoration: isDone ? "line-through" : "none", fontWeight: row.isShop ? 600 : 400 }}>
-                            {row.name}
-                          </span>
-                          {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>{row.notes}</span>}
-                        </td>
-                        <td style={{ padding: "9px 8px", color: "var(--text-subtle)", fontSize: 12 }}>{row.city}</td>
-                        {activeBreadTypes.map(bt => {
-                          const qty = row.quantities[bt.id] ?? 0;
-                          return (
-                            <td key={bt.id} style={{ padding: "9px 8px", textAlign: "right" }}>
-                              {qty > 0
-                                ? <span className="badge badge-amber" style={{ fontSize: 11, padding: "2px 7px" }}>{qty}</span>
-                                : <span style={{ color: "var(--border)" }}>—</span>}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "9px 10px", textAlign: "right" }}>
+                        <td style={{ padding: "9px 10px", textAlign: "left", whiteSpace: "nowrap" }}>
                           {isDone ? (
                             <button onClick={() => toggleDelivered(row.customerId)}
                               style={{ fontSize: 11, color: "var(--success)", background: "none", border: "none", cursor: "pointer" }}>
@@ -326,6 +309,26 @@ export default function BezorgenPage() {
                             </button>
                           )}
                         </td>
+                        <td style={{ padding: "9px 14px" }}>
+                          {inBus && !isDone && (
+                            <span title="In de bus geladen" style={{ marginRight: 6 }}>🚐</span>
+                          )}
+                          <span style={{ textDecoration: isDone ? "line-through" : "none", fontWeight: row.isShop ? 600 : 400 }}>
+                            {row.name}
+                          </span>
+                          {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>{row.notes}</span>}
+                        </td>
+                        <td style={{ padding: "9px 8px", color: "var(--text-subtle)", fontSize: 12 }}>{row.city}</td>
+                        {activeBreadTypes.map(bt => {
+                          const qty = row.quantities[bt.id] ?? 0;
+                          return (
+                            <td key={bt.id} style={{ padding: "9px 8px", textAlign: "right" }}>
+                              {qty > 0
+                                ? <span className="badge badge-amber" style={{ fontSize: 11, padding: "2px 7px" }}>{qty}</span>
+                                : <span style={{ color: "var(--border)" }}>—</span>}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}

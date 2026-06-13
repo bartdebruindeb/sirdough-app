@@ -33,6 +33,7 @@ export type Permission =
   | "recipes:read" | "recipes:write"
   | "customers:read" | "customers:write"
   | "invoicing:read"
+  | "announcement:write"
   | "delivery:read" | "delivery:write" | "delivery:note";
 
 export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "recipes:read","recipes:write",
     "customers:read","customers:write",
     "invoicing:read",
+    "announcement:write",
     "delivery:read","delivery:write","delivery:note",
   ],
   ORDER_TABLET: [

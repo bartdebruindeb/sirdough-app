@@ -385,6 +385,7 @@ export default function BestellingenPage() {
   const [showManage, setShowManage] = useState(false);
 
   const [tab, setTab] = useState<"eenmalig"|"vast">("eenmalig");
+  const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
 
   function loadOneOff() {
     fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
@@ -455,7 +456,11 @@ export default function BestellingenPage() {
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
   const recurringByDay=new Map<number,RecurringOrder[]>();
-  for (const r of recurring) { if (!recurringByDay.has(r.weekday)) recurringByDay.set(r.weekday,[]); recurringByDay.get(r.weekday)!.push(r); }
+  const filteredRecurring = recurringCustomerFilter ? recurring.filter(r=>r.customerId===recurringCustomerFilter) : recurring;
+  for (const r of filteredRecurring) { if (!recurringByDay.has(r.weekday)) recurringByDay.set(r.weekday,[]); recurringByDay.get(r.weekday)!.push(r); }
+  // Customers that have at least one recurring order, for the filter dropdown
+  const recurringCustomers = Array.from(new Map(recurring.map(r=>[r.customerId, r.customer])).values())
+    .sort((a,b)=>a.name.localeCompare(b.name));
 
   return (
     <div style={{ padding:"2rem 2.5rem", maxWidth:1100 }}>
@@ -625,9 +630,26 @@ export default function BestellingenPage() {
           {canWriteRecurring && (
             <NewRecurringOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadRecurring} />
           )}
-          <p style={{ fontSize:13, color:"var(--text-muted)", margin:0 }}>
-            Schakel vaste bestellingen aan/uit. Klik op 📅 Plannen om specifieke data over te slaan of toe te voegen.
-          </p>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <p style={{ fontSize:13, color:"var(--text-muted)", margin:0 }}>
+              Schakel vaste bestellingen aan/uit. Klik op 📅 Plannen om specifieke data over te slaan of toe te voegen.
+            </p>
+            <select value={recurringCustomerFilter} onChange={e=>setRecurringCustomerFilter(e.target.value)}
+              style={{ marginLeft:"auto", border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
+              <option value="">Alle klanten</option>
+              {recurringCustomers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
+            </select>
+            {recurringCustomerFilter && (
+              <button onClick={()=>setRecurringCustomerFilter("")} className="btn-secondary" style={{ fontSize:12, padding:"5px 10px" }}>
+                ✕ Filter wissen
+              </button>
+            )}
+          </div>
+          {recurringCustomerFilter && filteredRecurring.length===0 && (
+            <p style={{ fontSize:13, color:"var(--text-subtle)", textAlign:"center", padding:"1.5rem 0" }}>
+              Geen vaste bestellingen voor deze klant.
+            </p>
+          )}
           {[1,2,3,4,5,6,7].map(wd=>{
             const dayOrders=recurringByDay.get(wd)??[];
             if (dayOrders.length===0) return null;

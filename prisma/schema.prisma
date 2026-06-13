@@ -34,6 +34,20 @@ model Tenant {
   productionDays   ProductionDay[]
   customers        Customer[]
   deliveryNotes    DeliveryNote[]
+  announcements    Announcement[]
+}
+
+// ─── Owner announcements (dashboard message to staff) ──────────────────────────
+model Announcement {
+  id        String   @id @default(cuid())
+  tenantId  String
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────

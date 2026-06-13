@@ -4,19 +4,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useRole, ROLE_LABELS, ROLE_ICONS, AppRole } from "@/lib/role-context";
 import { bakeryConfig } from "@/config/bakery.config";
-
-const ALL_NAV = [
-  { href: "/",             label: "Dashboard",     icon: "⬡" },
-  { href: "/productie",    label: "Productie",      icon: "◈" },
-  { href: "/recepten",     label: "Recepten",       icon: "◇" },
-  { href: "/winkel",       label: "Winkel",         icon: "◉" },
-  { href: "/bestellingen", label: "Bestellingen",   icon: "◧" },
-  { href: "/logboek",      label: "Logboek",        icon: "📋" },
-  { href: "/bezorgen",     label: "Bezorgen",       icon: "◬" },
-  { href: "/klanten",      label: "Klanten",        icon: "◑" },
-  { href: "/team",         label: "Team",           icon: "◒" },
-  { href: "/facturatie",   label: "Facturatie",     icon: "◰" },
-];
+import { ALL_NAV } from "@/lib/nav";
 
 const ROLE_COLORS: Record<AppRole, string> = {
   OWNER:        "#b45309",

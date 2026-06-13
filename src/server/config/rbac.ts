@@ -14,6 +14,7 @@ const PERMISSIONS = {
   "delivery:write":   ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
   "delivery:note":    ["OWNER","BEZORGER"],
   "invoicing:read":   ["OWNER"],
+  "announcement:write": ["OWNER"],
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
