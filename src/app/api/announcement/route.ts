@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 // Anyone logged in can read the announcement
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getTenantFromRequest(req);
-    const tid = await resolveTenantId(tenantId);
+    const { tenantId, tenantSlug } = getTenantFromRequest(req);
+    const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const announcement = await prisma.announcement.findFirst({
       where: { tenantId: tid },
@@ -28,10 +28,10 @@ const SetSchema = z.object({ message: z.string().max(2000) });
 // Only the owner can set/update the announcement
 export async function PUT(req: Request) {
   try {
-    const { tenantId } = getTenantFromRequest(req);
+    const { tenantId, tenantSlug } = getTenantFromRequest(req);
     const role = await getRoleFromRequest(req);
     requirePermission(role, "announcement:write");
-    const tid = await resolveTenantId(tenantId);
+    const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const body = await req.json();
     const input = SetSchema.parse(body);
