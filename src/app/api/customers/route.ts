@@ -39,6 +39,7 @@ const CreateCustomerSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   notes: z.string().optional(),
+  preferredBread: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
         email: input.email || null,
         phone: input.phone || null,
         notes: input.notes || null,
+        preferredBread: input.preferredBread || null,
       },
     });
     return Response.json(customer, { status: 201 });
@@ -74,6 +76,7 @@ const UpdateCustomerSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   notes: z.string().optional(),
+  preferredBread: z.string().optional(),
   active: z.boolean().optional(),
 });
 
@@ -96,6 +99,7 @@ export async function PATCH(req: Request) {
         ...(data.email !== undefined && { email: data.email || null }),
         ...(data.phone !== undefined && { phone: data.phone || null }),
         ...(data.notes !== undefined && { notes: data.notes || null }),
+        ...(data.preferredBread !== undefined && { preferredBread: data.preferredBread || null }),
         ...(data.active !== undefined && { active: data.active }),
       },
     });

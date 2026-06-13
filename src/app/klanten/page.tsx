@@ -7,6 +7,7 @@ type User = { id: string; email: string; active: boolean } | null;
 type Customer = {
   id: string; name: string; city: string | null; address: string | null;
   email: string | null; phone: string | null; notes: string | null;
+  preferredBread: string | null;
   active: boolean; userId: string | null; user: User;
 };
 
@@ -26,6 +27,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [email, setEmail]     = useState(initial?.email ?? "");
   const [phone, setPhone]     = useState(initial?.phone ?? "");
   const [notes, setNotes]     = useState(initial?.notes ?? "");
+  const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
 
@@ -33,7 +35,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
     if (!name.trim()) { setError("Naam is verplicht."); return; }
     setSaving(true); setError("");
     try {
-      await onSave({ name, city, address, email, phone, notes });
+      await onSave({ name, city, address, email, phone, notes, preferredBread });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
     }
@@ -69,6 +71,10 @@ function CustomerForm({ initial, onSave, onCancel }: {
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
         <input value={notes} onChange={e => setNotes(e.target.value)} style={inp} placeholder="bijv. gesneden, pakbon mee" />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Voorkeur brood</label>
+        <input value={preferredBread} onChange={e => setPreferredBread(e.target.value)} style={inp} placeholder="bijv. 1,5kg, sesam & zaden" />
       </div>
       {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -302,6 +308,7 @@ export default function KlantenPage() {
                     {c.email && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>✉ {c.email}</span>}
                     {c.phone && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📞 {c.phone}</span>}
                     {c.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontStyle: "italic" }}>{c.notes}</span>}
+                    {c.preferredBread && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "1px 7px", borderRadius: 8 }}>🍞 {c.preferredBread}</span>}
                   </div>
                 </div>
 

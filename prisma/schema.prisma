@@ -209,6 +209,8 @@ model Customer {
   email     String?
   phone     String?
   notes     String?
+  /** Free-text bread preference shown to staff when placing orders, e.g. "1,5kg, sesam" */
+  preferredBread String?
   active    Boolean @default(true)
   userId    String? @unique  // linked User account for customer portal
 

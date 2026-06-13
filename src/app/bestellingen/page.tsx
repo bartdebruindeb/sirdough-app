@@ -5,7 +5,7 @@ import React, { useEffect, useState, useCallback } from "react";
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
 type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean };
-type Customer  = { id: string; name: string; city: string | null };
+type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string; sortOrder: number } };
@@ -113,6 +113,9 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
             <option value="">— selecteer —</option>
             {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
           </select>
+          {customers.find(c=>c.id===customerId)?.preferredBread && (
+            <p style={{ fontSize:12, color:"var(--accent)", margin:"4px 0 0" }}>🍞 Voorkeur: {customers.find(c=>c.id===customerId)?.preferredBread}</p>
+          )}
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Datum</label>
@@ -186,6 +189,9 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
             <option value="">— selecteer —</option>
             {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
           </select>
+          {customers.find(c=>c.id===customerId)?.preferredBread && (
+            <p style={{ fontSize:12, color:"var(--accent)", margin:"4px 0 0" }}>🍞 Voorkeur: {customers.find(c=>c.id===customerId)?.preferredBread}</p>
+          )}
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Dag</label>
@@ -397,6 +403,8 @@ export default function BestellingenPage() {
   const [editOrderQty, setEditOrderQty] = useState<Record<string,number>>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [showManage, setShowManage] = useState(false);
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [tab, setTab] = useState<"eenmalig"|"vast">("eenmalig");
   const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
@@ -414,6 +422,26 @@ export default function BestellingenPage() {
   async function deleteOrder(id: string) {
     if (!confirm("Bestelling verwijderen?")) return;
     await fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}});
+    loadOneOff();
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    if (selectedOrders.size === 0) return;
+    if (!confirm(`${selectedOrders.size} bestelling${selectedOrders.size===1?"":"en"} verwijderen?`)) return;
+    setBulkDeleting(true);
+    await Promise.all([...selectedOrders].map(id =>
+      fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}})
+    ));
+    setBulkDeleting(false);
+    setSelectedOrders(new Set());
     loadOneOff();
   }
 
@@ -521,6 +549,27 @@ export default function BestellingenPage() {
             </div>
           </div>
 
+          {canWrite && (() => {
+            const allOneOffIds = [...ordersByDate.values()].flat().map(o=>o.id);
+            const allSelected = allOneOffIds.length > 0 && allOneOffIds.every(id=>selectedOrders.has(id));
+            return allOneOffIds.length > 0 ? (
+              <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, color:"var(--text-muted)", cursor:"pointer" }}>
+                  <input type="checkbox" checked={allSelected}
+                    onChange={()=>setSelectedOrders(allSelected ? new Set() : new Set(allOneOffIds))}
+                    style={{ width:16, height:16, cursor:"pointer" }} />
+                  Alles selecteren ({allOneOffIds.length})
+                </label>
+                {selectedOrders.size > 0 && (
+                  <button onClick={deleteSelected} disabled={bulkDeleting}
+                    style={{ fontSize:12, padding:"6px 12px", borderRadius:7, border:"1px solid #fca5a5", background:"none", cursor:"pointer", color:"var(--danger)" }}>
+                    {bulkDeleting ? "Verwijderen…" : `🗑 ${selectedOrders.size} verwijderen`}
+                  </button>
+                )}
+              </div>
+            ) : null;
+          })()}
+
           {loading && <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p>}
           {!loading&&sortedDates.length===0&&!(fromDate===toDate)&&(
             <div className="card" style={{ padding:"2.5rem", textAlign:"center", color:"var(--text-subtle)" }}>
@@ -565,8 +614,12 @@ export default function BestellingenPage() {
                     const isEditing=editingOrderId===order.id;
                     const lines = order.lines.filter(l=>l.quantity>0);
                     return (
-                      <div key={order.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:isEditing?"var(--surface-2)":"var(--surface)" }}>
+                      <div key={order.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:isEditing?"var(--surface-2)":selectedOrders.has(order.id)?"var(--accent-light)":"var(--surface)" }}>
                         <div style={{ display:"flex", alignItems:"flex-start", gap:8 }}>
+                          {canWrite && !isEditing && (
+                            <input type="checkbox" checked={selectedOrders.has(order.id)} onChange={()=>toggleSelect(order.id)}
+                              style={{ marginTop:3, width:16, height:16, flexShrink:0, cursor:"pointer" }} />
+                          )}
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length||order.notes?6:0 }}>
                               <span style={{ fontWeight:500, fontSize:13 }}>{order.customer.name}</span>
