@@ -18,6 +18,10 @@ export default function TeamPage() {
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [regenFor, setRegenFor] = useState<Worker | null>(null);
+  const [regenUrl, setRegenUrl] = useState("");
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [regenCopied, setRegenCopied] = useState(false);
 
   function load() {
     fetch("/digitalbakery/api/team")
@@ -56,6 +60,25 @@ export default function TeamPage() {
       body: JSON.stringify({ id: w.id, role }),
     });
     load();
+  }
+
+  async function regenerateLink(w: Worker) {
+    setRegenFor(w); setRegenUrl(""); setRegenLoading(true); setRegenCopied(false);
+    const res = await fetch("/digitalbakery/api/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: w.email, name: w.name ?? undefined, role: w.role }),
+    });
+    const data = await res.json();
+    setRegenLoading(false);
+    if (res.ok) setRegenUrl(data.inviteUrl);
+    else setError(data.message ?? "Mislukt.");
+  }
+
+  function copyRegen() {
+    navigator.clipboard.writeText(regenUrl);
+    setRegenCopied(true);
+    setTimeout(() => setRegenCopied(false), 2000);
   }
 
   function copy() {
@@ -176,6 +199,9 @@ export default function TeamPage() {
                 {STAFF_ROLES.map(r => <option key={r} value={r}>{ROLE_ICONS[r]} {ROLE_LABELS[r]}</option>)}
               </select>
 
+              <button onClick={() => regenerateLink(w)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
+                🔗 Nieuwe link
+              </button>
               <button onClick={() => toggleActive(w)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                 {w.active ? "Deactiveer" : "Activeer"}
               </button>
@@ -193,6 +219,44 @@ export default function TeamPage() {
               Nog geen teamleden.
             </p>
           )}
+        </div>
+      )}
+
+      {/* ── Regenerate link modal ── */}
+      {regenFor && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(28,16,9,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem",
+        }} onClick={() => setRegenFor(null)}>
+          <div className="card" style={{ padding: "1.5rem", maxWidth: 480, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 15, marginBottom: "0.75rem" }}>
+              Nieuwe link voor {regenFor.name ?? regenFor.email}
+            </h3>
+            {regenLoading ? (
+              <p style={{ fontSize: 13, color: "var(--text-subtle)" }}>Genereren…</p>
+            ) : regenUrl ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+                  ✓ Nieuwe link aangemaakt — de oude link werkt niet meer. Geldig 7 dagen.
+                </p>
+                <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+                  <p style={{ fontSize: 12, wordBreak: "break-all", margin: 0 }}>{regenUrl}</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={copyRegen} className="btn-primary" style={{ fontSize: 13 }}>
+                    {regenCopied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
+                  </button>
+                  <a href={`mailto:${regenFor.email}?subject=Nieuwe%20link%20Digital%20Bakery&body=${encodeURIComponent(regenUrl)}`}
+                    className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
+                    ✉ Stuur e-mail
+                  </a>
+                  <button onClick={() => setRegenFor(null)} className="btn-secondary" style={{ fontSize: 13, marginLeft: "auto" }}>Sluiten</button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: "var(--danger)" }}>{error || "Mislukt."}</p>
+            )}
+          </div>
         </div>
       )}
     </div>
