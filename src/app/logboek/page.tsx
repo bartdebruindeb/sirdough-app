@@ -68,9 +68,6 @@ export default function LogboekPage() {
     (filterCustomer === "all" || e.customerId === filterCustomer)
   );
 
-  // Active bread types (have at least one entry with quantity)
-  const activeBT = breadTypes.filter(bt => filtered.some(e => e.lines.some(l => l.breadTypeId === bt.id && l.quantity > 0)));
-
   // Unique customers for filter
   const customers = [...new Map(entries.map(e => [e.customerId, { id: e.customerId, name: e.customerName }])).values()]
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -121,63 +118,35 @@ export default function LogboekPage() {
       )}
 
       {!loading && filtered.length > 0 && (
-        <div className="card" style={{ overflow: "auto", maxHeight: "70vh" }}>
-          <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0 }}>
-                <th style={{ textAlign: "left", padding: "9px 14px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase", whiteSpace: "nowrap" }}>Datum</th>
-                <th style={{ textAlign: "left", padding: "9px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>Klant</th>
-                <th style={{ textAlign: "left", padding: "9px 8px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 10, textTransform: "uppercase" }}>Type</th>
-                {activeBT.map(bt => (
-                  <th key={bt.id} style={{ textAlign: "right", padding: "9px 8px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                    {colName(bt.name)}
-                  </th>
-                ))}
-                <th style={{ textAlign: "left", padding: "9px 14px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>Opm.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e, i) => (
-                <tr key={`${e.type}-${e.date}-${e.customerId}-${i}`} style={{
-                  borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                  background: e.type === "vast" ? "#f0fdf4" : e.type === "winkel" ? "#f5f3ff" : "transparent",
-                }}>
-                  <td style={{ padding: "8px 14px", whiteSpace: "nowrap", fontSize: 12 }}>{dateLabel(e.date)}</td>
-                  <td style={{ padding: "8px 10px", fontWeight: 500 }}>
-                    {e.customerName}
-                    {e.city && <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{e.city}</span>}
-                  </td>
-                  <td style={{ padding: "8px 8px" }}>
-                    <span style={{
-                      fontSize: 10, padding: "2px 6px", borderRadius: 8,
-                      background: e.type === "vast" ? "var(--success-bg)" : e.type === "winkel" ? "#ede9fe" : "var(--accent-light)",
-                      color: e.type === "vast" ? "var(--success)" : e.type === "winkel" ? "#7c3aed" : "var(--accent)",
-                    }}>
-                      {e.type === "vast" ? "Vast" : e.type === "winkel" ? "Winkel" : "Eenmalig"}
-                    </span>
-                  </td>
-                  {activeBT.map(bt => {
-                    const line = e.lines.find(l => l.breadTypeId === bt.id);
-                    return (
-                      <td key={bt.id} style={{ padding: "8px 8px", textAlign: "right" }}>
-                        {line?.quantity
-                          ? <span className="badge badge-amber" style={{ fontSize: 11 }}>{line.quantity}</span>
-                          : <span style={{ color: "var(--border)" }}>—</span>}
-                      </td>
-                    );
-                  })}
-                  <td style={{ padding: "8px 14px", color: "var(--text-subtle)", fontSize: 11 }}>
-                    {e.notes}
-                    {e.deliveryNote && (
-                      <div style={{ marginTop: e.notes ? 4 : 0, color: "var(--accent)", fontWeight: 500 }}>
-                        🚐 {e.deliveryNote}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "70vh", overflow: "auto" }}>
+          {filtered.map((e, i) => {
+            const lines = e.lines.filter(l => l.quantity > 0);
+            const typeBg = e.type === "vast" ? "#f0fdf4" : e.type === "winkel" ? "#f5f3ff" : "var(--surface)";
+            const badgeBg = e.type === "vast" ? "var(--success-bg)" : e.type === "winkel" ? "#ede9fe" : "var(--accent-light)";
+            const badgeColor = e.type === "vast" ? "var(--success)" : e.type === "winkel" ? "#7c3aed" : "var(--accent)";
+            const typeLabel = e.type === "vast" ? "Vast" : e.type === "winkel" ? "Winkel" : "Eenmalig";
+            return (
+              <div key={`${e.type}-${e.date}-${e.customerId}-${i}`} className="card" style={{ padding: "10px 14px", background: typeBg }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: lines.length || e.notes || e.deliveryNote ? 6 : 0 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{dateLabel(e.date)}</span>
+                  <span style={{ fontWeight: 500, fontSize: 13 }}>{e.customerName}</span>
+                  {e.city && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{e.city}</span>}
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 8, background: badgeBg, color: badgeColor }}>{typeLabel}</span>
+                </div>
+                {lines.length > 0 && (
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: e.notes || e.deliveryNote ? 6 : 0 }}>
+                    {lines.map(l => (
+                      <span key={l.breadTypeId} style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 7px", borderRadius: 10 }}>
+                        {colName(l.breadTypeName)} {l.quantity}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {e.notes && <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>{e.notes}</p>}
+                {e.deliveryNote && <p style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, margin: 0 }}>🚐 {e.deliveryNote}</p>}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
