@@ -126,8 +126,18 @@ input, select, textarea, button { font-family: var(--font-body); }
     padding-right: 0.875rem !important;
   }
 
-  /* Tables inside cards: scroll horizontally instead of squashing columns.
-     !important needed since cards often set inline overflow:hidden. */
+  /* Tables inside cards: shrink to fit the screen width instead of forcing
+     horizontal scroll. (Wide multi-column tables like logboek/facturatie
+     set their own width:"max-content" + minWidth:"100%" and will still
+     scroll if needed — that's intentional for those.) */
   .card { overflow-x: auto !important; -webkit-overflow-scrolling: touch; max-width: 100%; }
-  .card table { min-width: 560px; }
+  .card table:not([style*="max-content"]) {
+    font-size: 11px !important;
+  }
+  .card table:not([style*="max-content"]) th,
+  .card table:not([style*="max-content"]) td {
+    padding: 6px 5px !important;
+    white-space: normal !important;
+    word-break: break-word;
+  }
 }
