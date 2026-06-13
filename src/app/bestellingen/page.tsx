@@ -523,100 +523,93 @@ export default function BestellingenPage() {
             return (
               <section key={date}>
                 <h2 style={{ fontSize:14, textTransform:"uppercase", letterSpacing:"0.06em", color:"var(--text-subtle)", marginBottom:8 }}>{dateLabel}</h2>
-                <div className="card" style={{ overflow:"hidden" }}>
-                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-                    <thead>
-                      <tr style={{ background:"var(--surface-2)", borderBottom:"1px solid var(--border)" }}>
-                        <th style={{ textAlign:"left", padding:"8px 12px", color:"var(--text-subtle)", fontWeight:500, fontSize:11, textTransform:"uppercase", width:160 }}>Klant</th>
-                        <th style={{ textAlign:"left", padding:"8px 8px", color:"var(--text-subtle)", fontWeight:500, fontSize:10, textTransform:"uppercase" }}>Type</th>
-                        {activeBT.map(bt=>(
-                          <th key={bt.id} style={{ textAlign:"right", padding:"8px 8px", color:"var(--text-subtle)", fontWeight:500, fontSize:10, textTransform:"uppercase", whiteSpace:"nowrap" }}>
-                            {colName(bt.name)}
-                          </th>
-                        ))}
-                        <th style={{ textAlign:"left", padding:"8px 12px", color:"var(--text-subtle)", fontWeight:500, fontSize:11, textTransform:"uppercase" }}>Opmerkingen</th>
-                        {canWrite&&<th style={{ width:60 }}/>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Recurring orders for this day */}
-                      {dayRecurring.map((ro,i)=>(
-                        <tr key={"rec-"+ro.id} style={{ borderTop:"1px solid var(--border)", background:"#f0fdf4" }}>
-                          <td style={{ padding:"9px 12px" }}>
-                            <div style={{ fontWeight:500, fontSize:13 }}>{ro.customer.name}</div>
-                            {ro.customer.city&&<div style={{ fontSize:11, color:"var(--text-subtle)" }}>{ro.customer.city}</div>}
-                          </td>
-                          <td style={{ padding:"9px 8px" }}>
-                            <span style={{ fontSize:10, background:"var(--success-bg)", color:"var(--success)", padding:"2px 6px", borderRadius:8, whiteSpace:"nowrap" }}>Vast</span>
-                          </td>
-                          {activeBT.map(bt=>{
-                            const line=ro.lines.find(l=>l.breadTypeId===bt.id);
-                            return <td key={bt.id} style={{ padding:"9px 8px", textAlign:"right" }}>
-                              {line?.quantity?<span className="badge badge-amber">{line.quantity}</span>:<span style={{ color:"var(--border)" }}>—</span>}
-                            </td>;
-                          })}
-                          <td style={{ padding:"9px 12px", color:"var(--text-subtle)", fontSize:12 }}>{ro.notes}</td>
-                          {canWrite&&<td/>}
-                        </tr>
-                      ))}
-                      {/* One-off orders */}
-                      {dayOrders.map((order,i)=>{
-                        const isEditing=editingOrderId===order.id;
-                        return (
-                          <React.Fragment key={order.id}>
-                            <tr style={{ borderTop:"1px solid var(--border)", background:isEditing?"var(--surface-2)":"transparent" }}>
-                              <td style={{ padding:"9px 12px" }}>
-                                <div style={{ fontWeight:500, fontSize:13 }}>{order.customer.name}</div>
-                                {order.customer.city&&<div style={{ fontSize:11, color:"var(--text-subtle)" }}>{order.customer.city}</div>}
-                              </td>
-                              <td style={{ padding:"9px 8px" }}>
-                                <span style={{ fontSize:10, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 6px", borderRadius:8, whiteSpace:"nowrap" }}>Eenmalig</span>
-                              </td>
-                              {activeBT.map(bt=>{
-                                const line=order.lines.find(l=>l.breadTypeId===bt.id);
-                                return (
-                                  <td key={bt.id} style={{ padding:"9px 8px", textAlign:"right" }}>
-                                    {isEditing?(
-                                      <input type="number" min={0} value={editOrderQty[bt.id]||""}
-                                        onChange={e=>setEditOrderQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))}
-                                        placeholder="0"
-                                        style={{ width:50, border:"1px solid var(--border)", borderRadius:5, padding:"3px 5px", fontSize:13, textAlign:"right", background:"var(--surface)" }} />
-                                    ):line?.quantity?(
-                                      <span className="badge badge-amber">{line.quantity}</span>
-                                    ):(
-                                      <span style={{ color:"var(--border)" }}>—</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                              <td style={{ padding:"9px 12px", color:"var(--text-subtle)", fontSize:12 }}>{order.notes}</td>
-                              {canWrite&&(
-                                <td style={{ padding:"9px 10px", textAlign:"right", whiteSpace:"nowrap" }}>
-                                  {isEditing?(
-                                    <span style={{ display:"flex", gap:4 }}>
-                                      <button onClick={()=>saveOrderEdit(order.id)} disabled={savingEdit}
-                                        style={{ fontSize:11, padding:"3px 8px", borderRadius:5, border:"none", background:"var(--accent)", color:"white", cursor:"pointer" }}>
-                                        {savingEdit?"…":"✓"}
-                                      </button>
-                                      <button onClick={()=>setEditingOrderId(null)}
-                                        style={{ fontSize:11, padding:"3px 8px", borderRadius:5, border:"1px solid var(--border)", background:"none", cursor:"pointer" }}>✕</button>
-                                    </span>
-                                  ):(
-                                    <span style={{ display:"flex", gap:4 }}>
-                                      <button onClick={()=>startEditOrder(order)}
-                                        style={{ fontSize:11, padding:"3px 8px", borderRadius:5, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-muted)" }}>✎</button>
-                                      <button onClick={()=>deleteOrder(order.id)}
-                                        style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1 }}>×</button>
-                                    </span>
-                                  )}
-                                </td>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {/* Recurring orders for this day */}
+                  {dayRecurring.map(ro=>{
+                    const lines = ro.lines.filter(l=>l.quantity>0);
+                    return (
+                      <div key={"rec-"+ro.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:"#f0fdf4" }}>
+                        <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length||ro.notes?6:0 }}>
+                          <span style={{ fontWeight:500, fontSize:13 }}>{ro.customer.name}</span>
+                          {ro.customer.city && <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{ro.customer.city}</span>}
+                          <span style={{ fontSize:10, background:"var(--success-bg)", color:"var(--success)", padding:"2px 7px", borderRadius:8 }}>Vast</span>
+                          {ro.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{ro.notes}</span>}
+                        </div>
+                        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                          {lines.map(l=>(
+                            <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>
+                              {colName(l.breadType.name)} {l.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* One-off orders */}
+                  {dayOrders.map(order=>{
+                    const isEditing=editingOrderId===order.id;
+                    const lines = order.lines.filter(l=>l.quantity>0);
+                    return (
+                      <div key={order.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:isEditing?"var(--surface-2)":"var(--surface)" }}>
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:8 }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length||order.notes?6:0 }}>
+                              <span style={{ fontWeight:500, fontSize:13 }}>{order.customer.name}</span>
+                              {order.customer.city && <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{order.customer.city}</span>}
+                              <span style={{ fontSize:10, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:8 }}>Eenmalig</span>
+                              {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
+                            </div>
+                            {!isEditing && (
+                              <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                                {lines.map(l=>(
+                                  <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>
+                                    {colName(l.breadType.name)} {l.quantity}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {canWrite && (
+                            <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+                              {isEditing ? (
+                                <>
+                                  <button onClick={()=>saveOrderEdit(order.id)} disabled={savingEdit}
+                                    style={{ fontSize:11, padding:"4px 10px", borderRadius:6, border:"none", background:"var(--accent)", color:"white", cursor:"pointer" }}>
+                                    {savingEdit?"…":"✓ Opslaan"}
+                                  </button>
+                                  <button onClick={()=>setEditingOrderId(null)}
+                                    style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer" }}>✕</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={()=>startEditOrder(order)}
+                                    style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>✎</button>
+                                  <button onClick={()=>deleteOrder(order.id)}
+                                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1 }}>×</button>
+                                </>
                               )}
-                            </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Edit panel */}
+                        {isEditing && (
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:7, marginTop:6 }}>
+                            {activeBT.map(bt=>(
+                              <div key={bt.id} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:6, padding:"7px 9px" }}>
+                                <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
+                                <input type="number" min={0} value={editOrderQty[bt.id]||""}
+                                  onChange={e=>setEditOrderQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))}
+                                  placeholder="0"
+                                  style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"3px 6px", fontSize:13, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             );
