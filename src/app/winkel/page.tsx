@@ -159,7 +159,7 @@ export default function WinkelPage() {
                 {bt.name.replace("Boeren ","B.").replace(" KG","kg")}
               </label>
               <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.slug] ?? ""}
-                onChange={e => setQty(prev => ({ ...prev, [bt.slug]: Math.min(999, parseInt(e.target.value) || 0) }))}
+                onChange={e => setQty((prev: Record<string,number>) => ({ ...prev, [bt.slug]: Math.min(999, parseInt(e.target.value) || 0) }))}
                 placeholder="0"
                 style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 6px", fontSize: 14, fontWeight: 600, background: "var(--surface)", textAlign: "right" }} />
             </div>

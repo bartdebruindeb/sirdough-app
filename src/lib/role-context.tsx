@@ -2,20 +2,18 @@
 import React, { createContext, useContext } from "react";
 import { useSession } from "next-auth/react";
 
-export type AppRole = "OWNER" | "ORDER_TABLET" | "BAKKER" | "BEZORGER";
+export type AppRole = "OWNER" | "ORDER_TABLET" | "BAKKER";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   OWNER:        "Eigenaar",
   ORDER_TABLET: "Order Tablet",
   BAKKER:       "Bakker",
-  BEZORGER:     "Bezorger",
 };
 
 export const ROLE_ICONS: Record<AppRole, string> = {
   OWNER:        "👑",
   ORDER_TABLET: "📋",
   BAKKER:       "🥖",
-  BEZORGER:     "🚐",
 };
 
 // Pages each role can access
@@ -23,7 +21,6 @@ export const ROLE_PAGES: Record<AppRole, string[]> = {
   OWNER:        ["/", "/productie", "/recepten", "/winkel", "/bestellingen", "/logboek", "/bezorgen", "/klanten", "/team", "/facturatie"],
   ORDER_TABLET: ["/", "/productie", "/bestellingen", "/logboek", "/bezorgen"],
   BAKKER:       ["/", "/productie", "/bestellingen", "/logboek", "/bezorgen"],
-  BEZORGER:     ["/", "/bestellingen", "/logboek", "/bezorgen"],
 };
 
 // Permissions per role (mirrors src/server/config/rbac.ts — keep in sync)
@@ -54,12 +51,8 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
   ],
   BAKKER: [
     "orders:read",
-    "production:read",
-    "delivery:read",
-    "customers:read",
-  ],
-  BEZORGER: [
-    "orders:read",
+    "production:read","production:write",
+    "recipes:read",
     "delivery:read","delivery:write","delivery:note",
     "customers:read",
   ],

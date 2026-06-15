@@ -2,7 +2,7 @@
 import { useRole, ROLE_LABELS, ROLE_ICONS, AppRole } from "@/lib/role-context";
 import { useEffect, useState } from "react";
 
-const STAFF_ROLES: AppRole[] = ["OWNER", "ORDER_TABLET", "BAKKER", "BEZORGER"];
+const STAFF_ROLES: AppRole[] = ["OWNER", "ORDER_TABLET", "BAKKER"];
 
 type Worker = { id: string; email: string; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean };
 

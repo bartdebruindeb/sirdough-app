@@ -1,18 +1,18 @@
-export type Role = "OWNER" | "ORDER_TABLET" | "BAKKER" | "BEZORGER" | "CUSTOMER";
+export type Role = "OWNER" | "ORDER_TABLET" | "BAKKER" | "CUSTOMER";
 
 const PERMISSIONS = {
-  "recipes:read":     ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
+  "recipes:read":     ["OWNER","ORDER_TABLET","BAKKER"],
   "recipes:write":    ["OWNER"],
-  "production:read":  ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
+  "production:read":  ["OWNER","ORDER_TABLET","BAKKER"],
   "production:write": ["OWNER","ORDER_TABLET"],
-  "orders:read":            ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
+  "orders:read":            ["OWNER","ORDER_TABLET","BAKKER"],
   "orders:write":           ["OWNER","ORDER_TABLET"],
   "orders:write_recurring": ["OWNER","ORDER_TABLET"],
-  "customers:read":   ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
+  "customers:read":   ["OWNER","ORDER_TABLET","BAKKER"],
   "customers:write":  ["OWNER"],
-  "delivery:read":    ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
-  "delivery:write":   ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"],
-  "delivery:note":    ["OWNER","BEZORGER"],
+  "delivery:read":    ["OWNER","ORDER_TABLET","BAKKER"],
+  "delivery:write":   ["OWNER","ORDER_TABLET","BAKKER"],
+  "delivery:note":    ["OWNER", "BAKKER"],
   "invoicing:read":   ["OWNER"],
   "announcement:write": ["OWNER"],
 } as const;

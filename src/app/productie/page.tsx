@@ -270,7 +270,7 @@ function DesemTotaal({ groups, deliveryDate }: { groups: MixerGroup[]; deliveryD
               <td style={{ padding: "8px 0", color: "var(--text-muted)" }}>Doorstarten</td>
               <td style={{ padding: "8px", textAlign: "right" }}>1</td>
               <td style={{ padding: "8px 0", textAlign: "right" }}>
-                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={doorstarten} onChange={e => setDoorstarten(parseInt(e.target.value)||0)}
+                <input type="number" onKeyDown={e=>{if(["e","E","+"].includes(e.key))e.preventDefault()}} value={doorstarten} onChange={e => setDoorstarten(parseInt(e.target.value)||0)}
                   style={{ width: 70, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 6px", fontSize: 13, textAlign: "right" }} />
               </td>
               <td></td>
@@ -476,7 +476,6 @@ export default function ProductiePage() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" style={{ width: 150 }} />
           <button onClick={() => shift(1)} className="btn-secondary" style={{ padding: "8px 12px" }}>→</button>
           <button onClick={() => setDate(today)} className="btn-secondary">Vandaag</button>
-          <button onClick={() => window.print()} className="btn-primary">🖨 Print</button>
         </div>
       </div>
 

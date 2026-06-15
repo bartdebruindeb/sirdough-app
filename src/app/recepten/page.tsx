@@ -10,7 +10,7 @@ type Recipe = {
   doughWeightPerLoaf: number; mixerGroup: string; notes?: string;
   flourLines: RecipeFlour[]; toppings: RecipeTopping[];
 };
-type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; recipe: Recipe | null };
+type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; recipe: Recipe | null };
 
 function kg(g: number) { return g >= 1000 ? `${(g/1000).toFixed(2).replace(/\.?0+$/,"")} kg` : `${Math.round(g)} g`; }
 
@@ -79,6 +79,7 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
   const [zoutPct,   setZout]   = useState(r?.zoutPct   ?? 2);
   const [inwasPct,  setInwas]  = useState(r?.inwasPct  ?? 6);
   const [doughWeight, setDough] = useState(r?.doughWeightPerLoaf ?? 1000);
+  const [basketType, setBasketType] = useState(bt.basketType ?? "");
   const [notes,     setNotes]  = useState(r?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
@@ -90,6 +91,14 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
 
   async function save() {
     setSaving(true);
+    // Save basket type on the bread type
+    if (basketType !== bt.basketType) {
+      await fetch("/digitalbakery/api/bread-types", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-role": "OWNER" },
+        body: JSON.stringify({ id: bt.id, basketType }),
+      });
+    }
     await fetch("/digitalbakery/api/recipes", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
@@ -163,6 +172,9 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
       </div>
 
       <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandtype</label>
+        <input value={basketType} onChange={e => setBasketType(e.target.value)}
+          style={{ ...inputStyle, width: "100%", marginBottom: 10 }} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notities</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
@@ -184,6 +196,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
   const [newCat, setNewCat] = useState("");
   const [addingCat, setAddingCat] = useState(false);
   const [weightGrams, setWeightGrams] = useState(1010);
+  const [basketType, setBasketType] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -199,7 +212,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
     setSaving(true); setError("");
     const res = await fetch("/digitalbakery/api/bread-types", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":"OWNER"},
-      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams }),
+      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType }),
     });
     setSaving(false);
     if (res.ok) onSaved();
@@ -244,6 +257,10 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
           <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandtype</label>
+          <input value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
         </div>
         {error&&<p style={{color:"var(--danger)",background:"var(--danger-bg)",padding:"8px 12px",borderRadius:8,fontSize:13,margin:0}}>{error}</p>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
@@ -355,6 +372,7 @@ export default function ReceptenPage() {
                         padding: "1rem 1.25rem", background: "none", border: "none", cursor: "pointer", textAlign: "left",
                       }}>
                         <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{bt.name}</span>
+                        {bt.basketType && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 8 }}>🧺 {bt.basketType}</span>}
                         <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
                       </button>
                       {isOwner && isOpen && (
@@ -365,22 +383,6 @@ export default function ReceptenPage() {
                             style={{ fontSize: 12, padding: "5px 12px" }}
                           >
                             {isEditing ? "Annuleer" : "Bewerken"}
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`Recept voor ${bt.name} verwijderen?`)) return;
-                              await fetch(`/digitalbakery/api/recipes?breadTypeId=${bt.id}`, { method: "DELETE", headers: { "x-role": "OWNER" } });
-                              load();
-                            }}
-                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: "pointer", color: "var(--danger)" }}
-                          >
-                            − Recept
-                          </button>
-                          <button
-                            onClick={() => deleteBreadType(bt)}
-                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "var(--danger-bg)", cursor: "pointer", color: "var(--danger)" }}
-                          >
-                            🗑 Verwijder
                           </button>
                         </div>
                       )}

@@ -11,7 +11,6 @@ enum Role {
   OWNER
   ORDER_TABLET
   BAKKER
-  BEZORGER
   CUSTOMER
 }
 
@@ -118,6 +117,8 @@ model BreadType {
   customerOrderable Boolean @default(false)
   doughTypeId String?         // links to shared dough type
   doughWeightPerLoaf Float @default(1010) // per loaf incl. fillings
+  /// e.g. "rond 1kg", "lang 750gr", "baguette"
+  basketType String? @default("")
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])

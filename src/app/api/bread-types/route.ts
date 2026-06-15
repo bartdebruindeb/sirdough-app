@@ -29,6 +29,7 @@ const CreateBreadTypeSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, "Slug may only contain lowercase letters, numbers and dashes"),
   category: z.string().min(1),
   weightGrams: z.number().positive().default(1000),
+  basketType: z.string().optional(),
   sortOrder: z.number().int().default(99),
 });
 
