@@ -270,7 +270,7 @@ function DesemTotaal({ groups, deliveryDate }: { groups: MixerGroup[]; deliveryD
               <td style={{ padding: "8px 0", color: "var(--text-muted)" }}>Doorstarten</td>
               <td style={{ padding: "8px", textAlign: "right" }}>1</td>
               <td style={{ padding: "8px 0", textAlign: "right" }}>
-                <input type="number" value={doorstarten} onChange={e => setDoorstarten(parseInt(e.target.value)||0)}
+                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={doorstarten} onChange={e => setDoorstarten(parseInt(e.target.value)||0)}
                   style={{ width: 70, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 6px", fontSize: 13, textAlign: "right" }} />
               </td>
               <td></td>

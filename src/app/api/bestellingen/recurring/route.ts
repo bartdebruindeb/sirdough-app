@@ -23,7 +23,13 @@ export async function GET(req: Request) {
       orderBy: [{ weekday: "asc" }, { customer: { name: "asc" } }],
     });
 
-    return Response.json({ orders });
+    const customers = await prisma.customer.findMany({
+      where: { tenantId: tid, active: true },
+      select: { id: true, name: true, city: true, preferredBread: true },
+      orderBy: { name: "asc" },
+    });
+
+    return Response.json({ orders, customers });
   } catch (e) {
     return toResponse(e);
   }

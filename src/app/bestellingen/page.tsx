@@ -130,7 +130,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
         {breadTypes.map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
+            <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
               style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
           </div>
         ))}
@@ -150,7 +150,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
 function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void }) {
   const { role } = useRole();
   const [customerId, setCustomerId] = useState("");
-  const [weekday, setWeekday] = useState(1);
+  const [weekday, setWeekday] = useState(2);
   const [notes, setNotes] = useState("");
   const [qty, setQty] = useState<Record<string,number>>({});
   const [saving, setSaving] = useState(false);
@@ -196,7 +196,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Dag</label>
           <select value={weekday} onChange={e=>setWeekday(parseInt(e.target.value))} style={inp}>
-            {[1,2,3,4,5,6,7].map(wd=><option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
+            {[2,3,4,5,6].map(wd=><option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
           </select>
         </div>
         <div>
@@ -208,7 +208,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         {breadTypes.map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
+            <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
               style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
           </div>
         ))}
@@ -345,7 +345,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
             {breadTypes.filter(bt=>bt.customerOrderable||order.lines.some(l=>l.breadTypeId===bt.id)).map(bt=>(
               <div key={bt.id} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:6, padding:"7px 9px" }}>
                 <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-                <input type="number" min={0} value={editQty[bt.id]||""} onChange={e=>setEditQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
+                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={editQty[bt.id]||""} onChange={e=>setEditQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} max={999} placeholder="0"
                   style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"3px 6px", fontSize:13, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
               </div>
             ))}
@@ -411,11 +411,14 @@ export default function BestellingenPage() {
 
   function loadOneOff() {
     fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setCustomers(d.customers??[]); setBreadTypes(d.breadTypes??[]); setLoading(false); });
+      .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
+        // Only update customers from one-off if we don't have them yet
+        if (d.customers?.length) setCustomers(d.customers);
+      });
   }
   function loadRecurring() {
     fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>setRecurring(d.orders??[]));
+      .then(r=>r.json()).then(d=>{ setRecurring(d.orders??[]); if (d.customers?.length) setCustomers(d.customers); });
   }
   useEffect(()=>{ loadOneOff(); loadRecurring(); },[fromDate,toDate]);
 
@@ -491,7 +494,8 @@ export default function BestellingenPage() {
   }
 
   const activeBT = breadTypes
-    .filter(bt => orders.some(o => o.lines.some(l => l.breadTypeId === bt.id)) ||
+    .filter(bt => bt.customerOrderable ||
+      orders.some(o => o.lines.some(l => l.breadTypeId === bt.id)) ||
       recurring.some(r => r.lines.some(l => l.breadTypeId === bt.id)))
     .sort((a, b) => {
       const ai = SLUG_ORDER.indexOf(a.slug); const bi = SLUG_ORDER.indexOf(b.slug);
@@ -666,8 +670,8 @@ export default function BestellingenPage() {
                             {activeBT.map(bt=>(
                               <div key={bt.id} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:6, padding:"7px 9px" }}>
                                 <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-                                <input type="number" min={0} value={editOrderQty[bt.id]||""}
-                                  onChange={e=>setEditOrderQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))}
+                                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={editOrderQty[bt.id]||""}
+                                  onChange={e=>setEditOrderQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} max={999}
                                   placeholder="0"
                                   style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"3px 6px", fontSize:13, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
                               </div>

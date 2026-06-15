@@ -119,6 +119,7 @@ export default function WinkelPage() {
     });
     setSaving(false);
     setSavedShop(shopName);
+    setTimeout(() => setSavedShop(null), 3000);
     load();
   }
 
@@ -157,8 +158,8 @@ export default function WinkelPage() {
               <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>
                 {bt.name.replace("Boeren ","B.").replace(" KG","kg")}
               </label>
-              <input type="number" min={0} value={qty[bt.slug] || ""}
-                onChange={e => setQty({ ...qty, [bt.slug]: parseInt(e.target.value) || 0 })}
+              <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.slug] ?? ""}
+                onChange={e => setQty(prev => ({ ...prev, [bt.slug]: Math.min(999, parseInt(e.target.value) || 0) }))}
                 placeholder="0"
                 style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 6px", fontSize: 14, fontWeight: 600, background: "var(--surface)", textAlign: "right" }} />
             </div>

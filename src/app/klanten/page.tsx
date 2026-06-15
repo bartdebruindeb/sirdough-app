@@ -33,9 +33,15 @@ function CustomerForm({ initial, onSave, onCancel }: {
 
   async function submit() {
     if (!name.trim()) { setError("Naam is verplicht."); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("E-mailadres is niet geldig (bijv. naam@domein.nl)."); return;
+    }
+    if (phone && !/^[\d\s+\-().]{6,20}$/.test(phone)) {
+      setError("Telefoonnummer bevat ongeldige tekens."); return;
+    }
     setSaving(true); setError("");
     try {
-      await onSave({ name, city, address, email, phone, notes, preferredBread });
+      await onSave({ name: name.trim(), city, address, email, phone, notes, preferredBread });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
     }
@@ -180,6 +186,9 @@ export default function KlantenPage() {
 
   useEffect(() => { load(); }, [sortBy]);
 
+  const [toast, setToast] = useState("");
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
+
   async function createCustomer(data: any) {
     const res = await fetch("/digitalbakery/api/customers", {
       method: "POST",
@@ -189,6 +198,7 @@ export default function KlantenPage() {
     if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
     setShowNew(false);
     load();
+    showToast(`✓ ${data.name} toegevoegd.`);
   }
 
   async function updateCustomer(id: string, data: any) {
@@ -200,6 +210,7 @@ export default function KlantenPage() {
     if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
     setEditing(null);
     load();
+    showToast(`✓ ${data.name ?? "Klant"} bijgewerkt.`);
   }
 
   async function deleteCustomer(c: Customer) {
@@ -233,6 +244,7 @@ export default function KlantenPage() {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "1.5rem" }}>
         <div>
           <h1 style={{ fontSize: 28, marginBottom: 4 }}>Klanten</h1>
+          {toast && <p style={{ color: "var(--success)", fontSize: 13, fontWeight: 500, margin: "4px 0 0" }}>{toast}</p>}
           <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
             {activeCount} actief · {filtered.length} totaal
           </p>

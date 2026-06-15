@@ -124,7 +124,7 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
                   style={{ ...inputStyle, width: "160px" }} />
               </td>
               <td style={{ padding: "7px 0", textAlign: "right" }}>
-                <input type="number" value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                <input type="number" min={0} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
                   style={inputStyle} />
               </td>
             </tr>
@@ -145,7 +145,7 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
             <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{label}</td>
               <td style={{ padding: "7px 0", textAlign: "right" }}>
-                <input type="number" step="0.5" value={val} onChange={e => setter(parseFloat(e.target.value)||0)} style={inputStyle} />
+                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(parseFloat(e.target.value)||0)} style={inputStyle} />
               </td>
             </tr>
           ))}
@@ -155,11 +155,10 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
         <div>
           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Deeggewicht / brood (g)</label>
-          <input type="number" value={doughWeight} onChange={e => setDough(parseFloat(e.target.value)||0)} style={{ ...inputStyle, width: "100%" }} />
+          <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={doughWeight} onChange={e => setDough(parseFloat(e.target.value)||0)} style={{ ...inputStyle, width: "100%" }} />
         </div>
         <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Totaal % (= {totalPct.toFixed(1)}%)</label>
-          <input value={`${totalPct.toFixed(1)}%`} readOnly style={{ ...inputStyle, width: "100%", color: "var(--text-subtle)", background: "var(--surface-2)" }} />
+          {/* total% removed — auto-computed from water+desem+zout+inwas+100 */}
         </div>
       </div>
 
@@ -224,10 +223,14 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Categorie</label>
           {addingCat?(
-            <div style={{display:"flex",gap:8}}>
-              <input value={newCat} onChange={e=>setNewCat(e.target.value)} style={{...inp,flex:1}} placeholder="Nieuwe categorie" />
-              <button onClick={()=>{if(newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} className="btn-primary" style={{fontSize:13,padding:"8px 12px"}}>OK</button>
-              <button onClick={()=>setAddingCat(false)} className="btn-secondary" style={{fontSize:13}}>✕</button>
+            <div style={{display:"flex",gap:8,flexDirection:"column"}}>
+              <div style={{display:"flex",gap:8}}>
+                <input value={newCat} onChange={e=>setNewCat(e.target.value)} style={{...inp,flex:1}} placeholder="Naam nieuwe categorie" autoFocus
+                  onKeyDown={e=>{if(e.key==="Enter"&&newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} />
+                <button onClick={()=>{if(newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} className="btn-primary" style={{fontSize:13,padding:"8px 12px"}}>OK</button>
+                <button onClick={()=>setAddingCat(false)} className="btn-secondary" style={{fontSize:13}}>✕</button>
+              </div>
+              <p style={{fontSize:11,color:"var(--text-subtle)",margin:0}}>De categorie wordt aangemaakt zodra je dit broodtype opslaat.</p>
             </div>
           ):(
             <div style={{display:"flex",gap:8}}>
@@ -240,7 +243,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
-          <input type="number" value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
+          <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
         </div>
         {error&&<p style={{color:"var(--danger)",background:"var(--danger-bg)",padding:"8px 12px",borderRadius:8,fontSize:13,margin:0}}>{error}</p>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
