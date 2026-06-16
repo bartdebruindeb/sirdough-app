@@ -381,7 +381,14 @@ const BATCH_BORDER: Record<string, string> = { todo: "var(--border)",    in_mixe
 const BATCH_NEXT: Record<string, Batch["status"]>  = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "klaar" } as const;
 const BATCH_BTN: Record<string, string>    = { todo: "▶ In mixer",       in_mixer: "↑ Rijzen",                  rijzen: "✓ Klaar" };
 
-function BatchCard({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }) {
+function lastUpdateTime(batch: Batch): string | null {
+  if (batch.klaarAt)   return `✓ Klaar ${fmtTime(batch.klaarAt)}`;
+  if (batch.rijzenAt)  return `↑ Rijzen ${fmtTime(batch.rijzenAt)}`;
+  if (batch.startedAt) return `🕐 In mixer ${fmtTime(batch.startedAt)}`;
+  return null;
+}
+
+function BatchCard({ batch, lines, compact, onUpdated }: { batch: Batch; lines?: BreadLine[]; compact?: boolean; onUpdated: () => void }) {
   const { role } = useRole();
   const [updating, setUpdating] = useState(false);
 
@@ -398,38 +405,72 @@ function BatchCard({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }
     onUpdated();
   }
 
+  const doughKgApprox = lines
+    ? lines.reduce((s, l) => s + l.doughWeightTotal, 0) / 1000 * (batch.totalLoaves / Math.max(1, lines.reduce((s, l) => s + l.totalQty, 0)))
+    : null;
+  const lastUpdate = lastUpdateTime(batch);
+
+  if (compact) {
+    return (
+      <div style={{ background: BATCH_BG[batch.status], border: `2px solid ${BATCH_BORDER[batch.status]}`, borderRadius: 10, padding: "10px 14px", minWidth: 200, flex: "0 0 auto", transition: "background 0.3s, border-color 0.3s" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>{batch.groupLabel}</span>
+          <span style={{ fontSize: 11, color: "var(--text-subtle)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 5, padding: "1px 6px" }}>mixer {batch.batchNumber}</span>
+        </div>
+        {lines && lines.length > 0 && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
+            {lines.filter(l => l.totalQty > 0).map(l => `${l.name} ×${l.totalQty}`).join(", ")}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+            {batch.totalLoaves} stuks{doughKgApprox != null ? ` · ${doughKgApprox.toFixed(2)} kg` : ""}
+            {lastUpdate && <><br /><span style={{ fontSize: 11 }}>{lastUpdate}</span></>}
+          </div>
+          {batch.status !== "klaar" ? (
+            <button onClick={advance} disabled={updating} className="btn-primary" style={{ fontSize: 12, padding: "5px 12px", whiteSpace: "nowrap" }}>
+              {updating ? "…" : BATCH_BTN[batch.status]}
+            </button>
+          ) : (
+            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 700 }}>✓ Klaar</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: BATCH_BG[batch.status], border: `2px solid ${BATCH_BORDER[batch.status]}`, borderRadius: 10, padding: "12px 16px", transition: "background 0.3s, border-color 0.3s" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-            <span style={{ fontWeight: 600, fontSize: 15 }}>{batch.groupLabel}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{batch.groupLabel}</span>
             <span style={{ fontSize: 11, color: "var(--text-subtle)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 5, padding: "1px 6px" }}>
               mixer {batch.batchNumber}
             </span>
           </div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>{batch.totalLoaves} stuks</p>
+          {lines && lines.length > 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>
+              {lines.filter(l => l.totalQty > 0).map(l => (
+                <span key={l.breadTypeId} style={{ marginRight: 10 }}>{l.name} <strong>×{l.totalQty}</strong></span>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 13, color: "var(--text-subtle)" }}>
+            {batch.totalLoaves} stuks{doughKgApprox != null ? ` · ${doughKgApprox.toFixed(2)} kg deeg` : ""}
+          </div>
+          {lastUpdate && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{lastUpdate}</div>
+          )}
         </div>
         {batch.status !== "klaar" ? (
-          <button onClick={advance} disabled={updating} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
+          <button onClick={advance} disabled={updating} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px", whiteSpace: "nowrap" }}>
             {updating ? "…" : BATCH_BTN[batch.status]}
           </button>
         ) : (
           <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 700 }}>✓ Klaar</span>
         )}
       </div>
-
-      {(batch.startedAt || batch.rijzenAt || batch.klaarAt) && (
-        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)", display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12 }}>
-          {batch.startedAt && (
-            <span style={{ color: batch.status === "in_mixer" ? "#b45309" : "var(--text-muted)" }}>
-              🕐 In mixer {fmtTime(batch.startedAt)}
-            </span>
-          )}
-          {batch.rijzenAt && <span style={{ color: "var(--text-muted)" }}>↑ Rijzen {fmtTime(batch.rijzenAt)}</span>}
-          {batch.klaarAt  && <span style={{ color: "#16a34a" }}>✓ Klaar {fmtTime(batch.klaarAt)}</span>}
-        </div>
-      )}
     </div>
   );
 }
@@ -452,6 +493,7 @@ export default function ProductiePage() {
   const [saveError, setSaveError]     = useState("");
   // Deeg calculator visibility
   const [showDeeg, setShowDeeg]       = useState(false);
+  const [showAantallen, setShowAantallen] = useState(false);
 
   // ── Load plan ──
   function loadPlan(d: string) {
@@ -550,6 +592,12 @@ export default function ProductiePage() {
   const delivLabel   = plan ? `${WEEKDAYS[delivWeekday]} ${plan.deliveryDate}` : "";
   const batchGroups  = batches.reduce<Record<string, Batch[]>>((acc, b) => { (acc[b.mixerGroup] ??= []).push(b); return acc; }, {});
   const totalDone    = batches.filter(b => b.status === "klaar").length;
+  function getBatchLines(batch: Batch): BreadLine[] {
+    const mg = plan?.mixerGroups.find(g => g.group === batch.mixerGroup);
+    if (!mg) return [];
+    const frac = mg.totalLoaves > 0 ? batch.totalLoaves / mg.totalLoaves : 0;
+    return mg.lines.map(l => ({ ...l, totalQty: Math.round(l.totalQty * frac), doughWeightTotal: l.doughWeightTotal * frac, flourWeightTotal: l.flourWeightTotal * frac }));
+  }
 
   return (
     <div style={{ padding: "2.5rem 3rem", maxWidth: 1100 }}>
@@ -594,45 +642,48 @@ export default function ProductiePage() {
       )}
 
       {!loading && !error && plan && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-          {/* ── 1. Aantallen ── */}
-          <section className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              <h2 style={{ fontSize: 16, margin: 0 }}>Aantallen — {delivLabel}</h2>
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
-                    <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {planLines.map((line, i) => (
-                    <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", opacity: line.totalQty === 0 ? 0.3 : 1 }}>
-                      <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
-                      <td style={{ padding: "8px 20px", textAlign: "right" }}>
-                        {line.totalQty > 0
-                          ? <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
-                          : <span style={{ color: "var(--text-subtle)" }}>—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          {/* ── Active batches (in_mixer / rijzen) – bus strip ── */}
+          {batches.some(b => b.status === "in_mixer" || b.status === "rijzen") && (
+            <section>
+              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>In uitvoering</h2>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {batches.filter(b => b.status === "in_mixer" || b.status === "rijzen").map(b => (
+                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} compact onUpdated={loadBatches} />
+                ))}
+              </div>
+            </section>
+          )}
 
-          {/* ── 2. Mixer plan ── */}
-          {planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
+          {/* ── Todo queue ── */}
+          {batches.some(b => b.status === "todo") && (
+            <section>
+              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>Wachtrij</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {batches.filter(b => b.status === "todo").map(b => (
+                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} onUpdated={loadBatches} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Klaar ── */}
+          {batches.some(b => b.status === "klaar") && (
+            <section>
+              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16a34a", margin: "0 0 10px" }}>
+                Klaar {totalDone === batches.length && "🎉"}
+              </h2>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {batches.filter(b => b.status === "klaar").map(b => (
+                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} compact onUpdated={loadBatches} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── No batches yet: mixer plan ── */}
+          {batches.length === 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
             <section className="card" style={{ padding: "1.25rem 1.5rem" }}>
               <h2 style={{ fontSize: 16, marginBottom: 4 }}>Mixer plan</h2>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
@@ -640,13 +691,16 @@ export default function ProductiePage() {
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginBottom: 20 }}>
                 {planGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
-                  const count       = Math.max(1, mixerCounts[mg.group] ?? 1);
-                  const perMixer    = Math.ceil(mg.totalLoaves / count);
+                  const count         = Math.max(1, mixerCounts[mg.group] ?? 1);
+                  const perMixer      = Math.ceil(mg.totalLoaves / count);
                   const doughPerMixer = mg.totalDoughNoFillingsKg / count;
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
                       <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 15 }}>{mg.label}</p>
-                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>{mg.totalLoaves} stuks · {mg.totalDoughNoFillingsKg.toFixed(2)} kg deeg</p>
+                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 8px" }}>{mg.totalLoaves} stuks · {mg.totalDoughNoFillingsKg.toFixed(2)} kg deeg</p>
+                      <div style={{ fontSize: 12, color: "var(--text-subtle)", marginBottom: 10 }}>
+                        {mg.lines.filter(l => l.totalQty > 0).map(l => `${l.name} ×${l.totalQty}`).join(" · ")}
+                      </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
                         <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.max(1, (c[mg.group] ?? 1) - 1) }))}
@@ -674,54 +728,73 @@ export default function ProductiePage() {
                   {saveError}
                 </div>
               )}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 14, padding: "10px 24px" }}>
-                  {savingPlan ? "Opslaan…" : batches.length > 0 ? "🔄 Plan opnieuw opslaan" : "✓ Plan opslaan & starten"}
-                </button>
-                {batches.length > 0 && (
-                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
-                )}
-              </div>
+              <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 14, padding: "10px 24px" }}>
+                {savingPlan ? "Opslaan…" : "✓ Plan opslaan & starten"}
+              </button>
             </section>
           )}
 
-          {/* ── 3. Bakken voortgang (checklist) ── */}
-          {batches.length > 0 && (
-            <section>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h2 style={{ fontSize: 17, margin: 0 }}>Bakken voortgang</h2>
-                <span style={{ fontSize: 13, color: totalDone === batches.length ? "#16a34a" : "var(--text-subtle)", fontWeight: totalDone === batches.length ? 600 : 400 }}>
-                  {totalDone === batches.length ? "🎉 Alles klaar!" : `${totalDone}/${batches.length} klaar`}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {Object.entries(batchGroups).map(([group, bs]) => {
-                  const done = bs.filter(b => b.status === "klaar").length;
-                  return (
-                    <div key={group}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                        <h3 style={{ fontSize: 13, margin: 0, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)" }}>
-                          {bs[0].groupLabel}
-                        </h3>
-                        <span style={{ fontSize: 12, color: done === bs.length ? "#16a34a" : "var(--text-muted)" }}>
-                          {done}/{bs.length} klaar
-                        </span>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 10 }}>
-                        {bs.map(b => <BatchCard key={b.id} batch={b} onUpdated={loadBatches} />)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+          {/* Reset plan button (when batches exist) */}
+          {batches.length > 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button onClick={savePlan} disabled={savingPlan} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>
+                {savingPlan ? "Opslaan…" : "🔄 Plan opnieuw opslaan"}
+              </button>
+              {saveError && <span style={{ fontSize: 12, color: "var(--warn)" }}>{saveError}</span>}
+              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
+            </div>
           )}
 
-          {/* ── 4. Deeg calculator (collapsible) ── */}
+          {/* ── Aantallen (collapsible) ── */}
+          <section>
+            <button onClick={() => setShowAantallen(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, padding: "0 0 10px", color: "var(--text)" }}>
+              <span style={{ transform: showAantallen ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 12 }}>▶</span>
+              Aantallen — {delivLabel}
+            </button>
+            {showAantallen && (
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                    <thead>
+                      <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                        <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
+                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
+                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
+                        <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {planLines.filter(l => l.totalQty > 0).map((line, i) => (
+                        <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                          <td style={{ padding: "8px 20px" }}>{line.name}</td>
+                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
+                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right" }}>
+                            <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {!hasAny && (
+            <div className="card" style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)" }}>
+              <p style={{ fontSize: 15, margin: "0 0 4px" }}>Geen bestellingen voor {delivLabel}</p>
+              <p style={{ fontSize: 13, margin: 0, color: "var(--text-subtle)" }}>Desem hieronder is voor de volgende bakdag.</p>
+            </div>
+          )}
+
+          {/* ── Deeg calculator (collapsible) ── */}
           {planGroups.length > 0 && (
             <section>
-              <button onClick={() => setShowDeeg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 17, fontWeight: 600, padding: 0, color: "var(--text)", marginBottom: showDeeg ? 14 : 0 }}>
-                <span style={{ transform: showDeeg ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 13 }}>▶</span>
+              <button onClick={() => setShowDeeg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, padding: "0 0 10px", color: "var(--text)" }}>
+                <span style={{ transform: showDeeg ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 12 }}>▶</span>
                 Deeg calculator
               </button>
               {showDeeg && (
@@ -732,25 +805,11 @@ export default function ProductiePage() {
             </section>
           )}
 
-          {/* ── 5. Desem + Manden ── */}
-          {hasAny && (
-            <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-              <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
-              <MandenTotaal lines={planLines} />
-            </section>
-          )}
-
-          {!hasAny && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>
-                <p style={{ fontSize: 15, margin: "0 0 4px" }}>Geen bestellingen voor {delivLabel}</p>
-                <p style={{ fontSize: 13, margin: 0, color: "var(--text-subtle)" }}>Desem hieronder is voor de volgende bakdag.</p>
-              </div>
-              <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-                <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
-              </section>
-            </div>
-          )}
+          {/* ── Desem + Manden ── */}
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
+            <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
+            {hasAny && <MandenTotaal lines={planLines} />}
+          </section>
 
         </div>
       )}

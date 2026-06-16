@@ -77,6 +77,45 @@ function shortName(name: string) {
     .replace("Gekiemde Rogge", "G.Rogge").replace("Morning buns", "Buns");
 }
 
+function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; onChanged: () => void }) {
+  const [saving, setSaving] = useState<string|null>(null);
+
+  async function toggle(bt: BreadType) {
+    setSaving(bt.id);
+    await fetch("/digitalbakery/api/bread-types", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-role": "OWNER" },
+      body: JSON.stringify({ id: bt.id, customerOrderable: !bt.customerOrderable }),
+    });
+    setSaving(null);
+    onChanged();
+  }
+
+  return (
+    <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Beheer broodtypen</h3>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {breadTypes.map(bt => (
+          <button key={bt.id} onClick={() => toggle(bt)} disabled={saving === bt.id} style={{
+            padding: "6px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer",
+            border: "1px solid",
+            borderColor: bt.customerOrderable ? "var(--accent)" : "var(--border)",
+            background: bt.customerOrderable ? "var(--accent-light)" : "var(--surface-2)",
+            color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
+            fontFamily: "var(--font-body)",
+            opacity: saving === bt.id ? 0.6 : 1,
+          }}>
+            {bt.customerOrderable ? "✓" : "+"} {bt.name}
+          </button>
+        ))}
+      </div>
+      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
+        Klik op een broodsoort om te wisselen. Goudkleurig = bestelbaar voor klanten.
+      </p>
+    </div>
+  );
+}
+
 function formatDay(date: string) {
   const d = new Date(date + "T12:00:00Z");
   return d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
@@ -212,6 +251,11 @@ export default function WinkelPage() {
         <p style={{ color: "var(--text-subtle)" }}>Laden…</p>
       ) : (
         <>
+          {/* ── Beheer broodtypen ── */}
+          {role === "OWNER" && allBreadTypes.length > 0 && (
+            <BreadTypeManager breadTypes={allBreadTypes} onChanged={load} />
+          )}
+
           {/* ── Week navigator ── */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <button onClick={() => setWeekOffset(w => w - 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>← Vorige week</button>
