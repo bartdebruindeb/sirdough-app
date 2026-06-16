@@ -305,7 +305,7 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
           </div>
           {customerId && (
             <div style={{ overflowX:"auto", marginBottom:16 }}>
-              <table style={{ borderCollapse:"collapse", fontSize:13 }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                 <thead>
                   <tr style={{ background:"var(--surface-2)", borderBottom:"2px solid var(--border)" }}>
                     <th style={{ textAlign:"left", padding:"8px 14px", fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", minWidth:130, whiteSpace:"nowrap" }}>Broodsoort</th>
@@ -1081,7 +1081,7 @@ export default function BestellingenPage() {
         const tdS: React.CSSProperties = { padding:"6px 8px", borderBottom:"1px solid var(--border)", textAlign:"center", verticalAlign:"middle" };
         return (
           <div style={{ position:"fixed", inset:0, background:"rgba(28,16,9,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:24 }}>
-            <div style={{ background:"var(--surface)", borderRadius:14, width:"100%", maxWidth:760, padding:"1.75rem", display:"flex", flexDirection:"column", gap:16, maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ background:"var(--surface)", borderRadius:14, width:"100%", maxWidth:"min(98vw, 1100px)", padding:"1.75rem", display:"flex", flexDirection:"column", gap:16, maxHeight:"90vh", overflowY:"auto" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <h2 style={{ margin:0, fontSize:18 }}>Vaste bestelling — {customerName}</h2>
                 <button onClick={()=>setWeekEditCustomerId(null)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:22, color:"var(--text-subtle)" }}>×</button>

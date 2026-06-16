@@ -420,7 +420,7 @@ model CityRoute {
 
 // ─── Production batch tracking ────────────────────────────────────────────────
 // One row per mixer batch per group per production day.
-// Status flow: todo → in_mixer → rijzen → klaar
+// Status flow: todo → in_mixer → rijzen → voorvormen → eindvormen → klaar
 model ProductionBatch {
   id             String    @id @default(cuid())
   tenantId       String
@@ -432,6 +432,8 @@ model ProductionBatch {
   status         String    @default("todo")
   startedAt      DateTime? // timestamp when moved to in_mixer
   rijzenAt       DateTime? // timestamp when moved to rijzen
+  voorvormAt     DateTime? // timestamp when moved to voorvormen
+  eindvormAt     DateTime? // timestamp when moved to eindvormen
   klaarAt        DateTime? // timestamp when moved to klaar
   notes          String?
   createdAt      DateTime  @default(now())

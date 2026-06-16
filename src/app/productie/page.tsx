@@ -28,9 +28,9 @@ type Plan = {
 type Batch = {
   id: string;
   mixerGroup: string; groupLabel: string; batchNumber: number; totalLoaves: number;
-  status: "todo" | "in_mixer" | "rijzen" | "klaar";
+  status: "todo" | "in_mixer" | "rijzen" | "voorvormen" | "eindvormen" | "klaar";
   notes: string | null;
-  startedAt: string | null; rijzenAt: string | null; klaarAt: string | null;
+  startedAt: string | null; rijzenAt: string | null; voorvormAt: string | null; eindvormAt: string | null; klaarAt: string | null;
 };
 
 const ADDITIVE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn","morning-buns","kaneel-buns","kardemom-buns","baguette-kaas"]);
@@ -379,15 +379,17 @@ function MandenTotaal({ lines }: { lines: BreadLine[] }) {
 }
 
 // ─── BatchCard ────────────────────────────────────────────────────────────────
-const BATCH_BG: Record<string, string>     = { todo: "var(--surface-2)", in_mixer: "#fefce8", rijzen: "#eff6ff", klaar: "#f0fdf4" };
-const BATCH_BORDER: Record<string, string> = { todo: "var(--border)",    in_mixer: "#fbbf24", rijzen: "#93c5fd", klaar: "#4ade80" };
-const BATCH_NEXT: Record<string, Batch["status"]>  = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "klaar" } as const;
-const BATCH_BTN: Record<string, string>    = { todo: "▶ In mixer",       in_mixer: "↑ Rijzen",                  rijzen: "✓ Klaar" };
+const BATCH_BG: Record<string, string>     = { todo: "var(--surface-2)", in_mixer: "#fefce8", rijzen: "#eff6ff", voorvormen: "#fff7ed", eindvormen: "#f5f3ff", klaar: "#f0fdf4" };
+const BATCH_BORDER: Record<string, string> = { todo: "var(--border)",    in_mixer: "#fbbf24", rijzen: "#93c5fd", voorvormen: "#fdba74", eindvormen: "#c4b5fd", klaar: "#4ade80" };
+const BATCH_NEXT: Record<string, Batch["status"]>  = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "voorvormen", voorvormen: "eindvormen", eindvormen: "klaar" } as const;
+const BATCH_BTN: Record<string, string>    = { todo: "▶ In mixer",       in_mixer: "↑ Rijzen", rijzen: "◇ Voorvormen", voorvormen: "◈ Eindvormen", eindvormen: "✓ Klaar" };
 
 function lastUpdateTime(batch: Batch): string | null {
-  if (batch.klaarAt)   return `✓ Klaar ${fmtTime(batch.klaarAt)}`;
-  if (batch.rijzenAt)  return `↑ Rijzen ${fmtTime(batch.rijzenAt)}`;
-  if (batch.startedAt) return `🕐 In mixer ${fmtTime(batch.startedAt)}`;
+  if (batch.klaarAt)    return `✓ Klaar ${fmtTime(batch.klaarAt)}`;
+  if (batch.eindvormAt) return `◈ Eindvormen ${fmtTime(batch.eindvormAt)}`;
+  if (batch.voorvormAt) return `◇ Voorvormen ${fmtTime(batch.voorvormAt)}`;
+  if (batch.rijzenAt)   return `↑ Rijzen ${fmtTime(batch.rijzenAt)}`;
+  if (batch.startedAt)  return `🕐 In mixer ${fmtTime(batch.startedAt)}`;
   return null;
 }
 
@@ -486,8 +488,8 @@ function BatchCard({ batch, lines, compact, onUpdated }: { batch: Batch; lines?:
 function BatchAdvanceButton({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }) {
   const { role } = useRole();
   const [updating, setUpdating] = useState(false);
-  const NEXT: Record<string, Batch["status"]> = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "klaar" };
-  const BTN: Record<string, string> = { todo: "▶ In mixer", in_mixer: "↑ Rijzen", rijzen: "✓ Klaar" };
+  const NEXT: Record<string, Batch["status"]> = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "voorvormen", voorvormen: "eindvormen", eindvormen: "klaar" };
+  const BTN: Record<string, string> = { todo: "▶ In mixer", in_mixer: "↑ Rijzen", rijzen: "◇ Voorvormen", voorvormen: "◈ Eindvormen", eindvormen: "✓ Klaar" };
   const next = NEXT[batch.status];
   if (!next) return null;
   async function advance() {
@@ -524,7 +526,7 @@ export default function ProductiePage() {
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [savingPlan, setSavingPlan]   = useState(false);
   const [saveError, setSaveError]     = useState("");
-  const [showAantallen, setShowAantallen] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   // additiveAssignment: group → breadTypeId → batchNumber
   const [additiveAssignment, setAdditiveAssignment] = useState<Record<string, Record<string, number>>>({});
 
@@ -589,7 +591,8 @@ export default function ProductiePage() {
   async function savePlan() {
     if (!plan) return;
     const hasProgress = batches.some(b => b.status !== "todo");
-    if (hasProgress && !confirm("Sommige batches zijn al gestart. Wil je het plan opnieuw maken? De voortgang gaat verloren.")) return;
+    if (hasProgress && !confirmReset) { setConfirmReset(true); return; }
+    setConfirmReset(false);
     setSavingPlan(true); setSaveError("");
     const toCreate = planGroups.filter(mg => mg.totalLoaves > 0).flatMap(mg => {
       const count = Math.max(1, mixerCounts[mg.group] ?? 1);
@@ -758,22 +761,36 @@ export default function ProductiePage() {
 
           {/* Reset plan button (when batches exist) */}
           {batches.length > 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button onClick={savePlan} disabled={savingPlan} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>
-                {savingPlan ? "Opslaan…" : "🔄 Plan opnieuw opslaan"}
-              </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {confirmReset ? (
+                <>
+                  <span style={{ fontSize: 13, color: "var(--warn)" }}>Voortgang gaat verloren. Weet je het zeker?</span>
+                  <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px", background: "#dc2626" }}>
+                    {savingPlan ? "Opslaan…" : "Ja, opnieuw opslaan"}
+                  </button>
+                  <button onClick={() => setConfirmReset(false)} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>Annuleren</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={savePlan} disabled={savingPlan} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>
+                    {savingPlan ? "Opslaan…" : "🔄 Planning aanpassen"}
+                  </button>
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
+                </>
+              )}
               {saveError && <span style={{ fontSize: 12, color: "var(--warn)" }}>{saveError}</span>}
-              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
             </div>
           )}
 
           {/* ── Bakken voortgang (table-based) ── */}
           {batches.length > 0 && (() => {
             const statusSections: { status: Batch["status"]; label: string; color: string; bg: string; border: string; nextLabel?: string }[] = [
-              { status: "todo",     label: "Te doen",   color: "var(--text-subtle)", bg: "var(--surface-2)", border: "var(--border)",  nextLabel: "▶ In mixer" },
-              { status: "in_mixer", label: "In mixer",  color: "#b45309",            bg: "#fefce8",          border: "#fbbf24",         nextLabel: "↑ Rijzen"   },
-              { status: "rijzen",   label: "Rijzen",    color: "#1d4ed8",            bg: "#eff6ff",          border: "#93c5fd",         nextLabel: "✓ Klaar"    },
-              { status: "klaar",    label: "Klaar",     color: "#16a34a",            bg: "#f0fdf4",          border: "#4ade80" },
+              { status: "todo",       label: "Te doen",    color: "var(--text-subtle)", bg: "var(--surface-2)", border: "var(--border)",  nextLabel: "▶ In mixer"    },
+              { status: "in_mixer",   label: "In mixer",   color: "#b45309",            bg: "#fefce8",          border: "#fbbf24",         nextLabel: "↑ Rijzen"      },
+              { status: "rijzen",     label: "Rijzen",     color: "#1d4ed8",            bg: "#eff6ff",          border: "#93c5fd",         nextLabel: "◇ Voorvormen"  },
+              { status: "voorvormen", label: "Voorvormen", color: "#c2410c",            bg: "#fff7ed",          border: "#fdba74",         nextLabel: "◈ Eindvormen"  },
+              { status: "eindvormen", label: "Eindvormen", color: "#7c3aed",            bg: "#f5f3ff",          border: "#c4b5fd",         nextLabel: "✓ Klaar"       },
+              { status: "klaar",      label: "Klaar",      color: "#16a34a",            bg: "#f0fdf4",          border: "#4ade80" },
             ];
             const thS: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", borderBottom: "2px solid var(--border)", whiteSpace: "nowrap" };
             return (
@@ -832,42 +849,37 @@ export default function ProductiePage() {
             );
           })()}
 
-          {/* ── Aantallen (collapsible) ── */}
-          <section>
-            <button onClick={() => setShowAantallen(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, padding: "0 0 10px", color: "var(--text)" }}>
-              <span style={{ transform: showAantallen ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 12 }}>▶</span>
-              Aantallen — {delivLabel}
-            </button>
-            {showAantallen && (
-              <div className="card" style={{ overflow: "hidden" }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                    <thead>
-                      <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                        <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
-                        <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
-                        <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {planLines.filter(l => l.totalQty > 0).map((line, i) => (
-                        <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                          <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
-                          <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right" }}>
-                            <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+          {/* ── Aantallen ── */}
+          <section className="card" style={{ overflow: "hidden" }}>
+            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Aantallen — {delivLabel}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
+                    <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planLines.filter(l => l.totalQty > 0).map((line, i) => (
+                    <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "8px 20px" }}>{line.name}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
+                      <td style={{ padding: "8px 20px", textAlign: "right" }}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           {!hasAny && (

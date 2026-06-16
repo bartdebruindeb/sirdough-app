@@ -5,8 +5,8 @@ import { useRole } from "@/lib/role-context";
 
 type Batch = {
   id: string; mixerGroup: string; groupLabel: string; batchNumber: number;
-  totalLoaves: number; status: "todo" | "in_mixer" | "rijzen" | "klaar";
-  startedAt: string | null; rijzenAt: string | null; klaarAt: string | null;
+  totalLoaves: number; status: "todo" | "in_mixer" | "rijzen" | "voorvormen" | "eindvormen" | "klaar";
+  startedAt: string | null; rijzenAt: string | null; voorvormAt: string | null; eindvormAt: string | null; klaarAt: string | null;
 };
 type BreadLine = { breadTypeId: string; name: string; slug: string; totalQty: number };
 type DeliveryStatus = {
@@ -20,10 +20,13 @@ function fmtTime(iso: string | null) {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  todo: "var(--text-subtle)", in_mixer: "#b45309", rijzen: "#1d4ed8", klaar: "#16a34a",
+  todo: "var(--text-subtle)", in_mixer: "#b45309", rijzen: "#1d4ed8", voorvormen: "#c2410c", eindvormen: "#7c3aed", klaar: "#16a34a",
 };
 const STATUS_LABEL: Record<string, string> = {
-  todo: "Te doen", in_mixer: "In mixer", rijzen: "Rijzen", klaar: "Klaar",
+  todo: "Te doen", in_mixer: "In mixer", rijzen: "Rijzen", voorvormen: "Voorvormen", eindvormen: "Eindvormen", klaar: "Klaar",
+};
+const STATUS_AT: Record<string, keyof Batch> = {
+  in_mixer: "startedAt", rijzen: "rijzenAt", voorvormen: "voorvormAt", eindvormen: "eindvormAt", klaar: "klaarAt",
 };
 
 function shortName(n: string) {
@@ -73,11 +76,9 @@ function ProductionWidget({ role }: { role: string | null }) {
 
   const totalBatches = batches.length;
   const done = batches.filter(b => b.status === "klaar").length;
-  const inMixer = batches.filter(b => b.status === "in_mixer").length;
-  const rijzen = batches.filter(b => b.status === "rijzen").length;
-  const todo = batches.filter(b => b.status === "todo").length;
   const allDone = totalBatches > 0 && done === totalBatches;
   const pct = totalBatches > 0 ? Math.round((done / totalBatches) * 100) : 0;
+  const activeBatches = batches.filter(b => b.status !== "todo" && b.status !== "klaar");
 
   const thS: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", padding: "5px 10px", textAlign: "right", borderBottom: "2px solid var(--border)", whiteSpace: "nowrap" };
   const tdS: React.CSSProperties = { fontSize: 13, padding: "5px 10px", textAlign: "right", borderBottom: "1px solid var(--border)" };
@@ -136,26 +137,27 @@ function ProductionWidget({ role }: { role: string | null }) {
                   {allDone ? "🎉 Alles klaar!" : `${done}/${totalBatches} klaar`}
                 </p>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {[
-                  { label: "Te doen",  count: todo,    color: "var(--text-subtle)", bg: "var(--surface-2)" },
-                  { label: "In mixer", count: inMixer, color: "#b45309",            bg: "#fefce8" },
-                  { label: "Rijzen",   count: rijzen,  color: "#1d4ed8",            bg: "#eff6ff" },
-                  { label: "Klaar",    count: done,    color: "#16a34a",            bg: "#f0fdf4" },
-                ].map(({ label, count, color, bg }) => (
-                  <div key={label} style={{ background: bg, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
-                    <p style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", margin: "0 0 2px" }}>{label}</p>
-                    <p style={{ fontSize: 22, fontWeight: 700, color, margin: 0 }}>{count}</p>
-                  </div>
-                ))}
-              </div>
-              {batches.filter(b => b.status === "in_mixer" || b.status === "rijzen").map(b => (
-                <div key={b.id} style={{ marginTop: 6, fontSize: 12, color: b.status === "in_mixer" ? "#b45309" : "#1d4ed8" }}>
-                  {b.groupLabel} #{b.batchNumber} — {STATUS_LABEL[b.status]}
-                  {b.status === "in_mixer" && b.startedAt ? ` ${fmtTime(b.startedAt)}` : ""}
-                  {b.status === "rijzen"   && b.rijzenAt  ? ` ${fmtTime(b.rijzenAt)}` : ""}
+              {activeBatches.length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "8px 0 0" }}>
+                  {done === totalBatches && totalBatches > 0 ? "Alle batches zijn klaar." : "Geen actieve batches."}
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  {activeBatches.map(b => {
+                    const tsKey = STATUS_AT[b.status] as keyof Batch;
+                    const ts = tsKey ? (b[tsKey] as string | null) : null;
+                    return (
+                      <div key={b.id} style={{ background: "var(--surface-2)", border: `1px solid var(--border)`, borderLeft: `3px solid ${STATUS_COLOR[b.status]}`, borderRadius: 6, padding: "6px 10px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{b.groupLabel} #{b.batchNumber}</span>
+                          <span style={{ fontSize: 11, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{ts ? fmtTime(ts) : ""}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: STATUS_COLOR[b.status], fontWeight: 600, marginTop: 1 }}>{STATUS_LABEL[b.status]}</div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
+              )}
             </>
           )}
         </div>
@@ -167,6 +169,7 @@ function ProductionWidget({ role }: { role: string | null }) {
 // ── Delivery map (owner only) ─────────────────────────────────────────────────
 type MapStop = {
   customerId: string; name: string; city: string | null; address: string | null;
+  isShop: boolean; lat: number | null; lng: number | null;
   inBusAt: string | null; deliveredAt: string | null;
 };
 
@@ -237,7 +240,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       const statusMap = new Map(statuses.map(s => [s.customerId, s]));
       setStops(rows.map(r => {
         const st = statusMap.get(r.customerId);
-        return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
+        return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, isShop: r.isShop ?? false, lat: r.lat ?? null, lng: r.lng ?? null, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
       }));
       setLoaded(true);
     }).catch(() => { if (!cancelled) setLoaded(true); });
@@ -278,11 +281,14 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       setMapReady(true);
 
       setGeocoding(true);
-      // Geocode all stops — cached ones are instant, fresh ones rate-limited
+      // Use stored lat/lng from DB when available; fall back to Nominatim geocoding
       const geocoded: { stop: MapStop; coord: { lat: number; lng: number } }[] = [];
       let freshFetched = 0;
       for (const stop of stops) {
-        if (!stop.address || cancelled) continue;
+        if (cancelled) continue;
+        // Prefer stored coordinates from the customer record
+        if (stop.lat && stop.lng) { geocoded.push({ stop, coord: { lat: stop.lat, lng: stop.lng } }); continue; }
+        if (!stop.address) continue;
         const cacheKey = `geo:${stop.address}|${stop.city ?? ""}`;
         let fromCache = false;
         try {
@@ -328,27 +334,35 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       );
       for (let i = 0; i < routeSegments.length; i++) {
         const seg = routeSegments[i];
-        const isDoneSegment = i < deliveredOrdered.length;
+        const isDoneSegment    = i < deliveredOrdered.length;
+        const isCurrentSegment = i === deliveredOrdered.length;
+        const color = isDoneSegment ? "#16a34a" : isCurrentSegment ? "#7F77DD" : "#9ca3af";
+        const weight = isCurrentSegment ? 3.5 : isDoneSegment ? 3 : 2;
+        const opacity = isCurrentSegment || isDoneSegment ? 0.8 : 0.45;
         if (seg) {
-          L.polyline(seg, { color: isDoneSegment ? "#16a34a" : "#6366f1", weight: 3, opacity: 0.75 }).addTo(map);
+          L.polyline(seg, { color, weight, opacity, dashArray: isCurrentSegment ? "10 5" : undefined }).addTo(map);
         } else {
-          L.polyline([routePoints[i], routePoints[i + 1]], { color: "#6366f1", weight: 2, dashArray: "6 4", opacity: 0.5 }).addTo(map);
+          L.polyline([routePoints[i], routePoints[i + 1]], { color, weight: 2, dashArray: "6 4", opacity: opacity * 0.7 }).addTo(map);
         }
       }
 
-      // Draw stop markers
+      // Draw stop markers — shops get 🏪 (teal), delivery customers get 📦 (indigo)
       for (const { stop, coord } of geocoded) {
         bounds.push([coord.lat, coord.lng]);
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
-        const color   = isDone ? "#16a34a" : isInBus ? "#6366f1" : "#6b7280";
-        const label   = isDone ? "✓" : isInBus ? "🚐" : "·";
-        const size    = isInBus ? 34 : isDone ? 30 : 24;
+        const isShop  = stop.isShop;
+        const baseColor = isShop ? "#0f766e" : "#4f46e5";
+        const color   = isDone ? "#16a34a" : isInBus ? baseColor : "#6b7280";
+        const emoji   = isDone ? "✓" : isShop ? "🏪" : "📦";
+        const size    = isInBus ? 34 : isDone ? 30 : 26;
+        const fontSize = isInBus ? 15 : isDone ? 13 : 13;
         const icon = L.divIcon({
-          html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:${isInBus ? 14 : 12}px;color:white;font-weight:700;">${label}</div>`,
+          html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;color:white;font-weight:700;">${isDone ? emoji : emoji}</div>`,
           className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
         });
-        const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Te bezorgen";
+        const typeLabel = isShop ? "Winkel" : "Bezorging";
+        const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : `Te bezorgen (${typeLabel})`;
         L.marker([coord.lat, coord.lng], { icon }).addTo(map)
           .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><small style="color:#666">${stop.address}</small>` : ""}`);
       }

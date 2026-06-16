@@ -38,9 +38,11 @@ export async function GET(req: Request) {
         totalLoaves: b.totalLoaves,
         status: b.status,
         notes: b.notes ?? null,
-        startedAt: b.startedAt?.toISOString() ?? null,
-        rijzenAt:  b.rijzenAt?.toISOString()  ?? null,
-        klaarAt:   b.klaarAt?.toISOString()   ?? null,
+        startedAt:  b.startedAt?.toISOString()  ?? null,
+        rijzenAt:   b.rijzenAt?.toISOString()    ?? null,
+        voorvormAt: b.voorvormAt?.toISOString()  ?? null,
+        eindvormAt: b.eindvormAt?.toISOString()  ?? null,
+        klaarAt:    b.klaarAt?.toISOString()     ?? null,
       })),
     });
   } catch (e) { return toResponse(e); }
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
 // PATCH — advance status of a single batch
 const PatchBatchSchema = z.object({
   id:     z.string(),
-  status: z.enum(["todo", "in_mixer", "rijzen", "klaar"]),
+  status: z.enum(["todo", "in_mixer", "rijzen", "voorvormen", "eindvormen", "klaar"]),
 });
 
 export async function PATCH(req: Request) {
@@ -113,9 +115,11 @@ export async function PATCH(req: Request) {
     const now = new Date();
 
     const data: Record<string, unknown> = { status: input.status, updatedAt: now };
-    if (input.status === "in_mixer") data.startedAt = now;
-    if (input.status === "rijzen")   data.rijzenAt  = now;
-    if (input.status === "klaar")    data.klaarAt   = now;
+    if (input.status === "in_mixer")    data.startedAt  = now;
+    if (input.status === "rijzen")      data.rijzenAt   = now;
+    if (input.status === "voorvormen")  data.voorvormAt = now;
+    if (input.status === "eindvormen")  data.eindvormAt = now;
+    if (input.status === "klaar")       data.klaarAt    = now;
 
     await prisma.productionBatch.updateMany({
       where: { id: input.id, tenantId: tid },
