@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 type User = { id: string; email: string; active: boolean } | null;
 type Customer = {
   id: string; name: string; city: string | null; address: string | null;
+  postalCode: string | null;
   email: string | null; phone: string | null; notes: string | null;
   preferredBread: string | null;
   lat: number | null; lng: number | null;
@@ -17,17 +18,55 @@ const inp: React.CSSProperties = {
   fontSize: 13, background: "var(--surface)", width: "100%",
 };
 
+const NOM = "https://nominatim.openstreetmap.org/search";
+const NOM_HEADERS = { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" };
+
+async function nominatim(params: Record<string, string>): Promise<{ lat: number; lng: number } | null> {
+  const qs = new URLSearchParams({ ...params, format: "json", limit: "1", countrycodes: "nl" }).toString();
+  const r = await fetch(`${NOM}?${qs}`, { headers: NOM_HEADERS });
+  const d = await r.json();
+  if (!d[0]) return null;
+  return { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon) };
+}
+
+// Tries structured queries first (most reliable), falls back to free-text.
+async function geocodeAddress(address: string, postalCode: string, city: string): Promise<{ lat: number; lng: number } | null> {
+  // 1. Structured: postalcode + street (most precise for Dutch addresses)
+  if (postalCode) {
+    const r = await nominatim({ street: address, postalcode: postalCode.replace(/\s/g, "") });
+    if (r) return r;
+  }
+  // 2. Structured: street + city
+  if (city) {
+    const r = await nominatim({ street: address, city });
+    if (r) return r;
+  }
+  // 3. Free-text with postalcode
+  if (postalCode) {
+    const r = await nominatim({ q: `${address}, ${postalCode}` });
+    if (r) return r;
+  }
+  // 4. Free-text with city
+  if (city) {
+    const r = await nominatim({ q: `${address}, ${city}, Nederland` });
+    if (r) return r;
+  }
+  // 5. Address alone
+  return nominatim({ q: `${address}, Nederland` });
+}
+
 function CustomerForm({ initial, onSave, onCancel }: {
   initial?: Partial<Customer>;
   onSave: (data: any) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName]       = useState(initial?.name ?? "");
-  const [city, setCity]       = useState(initial?.city ?? "");
-  const [address, setAddress] = useState(initial?.address ?? "");
-  const [email, setEmail]     = useState(initial?.email ?? "");
-  const [phone, setPhone]     = useState(initial?.phone ?? "");
-  const [notes, setNotes]     = useState(initial?.notes ?? "");
+  const [name, setName]             = useState(initial?.name ?? "");
+  const [city, setCity]             = useState(initial?.city ?? "");
+  const [address, setAddress]       = useState(initial?.address ?? "");
+  const [postalCode, setPostalCode] = useState(initial?.postalCode ?? "");
+  const [email, setEmail]           = useState(initial?.email ?? "");
+  const [phone, setPhone]           = useState(initial?.phone ?? "");
+  const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
@@ -52,14 +91,10 @@ function CustomerForm({ initial, onSave, onCancel }: {
     if (address.trim()) {
       setAddrStatus("checking");
       try {
-        const q = encodeURIComponent(`${address.trim()}, ${city ?? ""}, Nederland`);
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-          headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
-        });
-        const data = await res.json();
-        if (data[0]) {
-          lat = parseFloat(data[0].lat);
-          lng = parseFloat(data[0].lon);
+        const coord = await geocodeAddress(address.trim(), postalCode.trim(), city.trim());
+        if (coord) {
+          lat = coord.lat;
+          lng = coord.lng;
           setAddrStatus("ok");
         } else {
           setAddrStatus("fail");
@@ -80,7 +115,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
     }
 
     try {
-      await onSave({ name: name.trim(), city, address: address.trim() || null, lat, lng, email, phone, notes, preferredBread });
+      await onSave({ name: name.trim(), city, address: address.trim() || null, postalCode: postalCode.trim() || null, lat, lng, email, phone, notes, preferredBread });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
     }
@@ -99,18 +134,29 @@ function CustomerForm({ initial, onSave, onCancel }: {
           <input value={city} onChange={e => setCity(e.target.value)} style={inp} placeholder="Delft" />
         </div>
       </div>
-      <div>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-          Adres (voor bezorgroute)
-          {addrStatus === "ok" && <span style={{ marginLeft: 6, color: "var(--success)", fontWeight: 600 }}>✓ gevonden</span>}
-          {addrStatus === "checking" && <span style={{ marginLeft: 6, color: "var(--text-subtle)" }}>Controleren…</span>}
-        </label>
-        <input
-          value={address}
-          onChange={e => { setAddress(e.target.value); setAddrStatus("idle"); }}
-          style={{ ...inp, borderColor: addrStatus === "ok" ? "#86efac" : addrStatus === "fail" ? "var(--danger)" : undefined }}
-          placeholder="Brabantse Turfmarkt 25, 2611 CG Delft"
-        />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+        <div>
+          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+            Straat + huisnummer
+            {addrStatus === "ok" && <span style={{ marginLeft: 6, color: "var(--success)", fontWeight: 600 }}>✓ gevonden</span>}
+            {addrStatus === "checking" && <span style={{ marginLeft: 6, color: "var(--text-subtle)" }}>Controleren…</span>}
+          </label>
+          <input
+            value={address}
+            onChange={e => { setAddress(e.target.value); setAddrStatus("idle"); }}
+            style={{ ...inp, borderColor: addrStatus === "ok" ? "#86efac" : addrStatus === "fail" ? "var(--danger)" : undefined }}
+            placeholder="Brabantse Turfmarkt 25"
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Postcode</label>
+          <input
+            value={postalCode}
+            onChange={e => { setPostalCode(e.target.value); setAddrStatus("idle"); }}
+            style={{ ...inp, width: 110 }}
+            placeholder="2611 CG"
+          />
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
@@ -242,18 +288,12 @@ export default function KlantenPage() {
 
   async function geocodeSingle(c: Customer): Promise<boolean> {
     if (!c.address) return false;
-    const q = encodeURIComponent(`${c.address}, ${c.city ?? ""}, Nederland`);
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-      headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
-    });
-    const data = await res.json();
-    if (!data[0]) return false;
-    const lat = parseFloat(data[0].lat);
-    const lng = parseFloat(data[0].lon);
+    const coord = await geocodeAddress(c.address, c.postalCode ?? "", c.city ?? "");
+    if (!coord) return false;
     await fetch("/digitalbakery/api/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-      body: JSON.stringify({ id: c.id, lat, lng }),
+      body: JSON.stringify({ id: c.id, lat: coord.lat, lng: coord.lng }),
     });
     return true;
   }

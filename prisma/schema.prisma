@@ -207,9 +207,10 @@ model Customer {
   id        String  @id @default(cuid())
   tenantId  String
   name      String
-  city      String?
-  address   String?
-  cityOrder Int     @default(99)
+  city       String?
+  address    String?
+  postalCode String?
+  cityOrder  Int     @default(99)
   email     String?
   phone     String?
   notes     String?
