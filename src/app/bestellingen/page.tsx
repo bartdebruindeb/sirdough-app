@@ -1031,7 +1031,7 @@ export default function BestellingenPage() {
                       <tr>
                         <th style={{ ...thS, textAlign:"center", width:26 }}>Type</th>
                         <th style={{ ...thS, textAlign:"left" }}>Datum</th>
-                        {!historyCustomerId && <th style={{ ...thS, textAlign:"left" }}>Klant</th>}
+                        <th style={{ ...thS, textAlign:"left" }}>Klant</th>
                         {logBTs.map(bt=><th key={bt.id} style={thS}>{colName(bt.name)}</th>)}
                         <th style={thS}>Notities</th>
                         <th style={thS}>Totaal</th>
@@ -1050,7 +1050,7 @@ export default function BestellingenPage() {
                               <span style={{ fontSize:11, fontWeight:700, color:TYPE_COLOR[entry.type] }}>{TYPE_LABEL[entry.type]}</span>
                             </td>
                             <td style={{ ...tdS, textAlign:"left", whiteSpace:"nowrap", color: isPast ? "var(--text-subtle)" : "var(--text)", fontWeight: isPast ? 400 : 600 }}>{dateLabel}</td>
-                            {!historyCustomerId && <td style={{ ...tdS, textAlign:"left" }}>{entry.customerName}{entry.city ? <span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({entry.city})</span> : null}</td>}
+                            <td style={{ ...tdS, textAlign:"left" }}>{entry.customerName}{entry.city ? <span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({entry.city})</span> : null}</td>
                             {logBTs.map(bt=>(
                               <td key={bt.id} style={{ ...tdS, color: (qtyMap.get(bt.id)??0)>0 ? "var(--text)" : "var(--text-subtle)" }}>
                                 {qtyMap.get(bt.id) || "—"}

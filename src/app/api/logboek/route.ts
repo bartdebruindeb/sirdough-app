@@ -25,6 +25,7 @@ export async function GET(req: Request) {
     const today = new Date().toISOString().slice(0, 10);
     const futureDate = new Date(); futureDate.setMonth(futureDate.getMonth() + 3);
     const to = url.searchParams.get("to") ?? futureDate.toISOString().slice(0, 10);
+    const filterCustomerId = url.searchParams.get("customerId") ?? null;
 
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
@@ -39,6 +40,7 @@ export async function GET(req: Request) {
           gte: new Date(from + "T00:00:00Z"),
           lte: new Date(to + "T23:59:59Z"),
         },
+        ...(filterCustomerId && { customerId: filterCustomerId }),
       },
       include: { customer: true, lines: { include: { breadType: true } } },
       orderBy: { deliveryDate: "desc" },
@@ -46,7 +48,7 @@ export async function GET(req: Request) {
 
     // Past recurring deliveries — expand into actual dates up to today
     const recurringOrders = await prisma.recurringOrder.findMany({
-      where: { tenantId: tid },
+      where: { tenantId: tid, ...(filterCustomerId && { customerId: filterCustomerId }) },
       include: {
         customer: true,
         lines: { include: { breadType: true } },
@@ -114,7 +116,9 @@ export async function GET(req: Request) {
     // Add winkel shop deliveries (past dates only) — driven by bakery.config.ts
     for (const shopCfg of bakeryConfig.shops) {
       const shopCustomer = await prisma.customer.findFirst({ where: { tenantId: tid, name: shopCfg.name } });
-      if (shopCustomer) await addWinkelEntries(tid, shopCfg.name, shopCustomer.id, shopCustomer.city, fromDate, toDatePast, entries);
+      if (shopCustomer && (!filterCustomerId || filterCustomerId === shopCustomer.id)) {
+        await addWinkelEntries(tid, shopCfg.name, shopCustomer.id, shopCustomer.city, fromDate, toDatePast, entries);
+      }
     }
 
     // Merge delivery notes

@@ -527,6 +527,7 @@ export default function ProductiePage() {
   const [savingPlan, setSavingPlan]   = useState(false);
   const [saveError, setSaveError]     = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showPlanEdit, setShowPlanEdit] = useState(false);
   // additiveAssignment: group → breadTypeId → batchNumber
   const [additiveAssignment, setAdditiveAssignment] = useState<Record<string, Record<string, number>>>({});
 
@@ -590,8 +591,6 @@ export default function ProductiePage() {
   // ── Save plan to DB ──
   async function savePlan() {
     if (!plan) return;
-    const hasProgress = batches.some(b => b.status !== "todo");
-    if (hasProgress && !confirmReset) { setConfirmReset(true); return; }
     setConfirmReset(false);
     setSavingPlan(true); setSaveError("");
     const toCreate = planGroups.filter(mg => mg.totalLoaves > 0).flatMap(mg => {
@@ -621,6 +620,7 @@ export default function ProductiePage() {
       setSavingPlan(false); return;
     }
     setSavingPlan(false);
+    setShowPlanEdit(false);
     loadBatches();
   }
 
@@ -682,12 +682,14 @@ export default function ProductiePage() {
       {!loading && !error && plan && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-          {/* ── Mixer plan (when no batches exist) ── */}
-          {batches.length === 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
+          {/* ── Mixer plan (when no batches exist, or when editing) ── */}
+          {(batches.length === 0 || showPlanEdit) && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
             <section className="card" style={{ padding: "1.25rem 1.5rem" }}>
               <h2 style={{ fontSize: 16, marginBottom: 4 }}>Mixer plan</h2>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
-                Stel het aantal mixers per deegsoort in en sla het plan op om de baklijst te starten.
+                {batches.length === 0
+                  ? "Stel het aantal mixers per deegsoort in en sla het plan op om de baklijst te starten."
+                  : "Pas het aantal mixers aan. Opslaan verwijdert de huidige voortgang."}
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {planGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
@@ -753,31 +755,26 @@ export default function ProductiePage() {
                   {saveError}
                 </div>
               )}
-              <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 14, padding: "10px 24px" }}>
-                {savingPlan ? "Opslaan…" : "✓ Plan opslaan & starten"}
-              </button>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 14, padding: "10px 24px" }}>
+                  {savingPlan ? "Opslaan…" : batches.length > 0 ? "✓ Opslaan & herstart" : "✓ Plan opslaan & starten"}
+                </button>
+                {batches.length > 0 && (
+                  <button onClick={() => { setShowPlanEdit(false); setConfirmReset(false); }} className="btn-secondary" style={{ fontSize: 13, padding: "10px 16px" }}>
+                    Annuleren
+                  </button>
+                )}
+              </div>
             </section>
           )}
 
-          {/* Reset plan button (when batches exist) */}
-          {batches.length > 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
+          {/* Reset plan button (when batches exist and not already in edit mode) */}
+          {batches.length > 0 && !showPlanEdit && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              {confirmReset ? (
-                <>
-                  <span style={{ fontSize: 13, color: "var(--warn)" }}>Voortgang gaat verloren. Weet je het zeker?</span>
-                  <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px", background: "#dc2626" }}>
-                    {savingPlan ? "Opslaan…" : "Ja, opnieuw opslaan"}
-                  </button>
-                  <button onClick={() => setConfirmReset(false)} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>Annuleren</button>
-                </>
-              ) : (
-                <>
-                  <button onClick={savePlan} disabled={savingPlan} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>
-                    {savingPlan ? "Opslaan…" : "🔄 Planning aanpassen"}
-                  </button>
-                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
-                </>
-              )}
+              <button onClick={() => setShowPlanEdit(true)} className="btn-secondary" style={{ fontSize: 13, padding: "7px 16px" }}>
+                🔄 Planning aanpassen
+              </button>
+              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Pas het aantal mixers aan en herstart het plan.</span>
               {saveError && <span style={{ fontSize: 12, color: "var(--warn)" }}>{saveError}</span>}
             </div>
           )}
