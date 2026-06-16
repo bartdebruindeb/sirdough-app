@@ -122,6 +122,8 @@ model BreadType {
   doughWeightPerLoaf Float @default(1010) // per loaf incl. fillings
   /// e.g. "rond 1kg", "lang 750gr", "baguette"
   basketType String? @default("")
+  /// "gebloemd" | "ongebloemd" | null — only relevant for mand category
+  basketStyle String?
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])

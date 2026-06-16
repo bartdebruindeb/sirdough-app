@@ -10,7 +10,7 @@ type Recipe = {
   doughWeightPerLoaf: number; mixerGroup: string; notes?: string;
   flourLines: RecipeFlour[]; toppings: RecipeTopping[];
 };
-type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; recipe: Recipe | null };
+type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; basketStyle?: string | null; recipe: Recipe | null };
 
 function kg(g: number) { return g >= 1000 ? `${(g/1000).toFixed(2).replace(/\.?0+$/,"")} kg` : `${Math.round(g)} g`; }
 
@@ -80,6 +80,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
   const [inwasPct,  setInwas]  = useState(r?.inwasPct  ?? 6);
   const [doughWeight, setDough] = useState(r?.doughWeightPerLoaf ?? 1000);
   const [basketType, setBasketType] = useState(bt.basketType ?? "");
+  const [basketStyle, setBasketStyle] = useState(bt.basketStyle ?? "");
   const [category, setCategory] = useState(bt.category ?? "");
   const [notes,     setNotes]  = useState(r?.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -92,11 +93,11 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
 
   async function save() {
     setSaving(true);
-    if (basketType !== bt.basketType || category !== bt.category) {
+    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "")) {
       await fetch("/digitalbakery/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, basketType, category }),
+        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category }),
       });
     }
     await fetch("/digitalbakery/api/recipes", {
@@ -179,9 +180,31 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
             <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
           ))}
         </select>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandtype</label>
-        <input value={basketType} onChange={e => setBasketType(e.target.value)}
-          style={{ ...inputStyle, width: "100%", marginBottom: 10 }} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
+        {category === "mand" ? (
+          <>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Formaat</label>
+            <select value={basketType} onChange={e => setBasketType(e.target.value)}
+              style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
+              <option value="">— kies formaat —</option>
+              <option value="rond 750gr">Rond 750 gram</option>
+              <option value="rond 1kg">Rond 1 kg</option>
+              <option value="rond 1.5kg">Rond 1,5 kg</option>
+            </select>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stijl</label>
+            <select value={basketStyle} onChange={e => setBasketStyle(e.target.value)}
+              style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
+              <option value="">— kies stijl —</option>
+              <option value="gebloemd">Gebloemd</option>
+              <option value="ongebloemd">Ongebloemd</option>
+            </select>
+          </>
+        ) : (
+          <>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandtype</label>
+            <input value={basketType} onChange={e => setBasketType(e.target.value)}
+              style={{ ...inputStyle, width: "100%", marginBottom: 10 }} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
+          </>
+        )}
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notities</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
@@ -197,13 +220,14 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
 function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
   onClose: () => void; onSaved: () => void; existingCategories: string[];
 }) {
-  const allCats = [...new Set(["boeren","baguette","spelt","volkoren","rogge","zoet",...existingCategories])];
+  const allCats = [...new Set(["boeren","mand","baguette","spelt","volkoren","rogge","zoet",...existingCategories])];
   const [name, setName] = useState("");
   const [category, setCategory] = useState("boeren");
   const [newCat, setNewCat] = useState("");
   const [addingCat, setAddingCat] = useState(false);
   const [weightGrams, setWeightGrams] = useState(1010);
   const [basketType, setBasketType] = useState("");
+  const [basketStyle, setBasketStyle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -219,7 +243,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
     setSaving(true); setError("");
     const res = await fetch("/digitalbakery/api/bread-types", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":"OWNER"},
-      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType }),
+      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType, basketStyle: basketStyle || null }),
     });
     setSaving(false);
     if (res.ok) onSaved();
@@ -265,10 +289,32 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
           <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
         </div>
-        <div>
-          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandtype</label>
-          <input value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
-        </div>
+        {category === "mand" ? (
+          <>
+            <div>
+              <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Formaat</label>
+              <select value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp}>
+                <option value="">— kies formaat —</option>
+                <option value="rond 750gr">Rond 750 gram</option>
+                <option value="rond 1kg">Rond 1 kg</option>
+                <option value="rond 1.5kg">Rond 1,5 kg</option>
+              </select>
+            </div>
+            <div>
+              <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Stijl</label>
+              <select value={basketStyle} onChange={e=>setBasketStyle(e.target.value)} style={inp}>
+                <option value="">— kies stijl —</option>
+                <option value="gebloemd">Gebloemd</option>
+                <option value="ongebloemd">Ongebloemd</option>
+              </select>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandtype</label>
+            <input value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
+          </div>
+        )}
         {error&&<p style={{color:"var(--danger)",background:"var(--danger-bg)",padding:"8px 12px",borderRadius:8,fontSize:13,margin:0}}>{error}</p>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button onClick={onClose} className="btn-secondary">Annuleren</button>
@@ -393,6 +439,7 @@ export default function ReceptenPage() {
                       }}>
                         <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{bt.name}</span>
                         {bt.basketType && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 8 }}>🧺 {bt.basketType}</span>}
+                        {bt.basketStyle && <span style={{ fontSize: 11, color: "#7c3aed", background: "#ede9fe", padding: "2px 7px", borderRadius: 8 }}>{bt.basketStyle}</span>}
                         <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
                       </button>
                       {isOwner && isOpen && (

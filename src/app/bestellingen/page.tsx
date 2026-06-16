@@ -1068,7 +1068,7 @@ export default function BestellingenPage() {
                       const isOverride = !!oneOff;
                       const editKey = `${ro.customerId}_${day.date}`;
                       const isEditing = wpEditKey===editKey;
-                      const displayLines = isOverride
+                      const displayLines: {breadTypeId:string;quantity:number}[] = isOverride
                         ? oneOff!.lines.filter(l=>l.quantity>0)
                         : ro.lines.filter(l=>l.quantity>0);
 
@@ -1101,7 +1101,7 @@ export default function BestellingenPage() {
                               <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap"}}>
                                 {displayLines.map(l=>(
                                   <span key={l.breadTypeId} style={{fontSize:11,background:"var(--accent-light)",color:"var(--accent)",padding:"2px 7px",borderRadius:10}}>
-                                    {colName('breadType' in l ? (l as any).breadType.name : breadTypes.find(b=>b.id===l.breadTypeId)?.name??"")} ×{l.quantity}
+                                    {colName(breadTypes.find(b=>b.id===l.breadTypeId)?.name??"")} ×{l.quantity}
                                   </span>
                                 ))}
                               </div>

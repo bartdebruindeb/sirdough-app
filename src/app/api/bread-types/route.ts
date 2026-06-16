@@ -30,6 +30,7 @@ const CreateBreadTypeSchema = z.object({
   category: z.string().min(1),
   weightGrams: z.number().positive().default(1000),
   basketType: z.string().optional(),
+  basketStyle: z.string().optional().nullable(),
   sortOrder: z.number().int().default(99),
 });
 
@@ -67,6 +68,8 @@ const PatchBreadTypeSchema = z.object({
   sortOrder: z.number().optional(),
   category: z.string().optional(),
   basketType: z.string().optional(),
+  basketStyle: z.string().optional().nullable(),
+  weightGrams: z.number().optional(),
 });
 
 export async function PATCH(req: Request) {
