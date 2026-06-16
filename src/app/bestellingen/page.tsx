@@ -8,6 +8,7 @@ type BreadType = { id: string; slug: string; name: string; sortOrder: number; cu
 type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
+type LogboekEntry = { type: "eenmalig"|"vast"|"winkel"; date: string; customerName: string; customerId: string; city: string|null; notes: string|null; lines: { breadTypeId: string; breadTypeName: string; quantity: number }[] };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string; sortOrder: number } };
 type RecurringOrder = { id: string; customerId: string; weekday: number; active: boolean; notes: string | null; customer: Customer; lines: RecurringLine[] };
 type Exception = { id: string; date: string; active: boolean };
@@ -232,6 +233,120 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
 
 
 
+// ── New recurring order: week table form (one go for all days) ───────────────
+function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, closedWeekdays }: {
+  customers: Customer[]; breadTypes: BreadType[]; recurring: RecurringOrder[]; onSaved: () => void; closedWeekdays: number[];
+}) {
+  const { role } = useRole();
+  const [customerId, setCustomerId] = useState("");
+  // qty: weekday (1-7) → breadTypeId → quantity
+  const [qty, setQty] = useState<Record<number, Record<string,number>>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  const allBTs = breadTypes; // show all bread types (not filtered by customerOrderable)
+  const openDays = [2,3,4,5,6].filter(wd => !closedWeekdays.includes(wd)); // Tue–Sat by default
+
+  // Pre-fill from existing recurring orders for selected customer
+  useEffect(() => {
+    if (!customerId) { setQty({}); return; }
+    const initial: Record<number, Record<string,number>> = {};
+    for (const wd of openDays) {
+      initial[wd] = {};
+      const order = recurring.find(o => o.customerId === customerId && o.weekday === wd);
+      if (order) {
+        for (const l of order.lines) initial[wd][l.breadTypeId] = l.quantity;
+      }
+    }
+    setQty(initial);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, recurring.map(o=>o.id).join(",")]);
+
+  async function save() {
+    if (!customerId) { setError("Selecteer eerst een klant."); return; }
+    const daysWithOrders = openDays.filter(wd => Object.values(qty[wd] ?? {}).some(v => v > 0));
+    if (daysWithOrders.length === 0) { setError("Voeg minimaal één broodsoort toe."); return; }
+    setSaving(true); setError(""); setSuccess("");
+    for (const wd of daysWithOrders) {
+      const lines = Object.entries(qty[wd] ?? {}).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
+      await fetch("/digitalbakery/api/bestellingen/recurring", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+        body: JSON.stringify({ customerId, weekday: wd, lines }),
+      });
+    }
+    setSaving(false);
+    const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
+    setSuccess(`✓ Vaste bestellingen voor ${customerName} opgeslagen (${daysWithOrders.length} dag${daysWithOrders.length>1?"en":""}).`);
+    setTimeout(() => setSuccess(""), 5000);
+    onSaved();
+    setExpanded(false);
+  }
+
+  const inp: React.CSSProperties = { border:"1px solid var(--border)", borderRadius:7, padding:"7px 10px", fontSize:13, background:"var(--surface)", width:"100%" };
+
+  return (
+    <div className="card" style={{ padding:"1.25rem 1.5rem" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: expanded ? 16 : 0 }}>
+        <h3 style={{ fontSize:14, margin:0 }}>Nieuwe / bewerken vaste bestelling</h3>
+        <button onClick={()=>setExpanded(v=>!v)} className="btn-secondary" style={{ fontSize:12 }}>
+          {expanded ? "▲ Sluiten" : "▼ Openen"}
+        </button>
+      </div>
+      {expanded && (
+        <>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Klant</label>
+            <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{ ...inp, maxWidth:360 }}>
+              <option value="">— selecteer klant —</option>
+              {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
+            </select>
+          </div>
+          {customerId && (
+            <div style={{ overflowX:"auto", marginBottom:16 }}>
+              <table style={{ borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:"var(--surface-2)", borderBottom:"2px solid var(--border)" }}>
+                    <th style={{ textAlign:"left", padding:"8px 14px", fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", minWidth:130, whiteSpace:"nowrap" }}>Broodsoort</th>
+                    {openDays.map(wd=>(
+                      <th key={wd} style={{ textAlign:"center", padding:"8px 10px", fontSize:12, fontWeight:600, color:"var(--text-subtle)", minWidth:80, borderLeft:"1px solid var(--border)" }}>
+                        {WEEKDAYS[wd].slice(0,2)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {allBTs.map((bt, bi)=>(
+                    <tr key={bt.id} style={{ borderTop:"1px solid var(--border)", background: bi%2===0?"transparent":"var(--surface-2)" }}>
+                      <td style={{ padding:"5px 14px", whiteSpace:"nowrap", color:"var(--text-muted)", fontSize:13 }}>{colName(bt.name)}</td>
+                      {openDays.map(wd=>(
+                        <td key={wd} style={{ padding:"4px 6px", borderLeft:"1px solid var(--border)", textAlign:"center" }}>
+                          <input type="number" min={0} max={999} value={(qty[wd]?.[bt.id])||""} placeholder="0"
+                            onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}}
+                            onChange={e=>{ const v=Math.min(999,parseInt(e.target.value)||0); setQty(q=>({...q,[wd]:{...(q[wd]??{}),[bt.id]:v}})); }}
+                            style={{ width:60, border:"1px solid var(--border)", borderRadius:5, padding:"3px 6px", fontSize:13, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
+          {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
+          {customerId && (
+            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
+              {saving?"Opslaan…":"Vaste bestellingen opslaan"}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Recurring order with exception planning ───────────────────────────────────
 function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
   order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void;
@@ -420,7 +535,8 @@ export default function BestellingenPage() {
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([1,7]);
   const [savingSettings, setSavingSettings] = useState(false);
   const [historyCustomerId, setHistoryCustomerId] = useState("");
-  const [historyOrders, setHistoryOrders] = useState<OneOffOrder[]>([]);
+  const [logboekEntries, setLogboekEntries] = useState<LogboekEntry[]>([]);
+  const [logboekBreadTypes, setLogboekBreadTypes] = useState<{id:string;name:string;slug:string}[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Logboek date range — default last 60 days + next 14 days
@@ -457,8 +573,8 @@ export default function BestellingenPage() {
     setLoadingHistory(true);
     const params = new URLSearchParams({ from: logboekFrom, to: logboekTo });
     if (historyCustomerId) params.set("customerId", historyCustomerId);
-    fetch(`/digitalbakery/api/bestellingen?${params}`,{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ setHistoryOrders(d.orders??[]); setLoadingHistory(false); })
+    fetch(`/digitalbakery/api/logboek?${params}`,{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json()).then(d=>{ setLogboekEntries(d.entries??[]); setLogboekBreadTypes(d.breadTypes??[]); setLoadingHistory(false); })
       .catch(()=>setLoadingHistory(false));
   }
   useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); },[fromDate,toDate]);
@@ -797,8 +913,11 @@ export default function BestellingenPage() {
       {/* ── VAST ── */}
       {tab==="vast"&&(
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+          {isOwner && breadTypes.length > 0 && (
+            <BreadTypeManager breadTypes={breadTypes} onChanged={loadOneOff} />
+          )}
           {canWriteRecurring && (
-            <NewRecurringOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
+            <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
           )}
 
           {/* filters */}
@@ -881,64 +1000,64 @@ export default function BestellingenPage() {
 
           {loadingHistory ? (
             <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p>
-          ) : historyOrders.length === 0 ? (
+          ) : logboekEntries.length === 0 ? (
             <div className="card" style={{ padding:"2rem", textAlign:"center", color:"var(--text-subtle)", fontSize:13 }}>
               Geen bestellingen gevonden in deze periode.
             </div>
           ) : (()=>{
-            const sorted = [...historyOrders].sort((a,b)=>b.deliveryDate.localeCompare(a.deliveryDate));
-            // Collect all bread types that appear in these orders
-            const btMap = new Map<string,{id:string;name:string}>();
-            for (const o of sorted) for (const l of o.lines) if (l.quantity>0) btMap.set(l.breadTypeId, l.breadType);
-            const logBTs = [...btMap.values()].sort((a,b)=>{
-              const ai=SLUG_ORDER.indexOf(breadTypes.find(x=>x.id===a.id)?.slug??""); const bi=SLUG_ORDER.indexOf(breadTypes.find(x=>x.id===b.id)?.slug??"");
+            const sorted = [...logboekEntries].sort((a,b)=>b.date.localeCompare(a.date));
+            // Use breadTypes from logboek API, sorted by SLUG_ORDER
+            const logBTs = [...logboekBreadTypes].sort((a,b)=>{
+              const ai=SLUG_ORDER.indexOf(a.slug??""); const bi=SLUG_ORDER.indexOf(b.slug??"");
               return (ai===-1?99:ai)-(bi===-1?99:bi);
             });
             const thS: React.CSSProperties = { fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", padding:"5px 8px", textAlign:"right", borderBottom:"2px solid var(--border)", whiteSpace:"nowrap" };
             const tdS: React.CSSProperties = { fontSize:13, padding:"5px 8px", textAlign:"right", borderBottom:"1px solid var(--border)" };
+            const TYPE_LABEL: Record<string,string> = { eenmalig:"E", vast:"V", winkel:"W" };
+            const TYPE_COLOR: Record<string,string> = { eenmalig:"var(--accent)", vast:"#7c3aed", winkel:"#059669" };
             return (
               <div>
-                <p style={{ fontSize:12, color:"var(--text-subtle)", margin:"0 0 8px" }}>{sorted.length} bestelling{sorted.length!==1?"en":""}</p>
+                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:8 }}>
+                  <p style={{ fontSize:12, color:"var(--text-subtle)", margin:0 }}>{sorted.length} regels</p>
+                  <span style={{ fontSize:11, color:"var(--text-subtle)" }}>
+                    <span style={{ color:"var(--accent)", fontWeight:600 }}>E</span> = eenmalig &nbsp;
+                    <span style={{ color:"#7c3aed", fontWeight:600 }}>V</span> = vast &nbsp;
+                    <span style={{ color:"#059669", fontWeight:600 }}>W</span> = winkel
+                  </span>
+                </div>
                 <div style={{ overflowX:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                     <thead>
                       <tr>
+                        <th style={{ ...thS, textAlign:"center", width:26 }}>Type</th>
                         <th style={{ ...thS, textAlign:"left" }}>Datum</th>
                         {!historyCustomerId && <th style={{ ...thS, textAlign:"left" }}>Klant</th>}
                         {logBTs.map(bt=><th key={bt.id} style={thS}>{colName(bt.name)}</th>)}
                         <th style={thS}>Notities</th>
                         <th style={thS}>Totaal</th>
-                        {canWrite && <th style={{ ...thS, textAlign:"center" }}></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {sorted.map(order=>{
-                        const dateStr = order.deliveryDate.includes("T") ? order.deliveryDate.slice(0,10) : order.deliveryDate;
-                        const d = new Date(dateStr+"T12:00:00Z");
+                      {sorted.map((entry, idx)=>{
+                        const d = new Date(entry.date+"T12:00:00Z");
                         const dateLabel = d.toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"});
-                        const isPast = dateStr < today;
-                        const qtyMap = new Map(order.lines.map(l=>[l.breadTypeId, l.quantity]));
-                        const total = order.lines.reduce((s,l)=>s+l.quantity,0);
+                        const isPast = entry.date < today;
+                        const qtyMap = new Map(entry.lines.map(l=>[l.breadTypeId, l.quantity]));
+                        const total = entry.lines.reduce((s,l)=>s+l.quantity,0);
                         return (
-                          <tr key={order.id} style={{ opacity: isPast ? 0.75 : 1, background: isPast ? undefined : "var(--accent-light)" }}>
+                          <tr key={idx} style={{ opacity: isPast ? 0.8 : 1, background: isPast ? undefined : "var(--accent-light)" }}>
+                            <td style={{ ...tdS, textAlign:"center" }}>
+                              <span style={{ fontSize:11, fontWeight:700, color:TYPE_COLOR[entry.type] }}>{TYPE_LABEL[entry.type]}</span>
+                            </td>
                             <td style={{ ...tdS, textAlign:"left", whiteSpace:"nowrap", color: isPast ? "var(--text-subtle)" : "var(--text)", fontWeight: isPast ? 400 : 600 }}>{dateLabel}</td>
-                            {!historyCustomerId && <td style={{ ...tdS, textAlign:"left" }}>{order.customer.name}{order.customer.city ? <span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({order.customer.city})</span> : null}</td>}
+                            {!historyCustomerId && <td style={{ ...tdS, textAlign:"left" }}>{entry.customerName}{entry.city ? <span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({entry.city})</span> : null}</td>}
                             {logBTs.map(bt=>(
                               <td key={bt.id} style={{ ...tdS, color: (qtyMap.get(bt.id)??0)>0 ? "var(--text)" : "var(--text-subtle)" }}>
                                 {qtyMap.get(bt.id) || "—"}
                               </td>
                             ))}
-                            <td style={{ ...tdS, fontSize:11, color:"var(--text-subtle)", fontStyle:"italic", textAlign:"left", maxWidth:160 }}>{order.notes || ""}</td>
-                            <td style={{ ...tdS, fontWeight:600 }}>{total}</td>
-                            {canWrite && (
-                              <td style={{ ...tdS, textAlign:"center" }}>
-                                {!isPast && (
-                                  <button onClick={()=>deleteOrder(order.id)}
-                                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1, padding:"0 4px" }}
-                                    title="Verwijderen">×</button>
-                                )}
-                              </td>
-                            )}
+                            <td style={{ ...tdS, fontSize:11, color:"var(--text-subtle)", fontStyle:"italic", textAlign:"left", maxWidth:160 }}>{entry.notes || ""}</td>
+                            <td style={{ ...tdS, fontWeight:600 }}>{total || "—"}</td>
                           </tr>
                         );
                       })}

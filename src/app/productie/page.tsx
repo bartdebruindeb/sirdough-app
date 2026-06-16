@@ -29,8 +29,11 @@ type Batch = {
   id: string;
   mixerGroup: string; groupLabel: string; batchNumber: number; totalLoaves: number;
   status: "todo" | "in_mixer" | "rijzen" | "klaar";
+  notes: string | null;
   startedAt: string | null; rijzenAt: string | null; klaarAt: string | null;
 };
+
+const ADDITIVE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn","morning-buns","kaneel-buns","kardemom-buns","baguette-kaas"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function g(v: number) { return `${Math.round(v)} g`; }
@@ -388,6 +391,11 @@ function lastUpdateTime(batch: Batch): string | null {
   return null;
 }
 
+function parseBatchAdditives(notes: string | null): string[] {
+  if (!notes) return [];
+  try { const p = JSON.parse(notes); return Array.isArray(p.additives) ? p.additives : []; } catch { return []; }
+}
+
 function BatchCard({ batch, lines, compact, onUpdated }: { batch: Batch; lines?: BreadLine[]; compact?: boolean; onUpdated: () => void }) {
   const { role } = useRole();
   const [updating, setUpdating] = useState(false);
@@ -475,6 +483,31 @@ function BatchCard({ batch, lines, compact, onUpdated }: { batch: Batch; lines?:
   );
 }
 
+function BatchAdvanceButton({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }) {
+  const { role } = useRole();
+  const [updating, setUpdating] = useState(false);
+  const NEXT: Record<string, Batch["status"]> = { todo: "in_mixer", in_mixer: "rijzen", rijzen: "klaar" };
+  const BTN: Record<string, string> = { todo: "▶ In mixer", in_mixer: "↑ Rijzen", rijzen: "✓ Klaar" };
+  const next = NEXT[batch.status];
+  if (!next) return null;
+  async function advance() {
+    if (updating) return;
+    setUpdating(true);
+    await fetch("/digitalbakery/api/production/batches", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+      body: JSON.stringify({ id: batch.id, status: next }),
+    });
+    setUpdating(false);
+    onUpdated();
+  }
+  return (
+    <button onClick={advance} disabled={updating} className="btn-primary" style={{ fontSize: 12, padding: "5px 14px", whiteSpace: "nowrap" }}>
+      {updating ? "…" : BTN[batch.status]}
+    </button>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ProductiePage() {
   const { role } = useRole();
@@ -491,9 +524,9 @@ export default function ProductiePage() {
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [savingPlan, setSavingPlan]   = useState(false);
   const [saveError, setSaveError]     = useState("");
-  // Deeg calculator visibility
-  const [showDeeg, setShowDeeg]       = useState(false);
   const [showAantallen, setShowAantallen] = useState(false);
+  // additiveAssignment: group → breadTypeId → batchNumber
+  const [additiveAssignment, setAdditiveAssignment] = useState<Record<string, Record<string, number>>>({});
 
   // ── Load plan ──
   function loadPlan(d: string) {
@@ -562,11 +595,13 @@ export default function ProductiePage() {
       const count = Math.max(1, mixerCounts[mg.group] ?? 1);
       const base  = Math.floor(mg.totalLoaves / count);
       const rem   = mg.totalLoaves - base * count;
-      return Array.from({ length: count }, (_, i) => ({
-        mixerGroup: mg.group, groupLabel: mg.label,
-        batchNumber: i + 1,
-        totalLoaves: i === 0 ? base + rem : base,
-      }));
+      const assignment = additiveAssignment[mg.group] ?? {};
+      return Array.from({ length: count }, (_, i) => {
+        const batchNum = i + 1;
+        const additivesForBatch = mg.lines.filter(l => ADDITIVE_SLUGS.has(l.slug) && l.totalQty > 0 && (assignment[l.breadTypeId] ?? 1) === batchNum);
+        const notes = additivesForBatch.length > 0 ? JSON.stringify({ additives: additivesForBatch.map(l => `${l.name} ×${l.totalQty}`) }) : undefined;
+        return { mixerGroup: mg.group, groupLabel: mg.label, batchNumber: batchNum, totalLoaves: i === 0 ? base + rem : base, notes };
+      });
     });
     if (toCreate.length === 0) {
       setSaveError("Geen broodsoorten met aantallen gevonden. Controleer de bestellingen voor deze dag.");
@@ -644,56 +679,20 @@ export default function ProductiePage() {
       {!loading && !error && plan && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-          {/* ── Active batches (in_mixer / rijzen) – bus strip ── */}
-          {batches.some(b => b.status === "in_mixer" || b.status === "rijzen") && (
-            <section>
-              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>In uitvoering</h2>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {batches.filter(b => b.status === "in_mixer" || b.status === "rijzen").map(b => (
-                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} compact onUpdated={loadBatches} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Todo queue ── */}
-          {batches.some(b => b.status === "todo") && (
-            <section>
-              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>Wachtrij</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {batches.filter(b => b.status === "todo").map(b => (
-                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} onUpdated={loadBatches} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Klaar ── */}
-          {batches.some(b => b.status === "klaar") && (
-            <section>
-              <h2 style={{ fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16a34a", margin: "0 0 10px" }}>
-                Klaar {totalDone === batches.length && "🎉"}
-              </h2>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {batches.filter(b => b.status === "klaar").map(b => (
-                  <BatchCard key={b.id} batch={b} lines={getBatchLines(b)} compact onUpdated={loadBatches} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── No batches yet: mixer plan ── */}
+          {/* ── Mixer plan (when no batches exist) ── */}
           {batches.length === 0 && planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
             <section className="card" style={{ padding: "1.25rem 1.5rem" }}>
               <h2 style={{ fontSize: 16, marginBottom: 4 }}>Mixer plan</h2>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
                 Stel het aantal mixers per deegsoort in en sla het plan op om de baklijst te starten.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginBottom: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {planGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
                   const count         = Math.max(1, mixerCounts[mg.group] ?? 1);
                   const perMixer      = Math.ceil(mg.totalLoaves / count);
                   const doughPerMixer = mg.totalDoughNoFillingsKg / count;
+                  const additiveLinesInGroup = mg.lines.filter(l => ADDITIVE_SLUGS.has(l.slug) && l.totalQty > 0);
+                  const assignment = additiveAssignment[mg.group] ?? {};
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
                       <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 15 }}>{mg.label}</p>
@@ -709,7 +708,7 @@ export default function ProductiePage() {
                         <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.min(10, (c[mg.group] ?? 1) + 1) }))}
                           style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>+</button>
                       </div>
-                      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
+                      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                           <span style={{ color: "var(--text-muted)" }}>Per mixer stuks</span>
                           <strong>~{perMixer}</strong>
@@ -719,6 +718,29 @@ export default function ProductiePage() {
                           <strong>{doughPerMixer.toFixed(2)} kg</strong>
                         </div>
                       </div>
+                      {/* Additive chooser for groups with multiple mixers */}
+                      {count > 1 && additiveLinesInGroup.length > 0 && (
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-subtle)", margin: "0 0 8px" }}>Verdeel vullingen</p>
+                          {additiveLinesInGroup.map(l => (
+                            <div key={l.breadTypeId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ fontSize: 12 }}>{l.name} ×{l.totalQty}</span>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                {Array.from({ length: count }, (_, i) => i + 1).map(bn => (
+                                  <button key={bn} onClick={() => setAdditiveAssignment(a => ({ ...a, [mg.group]: { ...(a[mg.group] ?? {}), [l.breadTypeId]: bn } }))}
+                                    style={{ padding: "3px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer", border: "1px solid", fontFamily: "var(--font-body)",
+                                      borderColor: (assignment[l.breadTypeId] ?? 1) === bn ? "var(--accent)" : "var(--border)",
+                                      background: (assignment[l.breadTypeId] ?? 1) === bn ? "var(--accent)" : "var(--surface)",
+                                      color: (assignment[l.breadTypeId] ?? 1) === bn ? "white" : "var(--text-subtle)",
+                                    }}>
+                                    M{bn}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -744,6 +766,71 @@ export default function ProductiePage() {
               <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Bestaande voortgang wordt overschreven.</span>
             </div>
           )}
+
+          {/* ── Bakken voortgang (table-based) ── */}
+          {batches.length > 0 && (() => {
+            const statusSections: { status: Batch["status"]; label: string; color: string; bg: string; border: string; nextLabel?: string }[] = [
+              { status: "todo",     label: "Te doen",   color: "var(--text-subtle)", bg: "var(--surface-2)", border: "var(--border)",  nextLabel: "▶ In mixer" },
+              { status: "in_mixer", label: "In mixer",  color: "#b45309",            bg: "#fefce8",          border: "#fbbf24",         nextLabel: "↑ Rijzen"   },
+              { status: "rijzen",   label: "Rijzen",    color: "#1d4ed8",            bg: "#eff6ff",          border: "#93c5fd",         nextLabel: "✓ Klaar"    },
+              { status: "klaar",    label: "Klaar",     color: "#16a34a",            bg: "#f0fdf4",          border: "#4ade80" },
+            ];
+            const thS: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", borderBottom: "2px solid var(--border)", whiteSpace: "nowrap" };
+            return (
+              <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <h2 style={{ fontSize: 16, margin: 0 }}>Bakken voortgang{totalDone === batches.length ? " 🎉" : ` (${totalDone}/${batches.length} klaar)`}</h2>
+                {statusSections.map(({ status, label, color, bg, border, nextLabel }) => {
+                  const bs = batches.filter(b => b.status === status);
+                  if (bs.length === 0) return null;
+                  return (
+                    <div key={status} className="card" style={{ overflow: "hidden", borderColor: border }}>
+                      <div style={{ padding: "8px 16px", background: bg, borderBottom: `1px solid ${border}` }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color }}>{label}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{bs.length} batch{bs.length !== 1 ? "es" : ""}</span>
+                      </div>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: "var(--surface-2)" }}>
+                            <th style={thS}>Deegsoort</th>
+                            <th style={{ ...thS, textAlign: "center" }}>Mixer</th>
+                            <th style={{ ...thS, textAlign: "right" }}>Stuks</th>
+                            <th style={thS}>Vullingen</th>
+                            <th style={{ ...thS, textAlign: "right" }}>Tijdstip</th>
+                            {nextLabel && <th style={{ ...thS, textAlign: "center" }}>Actie</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bs.map((b, i) => {
+                            const bLines = getBatchLines(b);
+                            const additives = parseBatchAdditives(b.notes);
+                            const lastUpdate = lastUpdateTime(b);
+                            return (
+                              <tr key={b.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", background: i % 2 === 0 ? "transparent" : "var(--surface-2)" }}>
+                                <td style={{ padding: "8px 12px", fontWeight: 600 }}>{b.groupLabel}</td>
+                                <td style={{ padding: "8px 12px", textAlign: "center", color: "var(--text-subtle)" }}>#{b.batchNumber}</td>
+                                <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>{b.totalLoaves}</td>
+                                <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>
+                                  {additives.length > 0
+                                    ? additives.join(", ")
+                                    : bLines.filter(l => !ADDITIVE_SLUGS.has(l.slug) && l.totalQty > 0).map(l => `${l.name} ×${l.totalQty}`).join(", ")}
+                                </td>
+                                <td style={{ padding: "8px 12px", textAlign: "right", fontSize: 12, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{lastUpdate ?? "—"}</td>
+                                {nextLabel && (
+                                  <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                                    <BatchAdvanceButton batch={b} onUpdated={loadBatches} />
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </section>
+            );
+          })()}
 
           {/* ── Aantallen (collapsible) ── */}
           <section>
@@ -790,18 +877,13 @@ export default function ProductiePage() {
             </div>
           )}
 
-          {/* ── Deeg calculator (collapsible) ── */}
+          {/* ── Deeg calculator (always visible) ── */}
           {planGroups.length > 0 && (
             <section>
-              <button onClick={() => setShowDeeg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, padding: "0 0 10px", color: "var(--text)" }}>
-                <span style={{ transform: showDeeg ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 12 }}>▶</span>
-                Deeg calculator
-              </button>
-              {showDeeg && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                  {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} />)}
-                </div>
-              )}
+              <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
+                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} />)}
+              </div>
             </section>
           )}
 

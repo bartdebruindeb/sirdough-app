@@ -37,6 +37,7 @@ export async function GET(req: Request) {
         batchNumber: b.batchNumber,
         totalLoaves: b.totalLoaves,
         status: b.status,
+        notes: b.notes ?? null,
         startedAt: b.startedAt?.toISOString() ?? null,
         rijzenAt:  b.rijzenAt?.toISOString()  ?? null,
         klaarAt:   b.klaarAt?.toISOString()   ?? null,
@@ -51,6 +52,7 @@ const BatchItemSchema = z.object({
   groupLabel:  z.string(),
   batchNumber: z.number().int().positive(),
   totalLoaves: z.number().int().min(0),
+  notes:       z.string().optional(),
 });
 const CreateBatchesSchema = z.object({
   date:    z.string(),
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
         batchNumber: b.batchNumber,
         totalLoaves: b.totalLoaves,
         status: "todo",
+        notes: b.notes ?? null,
       })),
     });
 
