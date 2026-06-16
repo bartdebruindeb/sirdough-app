@@ -170,6 +170,25 @@ type MapStop = {
   inBusAt: string | null; deliveredAt: string | null;
 };
 
+// OSRM road routing with localStorage cache (TTL 7 days)
+async function fetchRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<[number, number][] | null> {
+  const key = `route:${from.lat.toFixed(5)},${from.lng.toFixed(5)}-${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached) { const { coords, ts } = JSON.parse(cached); if (Date.now() - ts < 7 * 24 * 3600 * 1000) return coords; }
+  } catch {}
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const route = d.routes?.[0];
+    if (!route) return null;
+    const coords: [number, number][] = route.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+    try { localStorage.setItem(key, JSON.stringify({ coords, ts: Date.now() })); } catch {}
+    return coords;
+  } catch { return null; }
+}
+
 // Geocode with localStorage cache (TTL 30 days)
 async function geocodeStop(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
   const key = `geo:${address}|${city ?? ""}`;
@@ -250,7 +269,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       });
 
       if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
-      const map = L.map(mapRef.current, { zoomControl: false, scrollWheelZoom: false }).setView([52.01, 4.36], 12);
+      const map = L.map(mapRef.current, { zoomControl: true, scrollWheelZoom: true }).setView([51.92, 4.47], 12);
       leafletRef.current = map;
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors, © CartoDB",
@@ -259,12 +278,11 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       setMapReady(true);
 
       setGeocoding(true);
-      // Geocode: cached addresses are instant, only rate-limit fresh fetches
+      // Geocode all stops — cached ones are instant, fresh ones rate-limited
       const geocoded: { stop: MapStop; coord: { lat: number; lng: number } }[] = [];
       let freshFetched = 0;
       for (const stop of stops) {
         if (!stop.address || cancelled) continue;
-        // Check cache before fetching to avoid unnecessary delay
         const cacheKey = `geo:${stop.address}|${stop.city ?? ""}`;
         let fromCache = false;
         try {
@@ -278,22 +296,63 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         }
       }
       if (cancelled) return;
+
       const bounds: [number, number][] = [];
+
+      // Bakery marker (always shown as origin)
+      const BAKERY: [number, number] = [51.9097, 4.4328];
+      bounds.push(BAKERY);
+      const bakeryIcon = L.divIcon({
+        html: `<div style="width:34px;height:34px;border-radius:50%;background:#92400e;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
+        className: "", iconSize: [34, 34], iconAnchor: [17, 17],
+      });
+      L.marker(BAKERY, { icon: bakeryIcon }).addTo(map)
+        .bindPopup("<strong>Bakkerij</strong><br/><small>De Weegbreestraat 23a, Rotterdam</small>");
+
+      // Draw OSRM roads between: bakery → in-bus stops (in inBusAt order) → delivered stops
+      const inBusOrdered = geocoded
+        .filter(g => g.stop.inBusAt && !g.stop.deliveredAt)
+        .sort((a, b) => (a.stop.inBusAt ?? "").localeCompare(b.stop.inBusAt ?? ""));
+      const deliveredOrdered = geocoded
+        .filter(g => g.stop.deliveredAt)
+        .sort((a, b) => (a.stop.deliveredAt ?? "").localeCompare(b.stop.deliveredAt ?? ""));
+      const routePoints: [number, number][] = [BAKERY, ...deliveredOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number]), ...inBusOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number])];
+
+      // Fetch all route segments in parallel (cached)
+      const routeSegments = await Promise.all(
+        routePoints.slice(0, -1).map((pt, i) => {
+          const from = { lat: pt[0], lng: pt[1] };
+          const to   = { lat: routePoints[i + 1][0], lng: routePoints[i + 1][1] };
+          return fetchRoute(from, to);
+        })
+      );
+      for (let i = 0; i < routeSegments.length; i++) {
+        const seg = routeSegments[i];
+        const isDoneSegment = i < deliveredOrdered.length;
+        if (seg) {
+          L.polyline(seg, { color: isDoneSegment ? "#16a34a" : "#6366f1", weight: 3, opacity: 0.75 }).addTo(map);
+        } else {
+          L.polyline([routePoints[i], routePoints[i + 1]], { color: "#6366f1", weight: 2, dashArray: "6 4", opacity: 0.5 }).addTo(map);
+        }
+      }
+
+      // Draw stop markers
       for (const { stop, coord } of geocoded) {
         bounds.push([coord.lat, coord.lng]);
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
-        const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "#6b7280";
+        const color   = isDone ? "#16a34a" : isInBus ? "#6366f1" : "#6b7280";
         const label   = isDone ? "✓" : isInBus ? "🚐" : "·";
+        const size    = isInBus ? 34 : isDone ? 30 : 24;
         const icon = L.divIcon({
-          html: `<div style="width:30px;height:30px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:13px;color:white;font-weight:700;">${label}</div>`,
-          className: "", iconSize: [30, 30], iconAnchor: [15, 15],
+          html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:${isInBus ? 14 : 12}px;color:white;font-weight:700;">${label}</div>`,
+          className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
         });
         const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Te bezorgen";
         L.marker([coord.lat, coord.lng], { icon }).addTo(map)
           .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><small style="color:#666">${stop.address}</small>` : ""}`);
       }
-      if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+      if (bounds.length > 0) map.fitBounds(bounds, { padding: [44, 44] });
       setGeocoding(false);
     })();
 

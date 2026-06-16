@@ -1,10 +1,6 @@
 "use client";
 import { useRole } from "@/lib/role-context";
 import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-import type { MapRow as BezorgenMapRow } from "./RouteViz";
-
-const RouteViz = dynamic(() => import("./RouteViz"), { ssr: false, loading: () => null });
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -224,18 +220,6 @@ export default function BezorgenPage() {
   const activeBreadTypes = breadTypes.filter(bt => rows.some(r => (r.quantities[bt.id] ?? 0) > 0));
   const mapsUrl = buildMapsUrl(busRows);
 
-  // All stops for the map with status
-  const mapRows: BezorgenMapRow[] = rows.map(r => ({
-    customerId: r.customerId,
-    name: r.name,
-    city: r.city,
-    address: r.address,
-    lat: r.lat ?? null,
-    lng: r.lng ?? null,
-    busIndex: busOrder.includes(r.customerId) ? busOrder.indexOf(r.customerId) : null,
-    delivered: !!delivered[r.customerId],
-    deliveredAt: deliveredTimes[r.customerId] ?? null,
-  }));
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", maxWidth: 1400 }}>
@@ -278,23 +262,6 @@ export default function BezorgenPage() {
 
       {!loading && !error && data && rows.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* ── ROUTE GRAPH (full width) ── */}
-          <section>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <h2 style={{ fontSize: 15, margin: 0 }}>Route overzicht</h2>
-              {busRows.length > 0 && mapsUrl && (
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{
-                  background: "#1a73e8", color: "white", textDecoration: "none",
-                  borderRadius: 20, padding: "6px 14px", fontSize: 12, fontWeight: 600,
-                  display: "flex", alignItems: "center", gap: 5,
-                }}>
-                  📍 Open in Maps
-                </a>
-              )}
-            </div>
-            <RouteViz rows={mapRows} />
-          </section>
 
           {/* ── TWO-COLUMN: BUS | PENDING+DELIVERED ── */}
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
