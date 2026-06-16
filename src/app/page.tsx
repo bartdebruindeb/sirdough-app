@@ -26,12 +26,18 @@ const STATUS_LABEL: Record<string, string> = {
   todo: "Te doen", in_mixer: "In mixer", rijzen: "Rijzen", klaar: "Klaar",
 };
 
+function shortName(n: string) {
+  return n.replace("Boeren ","B.").replace(" KG","kg").replace("Morning buns","Buns")
+    .replace("Baguette 0.5 kg","Bag.").replace("Baguette Kaas/Peper","B.K/P")
+    .replace("Gekiemde Rogge","G.Rogge").replace("Volkoren","Volk.");
+}
+
 // ── Production totals for today + tomorrow ────────────────────────────────────
 function ProductionSummaryWidget({ role }: { role: string | null }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today    = new Date().toISOString().slice(0, 10);
   const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })();
 
-  const [todayLines, setTodayLines]       = useState<BreadLine[]>([]);
+  const [todayLines,    setTodayLines]    = useState<BreadLine[]>([]);
   const [tomorrowLines, setTomorrowLines] = useState<BreadLine[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -48,39 +54,51 @@ function ProductionSummaryWidget({ role }: { role: string | null }) {
 
   if (!loaded || (todayLines.length === 0 && tomorrowLines.length === 0)) return null;
 
-  function DayColumn({ label, lines }: { label: string; lines: BreadLine[] }) {
-    if (lines.length === 0) return (
-      <div style={{ flex: 1 }}>
-        <p style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>{label}</p>
-        <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: 0 }}>Geen bestellingen</p>
-      </div>
-    );
-    return (
-      <div style={{ flex: 1 }}>
-        <p style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>{label}</p>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          {lines.map(l => (
-            <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>
-              {l.name.replace("Boeren ","B.").replace(" KG","kg")} <strong>{l.totalQty}</strong>
-            </span>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const allTypes = [...new Map([...todayLines, ...tomorrowLines].map(l => [l.breadTypeId, l])).values()];
+  const todayMap = new Map(todayLines.map(l => [l.breadTypeId, l.totalQty]));
+  const tomorrowMap = new Map(tomorrowLines.map(l => [l.breadTypeId, l.totalQty]));
+  const todayTotal = todayLines.reduce((s, l) => s + l.totalQty, 0);
+  const tomorrowTotal = tomorrowLines.reduce((s, l) => s + l.totalQty, 0);
+
+  const thS: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", padding: "5px 10px", textAlign: "right", borderBottom: "2px solid var(--border)", whiteSpace: "nowrap" };
+  const tdS: React.CSSProperties = { fontSize: 13, padding: "5px 10px", textAlign: "right", borderBottom: "1px solid var(--border)" };
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.25rem 1.5rem", marginBottom: "1.5rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+      <div style={{ padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>
           🍞 Productie aantallen
         </h3>
         <Link href="/productie" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Productie</Link>
       </div>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-        <DayColumn label="Vandaag bakken" lines={todayLines} />
-        <div style={{ width: 1, background: "var(--border)", flexShrink: 0 }} />
-        <DayColumn label="Morgen bakken" lines={tomorrowLines} />
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ ...thS, textAlign: "left" }}>Broodsoort</th>
+              <th style={thS}>Vandaag</th>
+              <th style={thS}>Morgen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allTypes.map(l => (
+              <tr key={l.breadTypeId}>
+                <td style={{ ...tdS, textAlign: "left", color: "var(--text-muted)" }}>{shortName(l.name)}</td>
+                <td style={{ ...tdS, fontWeight: (todayMap.get(l.breadTypeId) ?? 0) > 0 ? 600 : 400, color: (todayMap.get(l.breadTypeId) ?? 0) > 0 ? "var(--text)" : "var(--text-subtle)" }}>
+                  {todayMap.get(l.breadTypeId) ?? "—"}
+                </td>
+                <td style={{ ...tdS, fontWeight: (tomorrowMap.get(l.breadTypeId) ?? 0) > 0 ? 600 : 400, color: (tomorrowMap.get(l.breadTypeId) ?? 0) > 0 ? "var(--text)" : "var(--text-subtle)" }}>
+                  {tomorrowMap.get(l.breadTypeId) ?? "—"}
+                </td>
+              </tr>
+            ))}
+            <tr style={{ background: "var(--surface-2)" }}>
+              <td style={{ ...tdS, fontWeight: 700, textAlign: "left" }}>Totaal</td>
+              <td style={{ ...tdS, fontWeight: 700 }}>{todayTotal || "—"}</td>
+              <td style={{ ...tdS, fontWeight: 700 }}>{tomorrowTotal || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -90,11 +108,10 @@ function ProductionSummaryWidget({ role }: { role: string | null }) {
 type MapStop = {
   customerId: string; name: string; city: string | null; address: string | null;
   inBusAt: string | null; deliveredAt: string | null;
-  lat?: number; lng?: number;
 };
 
-async function geocode(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
-  const q = encodeURIComponent(`${address}, ${city ?? ""}, Netherlands`);
+async function geocodeStop(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
+  const q = encodeURIComponent(`${address}, ${city ?? ""}, Nederland`);
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
       headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
@@ -107,62 +124,58 @@ async function geocode(address: string, city: string | null): Promise<{ lat: num
 
 function DeliveryMapWidget({ role }: { role: string | null }) {
   const today = new Date().toISOString().slice(0, 10);
-  const mapRef    = useRef<HTMLDivElement>(null);
+  const mapRef     = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
 
-  const [stops, setStops]   = useState<MapStop[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [stops, setStops]     = useState<MapStop[]>([]);
+  const [loaded, setLoaded]   = useState(false);
   const [geocoding, setGeocoding] = useState(false);
-
-  async function loadData() {
-    const [bezorgenRes, statusRes] = await Promise.all([
-      fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-    ]);
-    const rows: any[] = bezorgenRes.rows ?? [];
-    const statuses: DeliveryStatus[] = statusRes.statuses ?? [];
-    const statusMap = new Map(statuses.map((s: DeliveryStatus) => [s.customerId, s]));
-
-    const mapped: MapStop[] = rows.map((r: any) => {
-      const st = statusMap.get(r.customerId);
-      return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
-    });
-    setStops(mapped);
-    setLoaded(true);
-    return mapped;
-  }
 
   useEffect(() => {
     let cancelled = false;
-    async function init() {
-      const mapped = await loadData();
-      if (cancelled || !mapRef.current || mapped.length === 0) return;
 
-      // Dynamically load Leaflet CSS + JS
-      if (!document.getElementById("leaflet-css")) {
-        const link = document.createElement("link");
-        link.id = "leaflet-css"; link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-      }
-      const L = await import("leaflet" as any).catch(() => null);
+    async function init() {
+      const [bezorgenRes, statusRes] = await Promise.all([
+        fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+        fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+      ]);
+      if (cancelled) return;
+
+      const rows: any[] = bezorgenRes.rows ?? [];
+      const statuses: DeliveryStatus[] = statusRes.statuses ?? [];
+      const statusMap = new Map(statuses.map(s => [s.customerId, s]));
+
+      const mapped: MapStop[] = rows.map(r => {
+        const st = statusMap.get(r.customerId);
+        return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
+      });
+      setStops(mapped);
+      setLoaded(true);
+
+      if (!mapRef.current || mapped.length === 0 || cancelled) return;
+
+      const L = await import("leaflet").catch(() => null);
       if (!L || cancelled) return;
 
-      // Fix default icon paths broken by webpack
-      (L as any).Icon.Default.mergeOptions({ iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png", iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png", shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png" });
+      // @ts-expect-error - leaflet internals
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+        iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+      });
 
-      if (leafletRef.current) { leafletRef.current.remove(); }
-      const map = (L as any).map(mapRef.current, { zoomControl: true }).setView([52.01, 4.36], 12);
+      if (leafletRef.current) leafletRef.current.remove();
+      const map = L.map(mapRef.current, { zoomControl: true }).setView([52.01, 4.36], 12);
       leafletRef.current = map;
-      (L as any).tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 
-      // Geocode and add markers
       setGeocoding(true);
       const bounds: [number, number][] = [];
       for (const stop of mapped) {
-        if (!stop.address) continue;
-        await new Promise(r => setTimeout(r, 300)); // respect Nominatim rate limit
-        const coord = await geocode(stop.address, stop.city);
+        if (!stop.address || cancelled) continue;
+        await new Promise(r => setTimeout(r, 1100));
+        const coord = await geocodeStop(stop.address, stop.city);
         if (!coord || cancelled) continue;
         bounds.push([coord.lat, coord.lng]);
 
@@ -170,21 +183,28 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         const isInBus = !!stop.inBusAt && !isDone;
         const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "#6b7280";
         const label   = isDone ? "✓" : isInBus ? "🚐" : "·";
-        const icon = (L as any).divIcon({
-          html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;color:white;font-weight:700;">${label}</div>`,
-          className: "", iconSize: [32, 32], iconAnchor: [16, 16],
+        const icon = L.divIcon({
+          html: `<div style="width:30px;height:30px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:13px;color:white;font-weight:700;">${label}</div>`,
+          className: "", iconSize: [30, 30], iconAnchor: [15, 15],
         });
-        const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Nog te bezorgen";
-        (L as any).marker([coord.lat, coord.lng], { icon })
+        const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Te bezorgen";
+        L.marker([coord.lat, coord.lng], { icon })
           .addTo(map)
-          .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><span style="font-size:12px;color:#666">${stop.address}</span>` : ""}`);
+          .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><small style="color:#666">${stop.address}</small>` : ""}`);
       }
-      if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
-      setGeocoding(false);
+      if (!cancelled && bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+      if (!cancelled) setGeocoding(false);
     }
+
     init();
-    const interval = setInterval(() => { loadData().then(s => setStops(s)); }, 30000);
-    return () => { cancelled = true; clearInterval(interval); leafletRef.current?.remove(); };
+    const interval = setInterval(() => {
+      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
+        .then(r => r.json()).then(d => { if (!cancelled) setStops(prev => prev.map(s => { const st = (d.statuses ?? []).find((x: any) => x.customerId === s.customerId); return st ? { ...s, inBusAt: st.inBusAt, deliveredAt: st.deliveredAt } : s; })); })
+        .catch(() => {});
+    }, 30000);
+
+    return () => { cancelled = true; clearInterval(interval); leafletRef.current?.remove(); leafletRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, today]);
 
   if (!loaded) return null;
@@ -192,10 +212,11 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   const delivered = stops.filter(s => s.deliveredAt).length;
   const inBus     = stops.filter(s => s.inBusAt && !s.deliveredAt).length;
   if (total === 0) return null;
-  const allDone   = delivered === total;
+  const allDone = delivered === total;
 
   return (
     <div style={{ background: allDone ? "#f0fdf4" : "var(--surface)", border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+      <style>{`@import url("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css");`}</style>
       <div style={{ padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDone ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>
           🚐 Bezorging vandaag
@@ -210,9 +231,8 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           <Link href="/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
         </div>
       </div>
-      {geocoding && <p style={{ fontSize: 12, color: "var(--text-subtle)", padding: "0 1.5rem 8px", margin: 0 }}>Adressen laden op kaart…</p>}
-      <div ref={mapRef} style={{ height: 380, width: "100%" }} />
-      {/* Stop list below map */}
+      {geocoding && <p style={{ fontSize: 12, color: "var(--text-subtle)", padding: "0 1.5rem 8px", margin: 0 }}>Adressen laden…</p>}
+      <div ref={mapRef} style={{ height: 360, width: "100%" }} />
       <div style={{ borderTop: "1px solid var(--border)", padding: "10px 16px", display: "flex", flexWrap: "wrap", gap: 6 }}>
         {stops.map(s => {
           const isDone  = !!s.deliveredAt;
@@ -258,50 +278,34 @@ function ProductionWidget({ role }: { role: string | null }) {
   for (const b of batches) (groups[b.mixerGroup] ??= []).push(b);
 
   return (
-    <div style={{
-      background: allDone ? "#f0fdf4" : "var(--surface)",
-      border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`,
-      borderRadius: 12, padding: "1.25rem 1.5rem", marginBottom: "2rem",
-    }}>
+    <div style={{ background: allDone ? "#f0fdf4" : "var(--surface)", border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`, borderRadius: 12, padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDone ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>
-          ⚙️ Productie vandaag
-        </h3>
+        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDone ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>⚙️ Productie vandaag</h3>
         <span style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--accent)" }}>
           {allDone ? "🎉 Alles klaar!" : `${done}/${total} klaar`}
         </span>
       </div>
-      {/* Progress bar */}
       <div style={{ height: 6, background: "var(--border)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: allDone ? "#4ade80" : "var(--accent)", borderRadius: 3, transition: "width 0.4s" }} />
       </div>
-      {/* Groups */}
       {Object.entries(groups).map(([, bs]) => (
         <div key={bs[0].mixerGroup} style={{ marginBottom: 8 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 5px" }}>
-            {bs[0].groupLabel}
-          </p>
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 5px" }}>{bs[0].groupLabel}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {bs.map(b => (
-              <div key={b.id} style={{
-                background: b.status === "klaar" ? "#f0fdf4" : b.status === "in_mixer" ? "#fefce8" : b.status === "rijzen" ? "#eff6ff" : "var(--surface-2)",
-                border: `1px solid ${b.status === "klaar" ? "#4ade80" : b.status === "in_mixer" ? "#fbbf24" : b.status === "rijzen" ? "#93c5fd" : "var(--border)"}`,
-                borderRadius: 8, padding: "6px 12px", minWidth: 110,
-              }}>
-                <p style={{ fontSize: 12, margin: "0 0 2px", color: "var(--text-subtle)" }}>mixer {b.batchNumber} — {b.totalLoaves} st.</p>
-                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: STATUS_COLOR[b.status] }}>
+              <div key={b.id} style={{ background: b.status==="klaar"?"#f0fdf4":b.status==="in_mixer"?"#fefce8":b.status==="rijzen"?"#eff6ff":"var(--surface-2)", border:`1px solid ${b.status==="klaar"?"#4ade80":b.status==="in_mixer"?"#fbbf24":b.status==="rijzen"?"#93c5fd":"var(--border)"}`, borderRadius:8, padding:"6px 12px", minWidth:110 }}>
+                <p style={{ fontSize:12, margin:"0 0 2px", color:"var(--text-subtle)" }}>mixer {b.batchNumber} — {b.totalLoaves} st.</p>
+                <p style={{ fontSize:13, fontWeight:600, margin:0, color:STATUS_COLOR[b.status] }}>
                   {STATUS_LABEL[b.status]}
-                  {b.status === "klaar" && b.klaarAt ? ` ${fmtTime(b.klaarAt)}` : ""}
-                  {b.status === "in_mixer" && b.startedAt ? ` ${fmtTime(b.startedAt)}` : ""}
+                  {b.status==="klaar"&&b.klaarAt?` ${fmtTime(b.klaarAt)}`:""}
+                  {b.status==="in_mixer"&&b.startedAt?` ${fmtTime(b.startedAt)}`:""}
                 </p>
               </div>
             ))}
           </div>
         </div>
       ))}
-      <Link href="/productie" style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
-        → Ga naar productiepagina
-      </Link>
+      <Link href="/productie" style={{ display:"inline-block", marginTop:6, fontSize:12, color:"var(--accent)", textDecoration:"none" }}>→ Ga naar productiepagina</Link>
     </div>
   );
 }
@@ -314,16 +318,9 @@ function getGreeting(hour: number) {
 }
 
 export default function HomePage() {
-  const { role, can } = useRole();
+  const { role } = useRole();
   const [today, setToday] = useState("");
   const [greeting, setGreeting] = useState("Goedemorgen");
-
-  const [announcement, setAnnouncement] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [loadingAnnouncement, setLoadingAnnouncement] = useState(true);
 
   useEffect(() => {
     const now = new Date();
@@ -331,89 +328,11 @@ export default function HomePage() {
     setGreeting(getGreeting(now.getHours()));
   }, []);
 
-  useEffect(() => {
-    fetch("/digitalbakery/api/announcement", { headers: { "x-role": role ?? "" } })
-      .then(r => r.json())
-      .then(d => { setAnnouncement(d.message ?? ""); setDraft(d.message ?? ""); setLoadingAnnouncement(false); })
-      .catch(() => setLoadingAnnouncement(false));
-  }, [role]);
-
-  async function saveAnnouncement() {
-    setSaving(true); setSaveError("");
-    try {
-      const res = await fetch("/digitalbakery/api/announcement", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-        body: JSON.stringify({ message: draft }),
-      });
-      if (res.ok) { setAnnouncement(draft); setEditing(false); }
-      else {
-        const d = await res.json().catch(() => ({}));
-        setSaveError(d.message ?? d.error ?? `Opslaan mislukt (${res.status})`);
-      }
-    } catch (e) {
-      setSaveError(String(e));
-    }
-    setSaving(false);
-  }
-
   return (
     <div style={{ padding: "2.5rem 3rem", maxWidth: 860 }}>
       <p style={{ color: "var(--text-subtle)", fontSize: 13, margin: "0 0 6px" }}>{today}</p>
       <h1 style={{ fontSize: 34, marginBottom: "0.25rem" }}>{greeting}</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Wat gaan we vandaag bakken?</p>
-
-      {/* ── Announcement ── */}
-      {(can("announcement:write") || announcement || loadingAnnouncement) && (
-        <div style={{
-          background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 12,
-          padding: "1.25rem 1.5rem", marginBottom: "2rem",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: editing || announcement ? 8 : 0 }}>
-            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--accent)", margin: 0 }}>
-              📌 Mededeling
-            </h3>
-            {can("announcement:write") && !editing && (
-              <button onClick={() => { setDraft(announcement); setEditing(true); }} className="btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }}>
-                {announcement ? "Bewerken" : "+ Mededeling toevoegen"}
-              </button>
-            )}
-          </div>
-
-          {editing ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3}
-                placeholder="Bijv. 'Vrijdag extra bestellingen voor het weekend, check de planning!'"
-                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 14, fontFamily: "var(--font-body)", resize: "vertical" }} />
-              {saveError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{saveError}</p>}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={saveAnnouncement} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
-                  {saving ? "Opslaan…" : "Opslaan"}
-                </button>
-                <button onClick={() => setEditing(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                {announcement && (
-                  <button onClick={async () => {
-                    setDraft(""); setSaving(true);
-                    const res = await fetch("/digitalbakery/api/announcement", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-                      body: JSON.stringify({ message: "" }),
-                    });
-                    setSaving(false);
-                    if (res.ok) { setAnnouncement(""); setEditing(false); }
-                  }} className="btn-secondary" style={{ fontSize: 13, marginLeft: "auto", color: "var(--danger)" }}>
-                    Verwijderen
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : announcement ? (
-            <p style={{ fontSize: 14, color: "var(--text)", margin: 0, whiteSpace: "pre-wrap" }}>{announcement}</p>
-          ) : !loadingAnnouncement && (
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Geen mededelingen.</p>
-          )}
-        </div>
-      )}
 
       {/* ── Production totals: today + tomorrow ── */}
       <ProductionSummaryWidget role={role} />

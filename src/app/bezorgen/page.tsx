@@ -264,6 +264,14 @@ export default function BezorgenPage() {
       {!loading && !error && data && rows.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
+          {/* ── ROUTE MAP ── */}
+          {busRows.length > 0 && (
+            <section>
+              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Route kaart</h2>
+              <BezorgenMap rows={busRows} />
+            </section>
+          )}
+
           {/* ── BUS PANEL ── */}
           <section>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -355,14 +363,6 @@ export default function BezorgenPage() {
               </div>
             )}
           </section>
-
-          {/* ── ROUTE MAP ── */}
-          {busRows.length > 0 && (
-            <section>
-              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Route kaart</h2>
-              <BezorgenMap rows={busRows} />
-            </section>
-          )}
 
           {/* ── FULL LIST ── */}
           <section>

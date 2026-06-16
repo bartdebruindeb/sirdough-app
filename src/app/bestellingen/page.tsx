@@ -233,8 +233,8 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
 
 
 // ── Recurring order with exception planning ───────────────────────────────────
-function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
-  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean;
+function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
+  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void;
 }) {
   const { role } = useRole();
   const [toggling, setToggling] = useState(false);
@@ -333,7 +333,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner }: {
           </div>
         </div>
         <div style={{ display:"flex", gap:5, flexShrink:0 }}>
-          {isOwner && <button onClick={openEdit} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>✎ Bewerken</button>}
+          {isOwner && <button onClick={onEditWeek ?? openEdit} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>✎ Bewerken</button>}
           <button onClick={openPlanner} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>📅 Plannen</button>
           {isOwner && <button onClick={deleteOrder} disabled={deleting} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid #fca5a5", background:"none", cursor:"pointer", color:"var(--danger)" }}>🗑</button>}
         </div>
@@ -423,11 +423,18 @@ export default function BestellingenPage() {
   const [historyOrders, setHistoryOrders] = useState<OneOffOrder[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Vast week-table edit state
-  const [vastEdits, setVastEdits] = useState<Map<string,{lines:Record<string,number>;active:boolean}>>(new Map());
-  const [vastDirty, setVastDirty] = useState<Set<string>>(new Set());
-  const [vastSaving, setVastSaving] = useState(false);
-  const [vastMsg, setVastMsg] = useState<{ok:boolean;text:string}|null>(null);
+  // Logboek date range — default last 60 days + next 14 days
+  const logboekDefaultFrom = (() => { const d = new Date(); d.setDate(d.getDate()-60); return d.toISOString().slice(0,10); })();
+  const logboekDefaultTo   = (() => { const d = new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10); })();
+  const [logboekFrom, setLogboekFrom] = useState(logboekDefaultFrom);
+  const [logboekTo,   setLogboekTo]   = useState(logboekDefaultTo);
+
+  // Week-edit modal: edit all recurring days for one customer
+  const [weekEditCustomerId, setWeekEditCustomerId] = useState<string|null>(null);
+  const [weekEditEdits, setWeekEditEdits] = useState<Map<string,{lines:Record<string,number>;active:boolean}>>(new Map());
+  const [weekEditDirty, setWeekEditDirty] = useState<Set<string>>(new Set());
+  const [weekEditSaving, setWeekEditSaving] = useState(false);
+  const [weekEditMsg, setWeekEditMsg] = useState<{ok:boolean;text:string}|null>(null);
 
   function loadOneOff() {
     fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
@@ -438,31 +445,24 @@ export default function BestellingenPage() {
   function loadRecurring() {
     fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{
-        const orders: RecurringOrder[] = d.orders ?? [];
-        setRecurring(orders);
+        setRecurring(d.orders??[]);
         if (d.customers?.length) setCustomers(d.customers);
-        const edits = new Map<string,{lines:Record<string,number>;active:boolean}>();
-        for (const o of orders) {
-          const lines: Record<string,number> = {};
-          for (const l of o.lines) lines[l.breadTypeId] = l.quantity;
-          edits.set(o.id, { lines, active: o.active });
-        }
-        setVastEdits(edits);
-        setVastDirty(new Set());
       });
   }
   function loadSettings() {
     fetch("/digitalbakery/api/settings",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays); });
   }
-  function loadHistory(cid: string) {
-    if (!cid) { setHistoryOrders([]); return; }
+  function loadHistory() {
     setLoadingHistory(true);
-    fetch(`/digitalbakery/api/bestellingen?customerId=${cid}`,{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ setHistoryOrders(d.orders??[]); setLoadingHistory(false); });
+    const params = new URLSearchParams({ from: logboekFrom, to: logboekTo });
+    if (historyCustomerId) params.set("customerId", historyCustomerId);
+    fetch(`/digitalbakery/api/bestellingen?${params}`,{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json()).then(d=>{ setHistoryOrders(d.orders??[]); setLoadingHistory(false); })
+      .catch(()=>setLoadingHistory(false));
   }
   useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); },[fromDate,toDate]);
-  useEffect(()=>{ loadHistory(historyCustomerId); },[historyCustomerId]);
+  useEffect(()=>{ loadHistory(); },[historyCustomerId, logboekFrom, logboekTo]);
 
   async function saveClosedWeekdays(days: number[]) {
     setSavingSettings(true);
@@ -480,6 +480,7 @@ export default function BestellingenPage() {
     if (!confirm("Bestelling verwijderen?")) return;
     await fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}});
     loadOneOff();
+    loadHistory();
   }
 
   function toggleSelect(id: string) {
@@ -517,35 +518,48 @@ export default function BestellingenPage() {
     setSavingEdit(false); setEditingOrderId(null); loadOneOff();
   }
 
-  async function saveVastTable() {
-    setVastSaving(true); setVastMsg(null);
+  function openWeekEdit(customerId: string) {
+    const orders = recurring.filter(o => o.customerId === customerId);
+    const edits = new Map<string,{lines:Record<string,number>;active:boolean}>();
+    for (const o of orders) {
+      const lines: Record<string,number> = {};
+      for (const l of o.lines) lines[l.breadTypeId] = l.quantity;
+      edits.set(o.id, { lines, active: o.active });
+    }
+    setWeekEditEdits(edits);
+    setWeekEditDirty(new Set());
+    setWeekEditMsg(null);
+    setWeekEditCustomerId(customerId);
+  }
+
+  async function saveWeekEdit() {
+    if (!weekEditCustomerId) return;
+    setWeekEditSaving(true); setWeekEditMsg(null);
     try {
-      const toSave = recurring.filter(o => vastDirty.has(o.id));
-      await Promise.all(toSave.map(o => {
-        const edit = vastEdits.get(o.id);
+      const orders = recurring.filter(o => o.customerId === weekEditCustomerId && weekEditDirty.has(o.id));
+      await Promise.all(orders.map(o => {
+        const edit = weekEditEdits.get(o.id);
         if (!edit) return Promise.resolve();
-        // active toggle
-        const activeChanged = edit.active !== o.active;
         const linesPayload = Object.entries(edit.lines).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
         return Promise.all([
           fetch("/digitalbakery/api/bestellingen/recurring", {
             method:"POST", headers:{"Content-Type":"application/json","x-role":role??""},
             body:JSON.stringify({ customerId:o.customerId, weekday:o.weekday, lines:linesPayload }),
           }),
-          activeChanged ? fetch("/digitalbakery/api/bestellingen/recurring", {
+          edit.active !== o.active ? fetch("/digitalbakery/api/bestellingen/recurring", {
             method:"PATCH", headers:{"Content-Type":"application/json","x-role":role??""},
             body:JSON.stringify({ id:o.id, active:edit.active }),
           }) : Promise.resolve(),
         ]);
       }));
-      setVastMsg({ ok:true, text:`✓ ${toSave.length} bestelling${toSave.length!==1?"en":""} opgeslagen.` });
-      setVastDirty(new Set());
+      setWeekEditMsg({ ok:true, text:`✓ Opgeslagen.` });
+      setWeekEditDirty(new Set());
       loadRecurring();
     } catch(e) {
-      setVastMsg({ ok:false, text:`Fout bij opslaan: ${e instanceof Error?e.message:"onbekend"}` });
+      setWeekEditMsg({ ok:false, text:`Fout bij opslaan.` });
     }
-    setVastSaving(false);
-    setTimeout(()=>setVastMsg(null), 5000);
+    setWeekEditSaving(false);
+    setTimeout(()=>setWeekEditMsg(null), 4000);
   }
 
   // Group by date — fix: use T12:00:00Z to avoid timezone issues
@@ -808,68 +822,181 @@ export default function BestellingenPage() {
             )}
           </div>
 
-          {/* week table */}
-          {(()=>{
-            const vastBreadTypes = breadTypes
-              .filter(bt => recurring.some(r => r.lines.some(l => l.breadTypeId === bt.id)) || bt.customerOrderable)
-              .sort((a,b)=>{ const ai=SLUG_ORDER.indexOf(a.slug); const bi=SLUG_ORDER.indexOf(b.slug); return (ai===-1?99:ai)-(bi===-1?99:bi); });
-
-            if (filteredRecurring.length === 0) return (
-              <p style={{ fontSize:13, color:"var(--text-subtle)", textAlign:"center", padding:"1.5rem 0" }}>
-                Geen vaste bestellingen gevonden.
-              </p>
-            );
-
-            const tdStyle: React.CSSProperties = { padding:"6px 8px", borderBottom:"1px solid var(--border)", fontSize:13, verticalAlign:"middle" };
-            const thStyle: React.CSSProperties = { padding:"6px 8px", fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", borderBottom:"2px solid var(--border)", textAlign:"left", whiteSpace:"nowrap" };
-
+          {filteredRecurring.length===0 && (
+            <p style={{ fontSize:13, color:"var(--text-subtle)", textAlign:"center", padding:"1.5rem 0" }}>
+              Geen vaste bestellingen gevonden.
+            </p>
+          )}
+          {[2,3,4,5,6].map(wd=>{
+            const dayOrders=recurringByDay.get(wd)??[];
+            if (dayOrders.length===0) return null;
+            const activeCount=dayOrders.filter(o=>o.active).length;
             return (
+              <section key={wd}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                  <h2 style={{ fontSize:14, textTransform:"uppercase", letterSpacing:"0.06em", color:"var(--text-subtle)", margin:0 }}>{WEEKDAYS[wd]}</h2>
+                  <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{activeCount}/{dayOrders.length} actief</span>
+                  <div style={{ flex:1, height:1, background:"var(--border)" }}/>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {dayOrders.map(order=>(
+                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} onEditWeek={()=>openWeekEdit(order.customerId)} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── LOGBOEK ── */}
+      {tab==="klant" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {/* Filters */}
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+            <div>
+              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Van</label>
+              <input type="date" value={logboekFrom} onChange={e=>setLogboekFrom(e.target.value)}
+                style={{ border:"1px solid var(--border)", borderRadius:7, padding:"7px 10px", fontSize:13, background:"var(--surface)" }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Tot</label>
+              <input type="date" value={logboekTo} onChange={e=>setLogboekTo(e.target.value)}
+                style={{ border:"1px solid var(--border)", borderRadius:7, padding:"7px 10px", fontSize:13, background:"var(--surface)" }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Klant</label>
+              <select value={historyCustomerId} onChange={e=>setHistoryCustomerId(e.target.value)}
+                style={{ border:"1px solid var(--border)", borderRadius:7, padding:"7px 10px", fontSize:13, background:"var(--surface)", minWidth:200 }}>
+                <option value="">Alle klanten</option>
+                {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
+                  <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
+                ))}
+              </select>
+            </div>
+            {historyCustomerId && (
+              <button onClick={()=>setHistoryCustomerId("")} className="btn-secondary" style={{ fontSize:12, padding:"7px 10px" }}>✕ Wissen</button>
+            )}
+          </div>
+
+          {loadingHistory ? (
+            <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p>
+          ) : historyOrders.length === 0 ? (
+            <div className="card" style={{ padding:"2rem", textAlign:"center", color:"var(--text-subtle)", fontSize:13 }}>
+              Geen bestellingen gevonden in deze periode.
+            </div>
+          ) : (()=>{
+            const sorted = [...historyOrders].sort((a,b)=>b.deliveryDate.localeCompare(a.deliveryDate));
+            // Collect all bread types that appear in these orders
+            const btMap = new Map<string,{id:string;name:string}>();
+            for (const o of sorted) for (const l of o.lines) if (l.quantity>0) btMap.set(l.breadTypeId, l.breadType);
+            const logBTs = [...btMap.values()].sort((a,b)=>{
+              const ai=SLUG_ORDER.indexOf(breadTypes.find(x=>x.id===a.id)?.slug??""); const bi=SLUG_ORDER.indexOf(breadTypes.find(x=>x.id===b.id)?.slug??"");
+              return (ai===-1?99:ai)-(bi===-1?99:bi);
+            });
+            const thS: React.CSSProperties = { fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", padding:"5px 8px", textAlign:"right", borderBottom:"2px solid var(--border)", whiteSpace:"nowrap" };
+            const tdS: React.CSSProperties = { fontSize:13, padding:"5px 8px", textAlign:"right", borderBottom:"1px solid var(--border)" };
+            return (
+              <div>
+                <p style={{ fontSize:12, color:"var(--text-subtle)", margin:"0 0 8px" }}>{sorted.length} bestelling{sorted.length!==1?"en":""}</p>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thS, textAlign:"left" }}>Datum</th>
+                        {!historyCustomerId && <th style={{ ...thS, textAlign:"left" }}>Klant</th>}
+                        {logBTs.map(bt=><th key={bt.id} style={thS}>{colName(bt.name)}</th>)}
+                        <th style={thS}>Notities</th>
+                        <th style={thS}>Totaal</th>
+                        {canWrite && <th style={{ ...thS, textAlign:"center" }}></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map(order=>{
+                        const dateStr = order.deliveryDate.includes("T") ? order.deliveryDate.slice(0,10) : order.deliveryDate;
+                        const d = new Date(dateStr+"T12:00:00Z");
+                        const dateLabel = d.toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"});
+                        const isPast = dateStr < today;
+                        const qtyMap = new Map(order.lines.map(l=>[l.breadTypeId, l.quantity]));
+                        const total = order.lines.reduce((s,l)=>s+l.quantity,0);
+                        return (
+                          <tr key={order.id} style={{ opacity: isPast ? 0.75 : 1, background: isPast ? undefined : "var(--accent-light)" }}>
+                            <td style={{ ...tdS, textAlign:"left", whiteSpace:"nowrap", color: isPast ? "var(--text-subtle)" : "var(--text)", fontWeight: isPast ? 400 : 600 }}>{dateLabel}</td>
+                            {!historyCustomerId && <td style={{ ...tdS, textAlign:"left" }}>{order.customer.name}{order.customer.city ? <span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({order.customer.city})</span> : null}</td>}
+                            {logBTs.map(bt=>(
+                              <td key={bt.id} style={{ ...tdS, color: (qtyMap.get(bt.id)??0)>0 ? "var(--text)" : "var(--text-subtle)" }}>
+                                {qtyMap.get(bt.id) || "—"}
+                              </td>
+                            ))}
+                            <td style={{ ...tdS, fontSize:11, color:"var(--text-subtle)", fontStyle:"italic", textAlign:"left", maxWidth:160 }}>{order.notes || ""}</td>
+                            <td style={{ ...tdS, fontWeight:600 }}>{total}</td>
+                            {canWrite && (
+                              <td style={{ ...tdS, textAlign:"center" }}>
+                                {!isPast && (
+                                  <button onClick={()=>deleteOrder(order.id)}
+                                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1, padding:"0 4px" }}
+                                    title="Verwijderen">×</button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── WEEK EDIT MODAL ── */}
+      {weekEditCustomerId && (()=>{
+        const customerOrders = recurring.filter(o=>o.customerId===weekEditCustomerId).sort((a,b)=>a.weekday-b.weekday);
+        const customerName = customerOrders[0]?.customer.name ?? "";
+        const vastBTs = breadTypes
+          .filter(bt=>bt.customerOrderable||customerOrders.some(o=>o.lines.some(l=>l.breadTypeId===bt.id)))
+          .sort((a,b)=>{ const ai=SLUG_ORDER.indexOf(a.slug); const bi=SLUG_ORDER.indexOf(b.slug); return (ai===-1?99:ai)-(bi===-1?99:bi); });
+        const thS: React.CSSProperties = { fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", padding:"6px 8px", borderBottom:"2px solid var(--border)", textAlign:"center", whiteSpace:"nowrap" };
+        const tdS: React.CSSProperties = { padding:"6px 8px", borderBottom:"1px solid var(--border)", textAlign:"center", verticalAlign:"middle" };
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(28,16,9,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:24 }}>
+            <div style={{ background:"var(--surface)", borderRadius:14, width:"100%", maxWidth:760, padding:"1.75rem", display:"flex", flexDirection:"column", gap:16, maxHeight:"90vh", overflowY:"auto" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <h2 style={{ margin:0, fontSize:18 }}>Vaste bestelling — {customerName}</h2>
+                <button onClick={()=>setWeekEditCustomerId(null)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:22, color:"var(--text-subtle)" }}>×</button>
+              </div>
               <div style={{ overflowX:"auto" }}>
                 <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                   <thead>
                     <tr>
-                      <th style={thStyle}>Klant</th>
-                      <th style={thStyle}>Dag</th>
-                      {vastBreadTypes.map(bt=>(
-                        <th key={bt.id} style={{ ...thStyle, textAlign:"center" }}>{colName(bt.name)}</th>
-                      ))}
-                      <th style={{ ...thStyle, textAlign:"center" }}>Actief</th>
+                      <th style={{ ...thS, textAlign:"left" }}>Dag</th>
+                      {vastBTs.map(bt=><th key={bt.id} style={thS}>{colName(bt.name)}</th>)}
+                      <th style={thS}>Actief</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...filteredRecurring].sort((a,b)=>a.customer.name.localeCompare(b.customer.name)||a.weekday-b.weekday).map(order=>{
-                      const edit = vastEdits.get(order.id) ?? { lines:{}, active:order.active };
-                      const isDirty = vastDirty.has(order.id);
-                      function setEdit(upd: Partial<typeof edit>) {
-                        setVastEdits(prev=>new Map(prev).set(order.id,{...edit,...upd}));
-                        setVastDirty(prev=>new Set(prev).add(order.id));
+                    {customerOrders.map(order=>{
+                      const edit = weekEditEdits.get(order.id) ?? { lines:{}, active:order.active };
+                      function setOrdEdit(upd: Partial<typeof edit>) {
+                        setWeekEditEdits(prev=>new Map(prev).set(order.id,{...edit,...upd}));
+                        setWeekEditDirty(prev=>new Set(prev).add(order.id));
                       }
                       return (
-                        <tr key={order.id} style={{ background: isDirty ? "var(--accent-light)" : undefined, opacity: edit.active ? 1 : 0.5 }}>
-                          <td style={tdStyle}>{order.customer.name}{order.customer.city?<span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({order.customer.city})</span>:null}</td>
-                          <td style={{ ...tdStyle, color:"var(--text-subtle)", whiteSpace:"nowrap" }}>{WEEKDAYS[order.weekday]}</td>
-                          {vastBreadTypes.map(bt=>(
-                            <td key={bt.id} style={{ ...tdStyle, textAlign:"center" }}>
-                              {canWriteRecurring ? (
-                                <input type="number" min={0} max={99}
-                                  value={edit.lines[bt.id] ?? 0}
-                                  onChange={e=>setEdit({ lines:{...edit.lines,[bt.id]:Math.max(0,parseInt(e.target.value)||0)} })}
-                                  style={{ width:44, border:"1px solid var(--border)", borderRadius:5, padding:"3px 5px", fontSize:12, textAlign:"center", background:"var(--surface)" }}
-                                />
-                              ) : (
-                                <span>{edit.lines[bt.id] || ""}</span>
-                              )}
+                        <tr key={order.id} style={{ opacity: edit.active ? 1 : 0.5, background: weekEditDirty.has(order.id) ? "var(--accent-light)" : undefined }}>
+                          <td style={{ ...tdS, textAlign:"left", fontWeight:500 }}>{WEEKDAYS[order.weekday]}</td>
+                          {vastBTs.map(bt=>(
+                            <td key={bt.id} style={tdS}>
+                              <input type="number" min={0} max={99}
+                                value={edit.lines[bt.id] ?? 0}
+                                onChange={e=>setOrdEdit({ lines:{...edit.lines,[bt.id]:Math.max(0,parseInt(e.target.value)||0)} })}
+                                style={{ width:46, border:"1px solid var(--border)", borderRadius:5, padding:"3px 5px", fontSize:12, textAlign:"center", background:"var(--surface)" }}
+                              />
                             </td>
                           ))}
-                          <td style={{ ...tdStyle, textAlign:"center" }}>
-                            {canWriteRecurring ? (
-                              <input type="checkbox" checked={edit.active}
-                                onChange={e=>setEdit({ active:e.target.checked })}
-                                style={{ width:16, height:16, cursor:"pointer" }}
-                              />
-                            ) : (
-                              <span>{edit.active ? "✓" : "–"}</span>
-                            )}
+                          <td style={tdS}>
+                            <input type="checkbox" checked={edit.active} onChange={e=>setOrdEdit({ active:e.target.checked })} style={{ width:16, height:16, cursor:"pointer" }} />
                           </td>
                         </tr>
                       );
@@ -877,91 +1004,18 @@ export default function BestellingenPage() {
                   </tbody>
                 </table>
               </div>
-            );
-          })()}
-
-          {/* save bar */}
-          {canWriteRecurring && (
-            <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:4 }}>
-              <button onClick={saveVastTable} disabled={vastSaving || vastDirty.size===0}
-                style={{ padding:"9px 22px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontWeight:600, fontSize:13, cursor: vastDirty.size===0 ? "default" : "pointer", opacity: vastDirty.size===0 ? 0.5 : 1 }}>
-                {vastSaving ? "Opslaan…" : `Opslaan${vastDirty.size>0?` (${vastDirty.size} gewijzigd)`:""}`}
-              </button>
-              {vastMsg && (
-                <span style={{ fontSize:13, color: vastMsg.ok ? "var(--accent)" : "var(--danger)" }}>{vastMsg.text}</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── LOGBOEK ── */}
-      {tab==="klant" && (
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          <div style={{ display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end" }}>
-            <div>
-              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:6 }}>Klant</label>
-              <select value={historyCustomerId} onChange={e=>setHistoryCustomerId(e.target.value)}
-                style={{ border:"1px solid var(--border)", borderRadius:7, padding:"8px 12px", fontSize:13, background:"var(--surface)", minWidth:260 }}>
-                <option value="">— kies een klant —</option>
-                {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
-                  <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
-                ))}
-              </select>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <button onClick={saveWeekEdit} disabled={weekEditSaving||weekEditDirty.size===0}
+                  style={{ padding:"9px 22px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontWeight:600, fontSize:13, cursor: weekEditDirty.size===0?"default":"pointer", opacity: weekEditDirty.size===0?0.5:1 }}>
+                  {weekEditSaving ? "Opslaan…" : `Opslaan${weekEditDirty.size>0?` (${weekEditDirty.size} gewijzigd)`:""}`}
+                </button>
+                <button onClick={()=>setWeekEditCustomerId(null)} className="btn-secondary" style={{ fontSize:13 }}>Sluiten</button>
+                {weekEditMsg && <span style={{ fontSize:13, color: weekEditMsg.ok?"var(--accent)":"var(--danger)" }}>{weekEditMsg.text}</span>}
+              </div>
             </div>
           </div>
-
-          {historyCustomerId && (
-            loadingHistory ? <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p> :
-            historyOrders.length === 0 ? (
-              <div className="card" style={{ padding:"2rem", textAlign:"center", color:"var(--text-subtle)", fontSize:13 }}>
-                Geen bestellingen gevonden voor deze klant.
-              </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                <p style={{ fontSize:12, color:"var(--text-subtle)", margin:0 }}>{historyOrders.length} bestelling{historyOrders.length!==1?"en":""} gevonden</p>
-                {[...historyOrders].sort((a,b)=>b.deliveryDate.localeCompare(a.deliveryDate)).map(order=>{
-                  const dateStr = order.deliveryDate.includes("T") ? order.deliveryDate.slice(0,10) : order.deliveryDate;
-                  const d = new Date(dateStr+"T12:00:00Z");
-                  const dateLabel = d.toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"long",year:"numeric"});
-                  const isPast = dateStr < today;
-                  const lines = order.lines.filter(l=>l.quantity>0);
-                  return (
-                    <div key={order.id} style={{
-                      border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px",
-                      background: isPast ? "var(--surface-2)" : "var(--surface)",
-                      opacity: isPast ? 0.75 : 1,
-                    }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:lines.length?6:0 }}>
-                        <div style={{ flex:1, display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
-                          <span style={{ fontWeight:600, fontSize:13, color: isPast ? "var(--text-subtle)" : "inherit" }}>{dateLabel}</span>
-                          {isPast
-                            ? <span style={{ fontSize:10, background:"var(--surface-2)", color:"var(--text-subtle)", padding:"2px 7px", borderRadius:8, border:"1px solid var(--border)" }}>Verleden</span>
-                            : <span style={{ fontSize:10, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:8 }}>Toekomst</span>
-                          }
-                          {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
-                        </div>
-                        {!isPast && canWrite && (
-                          <button onClick={()=>deleteOrder(order.id)}
-                            style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:18, lineHeight:1, padding:"0 4px" }}
-                            title="Bestelling verwijderen">×</button>
-                        )}
-                      </div>
-                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                        {lines.map(l=>(
-                          <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>
-                            {colName(l.breadType.name)} {l.quantity}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          )}
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

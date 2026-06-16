@@ -301,12 +301,19 @@ export default function ReceptenPage() {
   }
   useEffect(() => { load(); }, []);
 
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    await fetch(`/digitalbakery/api/bread-types?id=${deleteTarget.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    const res = await fetch(`/digitalbakery/api/bread-types?id=${deleteTarget.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    const data = await res.json().catch(() => ({}));
     setDeleting(false);
     setDeleteTarget(null);
+    if (data.deleted) setDeleteMsg(`✓ Verwijderd.`);
+    else if (data.deactivated) setDeleteMsg(`Broodsoort heeft bestellingen — gedeactiveerd (niet zichtbaar voor klanten).`);
+    else setDeleteMsg(`Fout bij verwijderen.`);
+    setTimeout(() => setDeleteMsg(null), 5000);
     load();
   }
 
@@ -320,6 +327,7 @@ export default function ReceptenPage() {
           <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13 }}>
             {isOwner ? "Bekijk en bewerk bakkers-percentages per broodsoort" : "Grammen en ml voor 1 brood"}
           </p>
+          {deleteMsg && <p style={{ fontSize: 13, color: deleteMsg.startsWith("✓") ? "var(--accent)" : "var(--text-subtle)", margin: "4px 0 0" }}>{deleteMsg}</p>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {isOwner && (

@@ -188,6 +188,8 @@ export default function KlantenPage() {
 
   const [toast, setToast] = useState("");
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
+  const [deleteModal, setDeleteModal] = useState<{ customer: Customer; needsForce: boolean; orderCount: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function createCustomer(data: any) {
     const res = await fetch("/digitalbakery/api/customers", {
@@ -213,15 +215,22 @@ export default function KlantenPage() {
     showToast(`✓ ${data.name ?? "Klant"} bijgewerkt.`);
   }
 
-  async function deleteCustomer(c: Customer) {
-    if (!confirm(`"${c.name}" verwijderen?`)) return;
+  async function startDelete(c: Customer) {
     const res  = await fetch(`/digitalbakery/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     const data = await res.json();
+    if (data.deleted) { showToast(`✓ ${c.name} verwijderd.`); load(); return; }
     if (data.needsConfirm) {
-      const orders = data.hasOrders + data.hasRecurring;
-      if (!confirm(`Let op: ${c.name} heeft ${orders} bestelling(en) in het systeem. Als je verwijdert gaan al deze bestellingen ook verloren. Weet je het zeker?`)) return;
-      await fetch(`/digitalbakery/api/customers?id=${c.id}&force=1`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+      setDeleteModal({ customer: c, needsForce: true, orderCount: (data.hasOrders ?? 0) + (data.hasRecurring ?? 0) });
     }
+  }
+
+  async function confirmForceDelete() {
+    if (!deleteModal) return;
+    setDeleting(true);
+    await fetch(`/digitalbakery/api/customers?id=${deleteModal.customer.id}&force=1`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    setDeleting(false);
+    setDeleteModal(null);
+    showToast(`✓ ${deleteModal.customer.name} verwijderd.`);
     load();
   }
 
@@ -353,7 +362,7 @@ export default function KlantenPage() {
                   <button onClick={() => toggleActive(c)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                     {c.active ? "Deactiveer" : "Activeer"}
                   </button>
-                  <button onClick={() => deleteCustomer(c)} style={{
+                  <button onClick={() => startDelete(c)} style={{
                     fontSize: 12, padding: "5px 12px", borderRadius: 7,
                     border: "1px solid #fca5a5", background: "none", cursor: "pointer", color: "var(--danger)",
                   }}>
@@ -371,6 +380,29 @@ export default function KlantenPage() {
           customer={accountModal}
           onClose={() => setAccountModal(null)}
         />
+      )}
+
+      {deleteModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(28,16,9,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:24 }}>
+          <div style={{ background:"var(--surface)", borderRadius:14, width:"100%", maxWidth:420, padding:"1.75rem", display:"flex", flexDirection:"column", gap:16 }}>
+            <h2 style={{ margin:0, fontSize:18 }}>Klant verwijderen</h2>
+            <p style={{ fontSize:14, color:"var(--text-muted)", margin:0 }}>
+              Weet je zeker dat je <strong>{deleteModal.customer.name}</strong> wilt verwijderen?
+            </p>
+            {deleteModal.orderCount > 0 && (
+              <p style={{ fontSize:13, background:"var(--warn-bg)", padding:"8px 12px", borderRadius:8, margin:0 }}>
+                Let op: deze klant heeft <strong>{deleteModal.orderCount}</strong> bestelling(en). Die worden ook verwijderd.
+              </p>
+            )}
+            <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+              <button onClick={()=>setDeleteModal(null)} className="btn-secondary" disabled={deleting}>Annuleren</button>
+              <button onClick={confirmForceDelete} disabled={deleting}
+                style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"var(--danger)", color:"white", cursor:"pointer", fontSize:14, fontFamily:"var(--font-body)" }}>
+                {deleting ? "Verwijderen…" : "Ja, verwijderen"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

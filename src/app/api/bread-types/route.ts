@@ -91,13 +91,17 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
-    // Check for active orders first
-    const hasOrders = await prisma.oneOffOrderLine.count({ where: { breadTypeId: id } });
-    if (hasOrders > 0) {
-      // Soft delete
+    // Check for related order lines — soft-delete if any exist
+    const [oneOffCount, recurringCount] = await Promise.all([
+      prisma.oneOffOrderLine.count({ where: { breadTypeId: id } }),
+      prisma.recurringOrderLine.count({ where: { breadTypeId: id } }),
+    ]);
+    if (oneOffCount > 0 || recurringCount > 0) {
       await prisma.breadType.updateMany({ where: { id, tenantId: tid }, data: { active: false } });
       return Response.json({ deleted: false, deactivated: true });
     }
+    // Hard delete — remove FK dependents first
+    await prisma.productionDayLine.deleteMany({ where: { breadTypeId: id } });
     await prisma.recipe.deleteMany({ where: { breadTypeId: id } });
     await prisma.breadType.deleteMany({ where: { id, tenantId: tid } });
     return Response.json({ deleted: true });
