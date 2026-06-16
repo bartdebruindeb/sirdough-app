@@ -170,14 +170,27 @@ type MapStop = {
   inBusAt: string | null; deliveredAt: string | null;
 };
 
+// Geocode with localStorage cache (TTL 30 days)
 async function geocodeStop(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
+  const key = `geo:${address}|${city ?? ""}`;
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached) {
+      const { lat, lng, ts } = JSON.parse(cached);
+      if (Date.now() - ts < 30 * 24 * 3600 * 1000) return { lat, lng };
+    }
+  } catch {}
   const q = encodeURIComponent(`${address}, ${city ?? ""}, Nederland`);
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
       headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
     });
     const d = await r.json();
-    if (d[0]) return { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon) };
+    if (d[0]) {
+      const coord = { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon) };
+      try { localStorage.setItem(key, JSON.stringify({ ...coord, ts: Date.now() })); } catch {}
+      return coord;
+    }
   } catch {}
   return null;
 }
@@ -187,36 +200,46 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   const mapRef     = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
 
-  const [stops, setStops]     = useState<MapStop[]>([]);
-  const [loaded, setLoaded]   = useState(false);
+  const [stops, setStops]         = useState<MapStop[]>([]);
+  const [loaded, setLoaded]       = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [mapReady, setMapReady]   = useState(false);
 
+  // Phase 1: load data
   useEffect(() => {
     let cancelled = false;
-
-    async function init() {
-      const [bezorgenRes, statusRes] = await Promise.all([
-        fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
-        fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
-      ]);
+    Promise.all([
+      fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+    ]).then(([bezorgenRes, statusRes]) => {
       if (cancelled) return;
-
       const rows: any[] = bezorgenRes.rows ?? [];
       const statuses: DeliveryStatus[] = statusRes.statuses ?? [];
       const statusMap = new Map(statuses.map(s => [s.customerId, s]));
-
-      const mapped: MapStop[] = rows.map(r => {
+      setStops(rows.map(r => {
         const st = statusMap.get(r.customerId);
         return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
-      });
-      setStops(mapped);
+      }));
       setLoaded(true);
+    }).catch(() => { if (!cancelled) setLoaded(true); });
+    const interval = setInterval(() => {
+      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
+        .then(r => r.json()).then(d => { if (!cancelled) setStops(prev => prev.map(s => { const st = (d.statuses ?? []).find((x: any) => x.customerId === s.customerId); return st ? { ...s, inBusAt: st.inBusAt, deliveredAt: st.deliveredAt } : s; })); })
+        .catch(() => {});
+    }, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, today]);
 
-      if (!mapRef.current || mapped.length === 0 || cancelled) return;
+  // Phase 2: init map after data loaded and div mounted
+  useEffect(() => {
+    if (!loaded || stops.length === 0 || !mapRef.current) return;
+    let cancelled = false;
 
+    (async () => {
       const leafletMod = await import("leaflet").catch(() => null);
       const L = leafletMod?.default ?? leafletMod;
-      if (!L || cancelled) return;
+      if (!L || cancelled || !mapRef.current) return;
 
       // @ts-expect-error - leaflet internals
       delete L.Icon.Default.prototype._getIconUrl;
@@ -226,23 +249,23 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
       });
 
-      if (leafletRef.current) leafletRef.current.remove();
+      if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
       const map = L.map(mapRef.current, { zoomControl: false, scrollWheelZoom: false }).setView([52.01, 4.36], 12);
       leafletRef.current = map;
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors, © CartoDB",
         subdomains: "abcd", maxZoom: 19,
       }).addTo(map);
+      setMapReady(true);
 
       setGeocoding(true);
       const bounds: [number, number][] = [];
-      for (const stop of mapped) {
+      for (const stop of stops) {
         if (!stop.address || cancelled) continue;
-        await new Promise(r => setTimeout(r, 1100));
         const coord = await geocodeStop(stop.address, stop.city);
         if (!coord || cancelled) continue;
+        // Only delay if not cached (fresh fetch)
         bounds.push([coord.lat, coord.lng]);
-
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
         const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "#6b7280";
@@ -252,24 +275,17 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           className: "", iconSize: [30, 30], iconAnchor: [15, 15],
         });
         const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Te bezorgen";
-        L.marker([coord.lat, coord.lng], { icon })
-          .addTo(map)
+        L.marker([coord.lat, coord.lng], { icon }).addTo(map)
           .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><small style="color:#666">${stop.address}</small>` : ""}`);
+        await new Promise(r => setTimeout(r, 1100)); // Nominatim rate limit
       }
       if (!cancelled && bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
       if (!cancelled) setGeocoding(false);
-    }
+    })();
 
-    init();
-    const interval = setInterval(() => {
-      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
-        .then(r => r.json()).then(d => { if (!cancelled) setStops(prev => prev.map(s => { const st = (d.statuses ?? []).find((x: any) => x.customerId === s.customerId); return st ? { ...s, inBusAt: st.inBusAt, deliveredAt: st.deliveredAt } : s; })); })
-        .catch(() => {});
-    }, 30000);
-
-    return () => { cancelled = true; clearInterval(interval); leafletRef.current?.remove(); leafletRef.current = null; };
+    return () => { cancelled = true; leafletRef.current?.remove(); leafletRef.current = null; setMapReady(false); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, today]);
+  }, [loaded, stops.length]);
 
   if (!loaded) return null;
   const total     = stops.length;

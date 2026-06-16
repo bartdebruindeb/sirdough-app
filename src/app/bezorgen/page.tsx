@@ -2,6 +2,7 @@
 import { useRole } from "@/lib/role-context";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import type { MapRow as BezorgenMapRow } from "./BezorgenMap";
 
 const BezorgenMap = dynamic(() => import("./BezorgenMap"), { ssr: false, loading: () => null });
 
@@ -222,8 +223,19 @@ export default function BezorgenPage() {
   const activeBreadTypes = breadTypes.filter(bt => rows.some(r => (r.quantities[bt.id] ?? 0) > 0));
   const mapsUrl = buildMapsUrl(busRows);
 
+  // All stops for the map with status
+  const mapRows: BezorgenMapRow[] = rows.map(r => ({
+    customerId: r.customerId,
+    name: r.name,
+    city: r.city,
+    address: r.address,
+    busIndex: busOrder.includes(r.customerId) ? busOrder.indexOf(r.customerId) : null,
+    delivered: !!delivered[r.customerId],
+    deliveredAt: deliveredTimes[r.customerId] ?? null,
+  }));
+
   return (
-    <div style={{ padding: "1.25rem 1.5rem", maxWidth: 960 }}>
+    <div style={{ padding: "1.25rem 1.5rem", maxWidth: 1400 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", flexWrap: "wrap", gap: 10 }}>
         <div>
@@ -262,200 +274,195 @@ export default function BezorgenPage() {
       )}
 
       {!loading && !error && data && rows.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        /* ── WAZE-STYLE: MAP LEFT, LIST RIGHT ── */
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
 
-          {/* ── ROUTE MAP ── */}
-          {busRows.length > 0 && (
+          {/* MAP — sticky, fills viewport height */}
+          <div style={{
+            flex: "0 0 58%", position: "sticky", top: 16,
+            height: "calc(100vh - 160px)", minHeight: 480,
+            borderRadius: 14, overflow: "hidden",
+            border: "1px solid var(--border)",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+          }}>
+            <BezorgenMap rows={mapRows} />
+            {/* Google Maps button overlay */}
+            {busRows.length > 0 && mapsUrl && (
+              <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{
+                position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)",
+                background: "#1a73e8", color: "white", textDecoration: "none",
+                borderRadius: 24, padding: "9px 20px", fontSize: 13, fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6, zIndex: 500,
+                boxShadow: "0 3px 10px rgba(0,0,0,0.25)",
+              }}>
+                📍 Open route in Maps
+              </a>
+            )}
+          </div>
+
+          {/* LIST PANEL — scrollable */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+
+            {/* ── BUS PANEL ── */}
             <section>
-              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Route kaart</h2>
-              <BezorgenMap rows={busRows} />
-            </section>
-          )}
-
-          {/* ── BUS PANEL ── */}
-          <section>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <h2 style={{ fontSize: 16, margin: 0 }}>
+              <h2 style={{ fontSize: 15, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
                 🚐 In de bus
                 {busRows.length > 0 && (
-                  <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400 }}>
                     {busRows.length} stops
                   </span>
                 )}
               </h2>
-              {busRows.length > 0 && mapsUrl && (
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{
-                  background: "#1a73e8", color: "white", textDecoration: "none",
-                  borderRadius: 8, padding: "8px 16px", fontSize: 14, fontWeight: 500,
-                  display: "flex", alignItems: "center", gap: 6,
+
+              {busRows.length === 0 ? (
+                <div style={{
+                  border: "2px dashed var(--border)", borderRadius: 12, padding: "1.25rem",
+                  textAlign: "center", color: "var(--text-subtle)", fontSize: 13,
                 }}>
-                  📍 Open route in Maps
-                </a>
-              )}
-            </div>
-
-            {busRows.length === 0 ? (
-              <div style={{
-                border: "2px dashed var(--border)", borderRadius: 12, padding: "1.5rem",
-                textAlign: "center", color: "var(--text-subtle)", fontSize: 13,
-              }}>
-                Voeg stops toe vanuit de lijst hieronder
-              </div>
-            ) : (
-              <div className="card" style={{ overflow: "hidden" }}>
-                {busRows.map((row, i) => (
-                  <div
-                    key={row.customerId}
-                    draggable
-                    onDragStart={() => onDragStart(row.customerId)}
-                    onDragOver={e => onDragOver(e, row.customerId)}
-                    onDrop={() => onDrop(row.customerId)}
-                    onDragEnd={() => { setDragging(null); setDragOver(null); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "10px 14px",
-                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                      background: dragOver === row.customerId ? "var(--accent-light)" : "transparent",
-                      cursor: "grab", transition: "background 0.1s",
-                    }}
-                  >
-                    <span style={{ color: "var(--border-strong)", fontSize: 16, cursor: "grab" }}>⠿</span>
-                    <span style={{ fontSize: 12, color: "var(--text-subtle)", minWidth: 18 }}>{i + 1}.</span>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 14, fontWeight: 500 }}>{row.name}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{row.city}</span>
-                      {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 8 }}>{row.notes}</span>}
-                      {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
-                        <span key={ni} style={{ fontSize: 11, color: "var(--warn)", marginLeft: 8, display: "block" }}>📝 {n}</span>
-                      ))}
-                    </div>
-                    {/* Quantities summary */}
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      {activeBreadTypes.filter(bt => (row.quantities[bt.id] ?? 0) > 0).map(bt => (
-                        <span key={bt.id} style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 6px", borderRadius: 10 }}>
-                          {shortName(bt.name)} {row.quantities[bt.id]}
-                        </span>
-                      ))}
-                    </div>
-                    {/* Delivered button */}
-                    <button
-                      onClick={() => toggleDelivered(row.customerId)}
+                  Voeg stops toe vanuit de lijst hieronder
+                </div>
+              ) : (
+                <div className="card" style={{ overflow: "hidden" }}>
+                  {busRows.map((row, i) => (
+                    <div
+                      key={row.customerId}
+                      draggable
+                      onDragStart={() => onDragStart(row.customerId)}
+                      onDragOver={e => onDragOver(e, row.customerId)}
+                      onDrop={() => onDrop(row.customerId)}
+                      onDragEnd={() => { setDragging(null); setDragOver(null); }}
                       style={{
-                        width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                        border: "2px solid var(--border-strong)", background: "transparent",
-                        cursor: "pointer", fontSize: 15, color: "var(--border-strong)",
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "9px 12px",
+                        borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                        background: dragOver === row.customerId ? "var(--accent-light)" : "transparent",
+                        cursor: "grab",
+                      }}
+                    >
+                      <span style={{ color: "var(--border-strong)", fontSize: 14, cursor: "grab", flexShrink: 0 }}>⠿</span>
+                      {/* Stop number bubble */}
+                      <div style={{
+                        width: 24, height: 24, borderRadius: "50%", background: "#6366f1",
+                        color: "white", fontSize: 11, fontWeight: 700, flexShrink: 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                      }}
-                      title="Geleverd"
-                    >✓</button>
-                    {/* Remove from bus */}
-                    <button
-                      onClick={() => removeFromBus(row.customerId)}
-                      style={{
-                        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                        border: "none", background: "none", cursor: "pointer",
-                        fontSize: 16, color: "var(--text-subtle)",
-                      }}
-                      title="Verwijder uit bus"
-                    >×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ── FULL LIST ── */}
-          <section>
-            <h2 style={{ fontSize: 16, marginBottom: 10 }}>
-              Alle bestellingen
-              {pendingRows.length > 0 && (
-                <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>
-                  {pendingRows.length} nog te bezorgen
-                </span>
-              )}
-            </h2>
-            <div className="card" style={{ overflow: "hidden" }}>
-              {rows.map((row, i) => {
-                const isDone = delivered[row.customerId];
-                const inBus  = busOrder.includes(row.customerId);
-                return (
-                  <div key={row.customerId} style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-                    borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                    background: isDone ? "var(--success-bg)" : inBus ? "#fffbeb" : "transparent",
-                    opacity: isDone ? 0.5 : 1, flexWrap: "wrap",
-                  }}>
-                    {/* Primary action */}
-                    {isDone ? (
+                      }}>{i + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{row.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                        {row.notes && <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>{row.notes}</div>}
+                        {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
+                          <div key={ni} style={{ fontSize: 11, color: "var(--warn)" }}>📝 {n}</div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 120 }}>
+                        {activeBreadTypes.filter(bt => (row.quantities[bt.id] ?? 0) > 0).map(bt => (
+                          <span key={bt.id} style={{ fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 5px", borderRadius: 8, whiteSpace: "nowrap" }}>
+                            {shortName(bt.name)} {row.quantities[bt.id]}
+                          </span>
+                        ))}
+                      </div>
                       <button onClick={() => toggleDelivered(row.customerId)}
-                        style={{
-                          width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                          border: "2px solid var(--success)", background: "var(--success)",
-                          cursor: "pointer", fontSize: 15, color: "white",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }} title="Markeer als niet geleverd">✓</button>
-                    ) : inBus ? (
+                        style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 13, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title="Geleverd">✓</button>
                       <button onClick={() => removeFromBus(row.customerId)}
-                        style={{
-                          width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                          border: "2px solid var(--accent)", background: "var(--accent-light)",
-                          cursor: "pointer", fontSize: 15, color: "var(--accent)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }} title="Verwijder uit bus">🚐</button>
-                    ) : (
-                      <button onClick={() => addToBus(row.customerId)}
-                        style={{
-                          width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                          border: "2px solid var(--border-strong)", background: "transparent",
-                          cursor: "pointer", fontSize: 15, color: "var(--border-strong)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }} title="Voeg toe aan bus">+</button>
-                    )}
-
-                    {/* Name + city */}
-                    <div style={{ flex: 1, minWidth: 120 }}>
-                      <span style={{ fontSize: 14, fontWeight: row.isShop ? 600 : 500, textDecoration: isDone ? "line-through" : "none" }}>
-                        {row.name}
-                      </span>
-                      <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{row.city}</span>
-                      {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>{row.notes}</span>}
-                      {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
-                        <span key={ni} style={{ fontSize: 11, color: "var(--warn)", display: "block" }}>📝 {n}</span>
-                      ))}
+                        style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 15, color: "var(--text-subtle)" }}
+                        title="Verwijder uit bus">×</button>
                     </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
-                    {/* Quantities */}
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      {activeBreadTypes.filter(bt => (row.quantities[bt.id] ?? 0) > 0).map(bt => (
-                        <span key={bt.id} style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 6px", borderRadius: 10, whiteSpace: "nowrap" }}>
-                          {shortName(bt.name)} {row.quantities[bt.id]}
+            {/* ── DELIVERED ── */}
+            {deliveredCount > 0 && (
+              <section>
+                <h2 style={{ fontSize: 15, margin: "0 0 8px", color: "var(--success)" }}>
+                  ✓ Geleverd
+                  <span style={{ fontSize: 12, fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>
+                    {deliveredCount}/{rows.length}
+                  </span>
+                </h2>
+                <div className="card" style={{ overflow: "hidden" }}>
+                  {rows.filter(r => delivered[r.customerId]).map((row, i, arr) => (
+                    <div key={row.customerId} style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                      background: "var(--success-bg)",
+                    }}>
+                      <button onClick={() => toggleDelivered(row.customerId)}
+                        style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--success)", background: "var(--success)", cursor: "pointer", fontSize: 13, color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title="Ongedaan maken">✓</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, textDecoration: "line-through", color: "var(--text-muted)" }}>{row.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                      </div>
+                      {deliveredTimes[row.customerId] && (
+                        <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>
+                          {new Date(deliveredTimes[row.customerId]).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                         </span>
-                      ))}
+                      )}
                     </div>
+                  ))}
+                  {deliveredCount === rows.length && (
+                    <div style={{ padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--success)", borderTop: "1px solid var(--border)" }}>
+                      🎉 Alles bezorgd!
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
 
-                    {/* Note */}
-                    {canNote && (
-                      <button onClick={() => { setNoteModal({ customerId: row.customerId, name: row.name }); setNoteText(""); }}
-                        style={{
-                          width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                          border: "none", background: "none", cursor: "pointer",
-                          fontSize: 14, color: "var(--text-subtle)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }} title="Notitie toevoegen">📝</button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+            {/* ── ALLE BESTELLINGEN ── */}
+            <section>
+              <h2 style={{ fontSize: 15, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
+                Nog te bezorgen
+                {pendingRows.length > 0 && (
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400 }}>
+                    {pendingRows.length}
+                  </span>
+                )}
+              </h2>
+              {pendingRows.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-subtle)", padding: "10px 14px" }}>
+                  Alle stops zijn ingepland of geleverd.
+                </div>
+              ) : (
+                <div className="card" style={{ overflow: "hidden" }}>
+                  {pendingRows.map((row, i) => (
+                    <div key={row.customerId} style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                    }}>
+                      <button onClick={() => addToBus(row.customerId)}
+                        style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 15, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title="Voeg toe aan bus">+</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: row.isShop ? 600 : 500 }}>{row.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                        {row.notes && <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>{row.notes}</div>}
+                        {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
+                          <div key={ni} style={{ fontSize: 11, color: "var(--warn)" }}>📝 {n}</div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 120 }}>
+                        {activeBreadTypes.filter(bt => (row.quantities[bt.id] ?? 0) > 0).map(bt => (
+                          <span key={bt.id} style={{ fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 5px", borderRadius: 8, whiteSpace: "nowrap" }}>
+                            {shortName(bt.name)} {row.quantities[bt.id]}
+                          </span>
+                        ))}
+                      </div>
+                      {canNote && (
+                        <button onClick={() => { setNoteModal({ customerId: row.customerId, name: row.name }); setNoteText(""); }}
+                          style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "var(--text-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          title="Notitie toevoegen">📝</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
-          {/* Delivered summary */}
-          {deliveredCount > 0 && (
-            <div style={{ padding: "10px 14px", background: "var(--success-bg)", border: "1px solid #86efac", borderRadius: 10, fontSize: 13, color: "var(--success)", display: "flex", justifyContent: "space-between" }}>
-              <span>✓ {deliveredCount} van {rows.length} geleverd</span>
-              {deliveredCount === rows.length && <strong>🎉 Alles bezorgd!</strong>}
-            </div>
-          )}
+          </div>{/* end list panel */}
         </div>
       )}
 
