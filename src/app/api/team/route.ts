@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const users = await prisma.user.findMany({
-      where: { tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"] } },
+      where: { tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER"] } },
       orderBy: { name: "asc" },
       select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
     });
@@ -38,7 +38,7 @@ const InviteWorkerSchema = z.object({
   id: z.string().optional(),
   email: z.string().email(),
   name: z.string().optional(),
-  role: z.enum(["OWNER","ORDER_TABLET","BAKKER","BEZORGER"]).default("BAKKER"),
+  role: z.enum(["OWNER","ORDER_TABLET","BAKKER"]).default("BAKKER"),
 });
 
 export async function POST(req: Request) {
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
 const UpdateWorkerSchema = z.object({
   id: z.string(),
   active: z.boolean().optional(),
-  role: z.enum(["OWNER","ORDER_TABLET","BAKKER","BEZORGER"]).optional(),
+  role: z.enum(["OWNER","ORDER_TABLET","BAKKER"]).optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -154,7 +154,7 @@ export async function DELETE(req: Request) {
       }
     }
 
-    await prisma.user.deleteMany({ where: { id, tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"] } } });
+    await prisma.user.deleteMany({ where: { id, tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER"] } } });
     return new Response(null, { status: 204 });
   } catch (e) { return toResponse(e); }
 }

@@ -119,7 +119,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Datum</label>
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp} />
+          <input type="date" value={date} min={today} onChange={e=>setDate(e.target.value)} style={inp} />
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Opmerkingen</label>
@@ -130,7 +130,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
         {breadTypes.map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
+            <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
               style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
           </div>
         ))}
@@ -170,7 +170,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
     });
     setSaving(false);
     if (res.ok) {
-      setQty({}); setNotes(""); setCustomerId(""); onSaved();
+      setQty({}); setNotes(""); onSaved();
       setSuccess(`✓ Vaste bestelling voor ${customerName} (${WEEKDAYS[weekday]}) toegevoegd.`);
       setTimeout(() => setSuccess(""), 4000);
     }
@@ -208,7 +208,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         {breadTypes.map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} min={0} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:parseInt(e.target.value)||0}))} placeholder="0"
+            <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
               style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
           </div>
         ))}

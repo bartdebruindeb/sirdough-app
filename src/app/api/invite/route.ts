@@ -59,7 +59,7 @@ export async function PUT(req: Request) {
     const passwordHash = await bcrypt.hash(input.password, 12);
 
     // Check if this is a worker invite (customerId is actually a userId)
-    const workerUser = await prisma.user.findFirst({ where: { id: invite.customerId, role: { in: ["OWNER","ORDER_TABLET","BAKKER","BEZORGER"] } } });
+    const workerUser = await prisma.user.findFirst({ where: { id: invite.customerId, role: { in: ["OWNER","ORDER_TABLET","BAKKER"] } } });
     if (workerUser) {
       await prisma.user.update({ where: { id: workerUser.id }, data: { passwordHash, active: true } });
       await prisma.inviteToken.update({ where: { token: input.token }, data: { usedAt: new Date() } });

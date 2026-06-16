@@ -50,10 +50,17 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, CreateCustomerSchema);
+    const normalizedName = input.name.trim();
+    const duplicate = await prisma.customer.findFirst({
+      where: { tenantId: tid, name: { equals: normalizedName, mode: "insensitive" } },
+    });
+    if (duplicate) {
+      return Response.json({ error: "CONFLICT", message: `Er bestaat al een klant met de naam "${duplicate.name}".` }, { status: 409 });
+    }
     const customer = await prisma.customer.create({
       data: {
         tenantId: tid,
-        name: input.name,
+        name: normalizedName,
         city: input.city || null,
         address: input.address || null,
         email: input.email || null,

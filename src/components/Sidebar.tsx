@@ -10,7 +10,6 @@ const ROLE_COLORS: Record<AppRole, string> = {
   OWNER:        "#b45309",
   ORDER_TABLET: "#0369a1",
   BAKKER:       "#15803d",
-  BEZORGER:     "#7c3aed",
 };
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {

@@ -15,6 +15,10 @@ type DeliveryData = {
   cityRoutes: { city: string; sortOrder: number }[];
   rows: DeliveryRow[]; role: string;
 };
+type DeliveryStatus = {
+  customerId: string; customerName: string; customerCity: string | null;
+  inBusAt: string | null; deliveredAt: string | null;
+};
 
 function getWeekday(date: string) {
   const d = new Date(date + "T12:00:00Z");
@@ -25,7 +29,6 @@ function getWeekday(date: string) {
 function buildMapsUrl(rows: DeliveryRow[]): string {
   const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(r.address));
   if (addresses.length === 0) return "";
-  // Start from current location
   const destination = addresses[addresses.length - 1];
   const waypoints = addresses.slice(0, -1).join("|");
   let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
@@ -40,6 +43,11 @@ function shortName(name: string) {
     .replace("Gekiemde Rogge", "G.Rogge").replace("Volkoren", "Volk.");
 }
 
+function fmtTime(iso: string | null) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function BezorgenPage() {
   const { role, can } = useRole();
   const canNote = can("delivery:note");
@@ -52,25 +60,74 @@ export default function BezorgenPage() {
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
+  // Delivery notes keyed by customerId
+  const [deliveryNotes, setDeliveryNotes] = useState<Record<string, string[]>>({});
+
   // Bus = ordered list of customer IDs for this shift
   const [busOrder, setBusOrder] = useState<string[]>([]);
   // Delivered
   const [delivered, setDelivered] = useState<Record<string, boolean>>({});
+  // Timestamps
+  const [inBusTimes, setInBusTimes]       = useState<Record<string, string>>({});
+  const [deliveredTimes, setDeliveredTimes] = useState<Record<string, string>>({});
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
+  function loadNotes(d: string) {
+    fetch(`/digitalbakery/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
+      .then(r => r.json())
+      .then(data => {
+        const map: Record<string, string[]> = {};
+        for (const n of data.notes ?? []) {
+          if (!map[n.customerId]) map[n.customerId] = [];
+          map[n.customerId].push(n.note);
+        }
+        setDeliveryNotes(map);
+      })
+      .catch(() => {});
+  }
+
   function load(d: string) {
     setLoading(true); setError("");
-    setBusOrder([]); setDelivered({});
-    fetch(`/digitalbakery/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setError(d.message ?? d.error); setLoading(false); return; }
-        setData(d);
-        setLoading(false);
-      })
-      .catch(e => { setError(String(e)); setLoading(false); });
+    setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({});
+
+    Promise.all([
+      fetch(`/digitalbakery/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/digitalbakery/api/delivery-status?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+    ]).then(([delivData, statusData]) => {
+      if (delivData.error) { setError(delivData.message ?? delivData.error); setLoading(false); return; }
+      setData(delivData);
+
+      // Restore bus/delivered from saved statuses
+      const statuses: DeliveryStatus[] = statusData.statuses ?? [];
+      const busIds: string[] = [];
+      const deliveredMap: Record<string, boolean> = {};
+      const inBusMap: Record<string, string> = {};
+      const delivTimesMap: Record<string, string> = {};
+
+      // Sort by inBusAt to preserve bus order
+      const withBus = statuses.filter(s => s.inBusAt && !s.deliveredAt)
+        .sort((a, b) => (a.inBusAt ?? "").localeCompare(b.inBusAt ?? ""));
+      for (const s of withBus) {
+        busIds.push(s.customerId);
+        if (s.inBusAt) inBusMap[s.customerId] = s.inBusAt;
+      }
+      for (const s of statuses) {
+        if (s.deliveredAt) {
+          deliveredMap[s.customerId] = true;
+          delivTimesMap[s.customerId] = s.deliveredAt;
+          if (s.inBusAt) inBusMap[s.customerId] = s.inBusAt;
+        }
+      }
+      setBusOrder(busIds);
+      setDelivered(deliveredMap);
+      setInBusTimes(inBusMap);
+      setDeliveredTimes(delivTimesMap);
+      setLoading(false);
+    }).catch(e => { setError(String(e)); setLoading(false); });
+
+    loadNotes(d);
   }
 
   useEffect(() => { load(date); }, [date]);
@@ -81,15 +138,43 @@ export default function BezorgenPage() {
     setDate(d.toISOString().slice(0, 10));
   }
 
-  function addToBus(id: string) {
-    if (!busOrder.includes(id)) setBusOrder(prev => [...prev, id]);
+  async function postStatus(customerId: string, action: string) {
+    await fetch("/digitalbakery/api/delivery-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+      body: JSON.stringify({ date, customerId, action }),
+    }).catch(() => {});
   }
+
+  function addToBus(id: string) {
+    if (busOrder.includes(id)) return;
+    const now = new Date().toISOString();
+    setBusOrder(prev => [...prev, id]);
+    setInBusTimes(t => ({ ...t, [id]: now }));
+    postStatus(id, "in_bus");
+  }
+
   function removeFromBus(id: string) {
     setBusOrder(prev => prev.filter(x => x !== id));
+    setInBusTimes(t => { const n = { ...t }; delete n[id]; return n; });
+    postStatus(id, "removed_from_bus");
   }
+
   function toggleDelivered(id: string) {
-    setDelivered(d => ({ ...d, [id]: !d[id] }));
-    if (!delivered[id]) removeFromBus(id);
+    const isDone = delivered[id];
+    if (!isDone) {
+      // Mark as delivered
+      const now = new Date().toISOString();
+      setDelivered(d => ({ ...d, [id]: true }));
+      setDeliveredTimes(t => ({ ...t, [id]: now }));
+      setBusOrder(prev => prev.filter(x => x !== id));
+      postStatus(id, "delivered");
+    } else {
+      // Unmark
+      setDelivered(d => ({ ...d, [id]: false }));
+      setDeliveredTimes(t => { const n = { ...t }; delete n[id]; return n; });
+      postStatus(id, "undelivered");
+    }
   }
 
   // Drag reorder in bus
@@ -111,12 +196,17 @@ export default function BezorgenPage() {
   async function saveNote() {
     if (!noteModal || !noteText.trim()) return;
     setSavingNote(true);
+    const note = noteText.trim();
     await fetch("/digitalbakery/api/delivery-notes", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-      body: JSON.stringify({ customerId: noteModal.customerId, date, note: noteText.trim() }),
+      body: JSON.stringify({ customerId: noteModal.customerId, date, note }),
     });
     setSavingNote(false);
+    setDeliveryNotes(prev => ({
+      ...prev,
+      [noteModal.customerId]: [...(prev[noteModal.customerId] ?? []), note],
+    }));
     setNoteModal(null);
     setNoteText("");
   }
@@ -142,7 +232,11 @@ export default function BezorgenPage() {
           {data && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               <strong style={{ color: "var(--text)" }}>{weekdayLabel} {date}</strong>
-              {rows.length > 0 && <> · <span style={{ color: deliveredCount === rows.length && rows.length > 0 ? "var(--success)" : "var(--text-muted)" }}>{deliveredCount}/{rows.length} geleverd</span></>}
+              {rows.length > 0 && (
+                <> · <span style={{ color: deliveredCount === rows.length && rows.length > 0 ? "var(--success)" : "var(--text-muted)" }}>
+                  {deliveredCount}/{rows.length} geleverd
+                </span></>
+              )}
             </p>
           )}
         </div>
@@ -176,7 +270,11 @@ export default function BezorgenPage() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <h2 style={{ fontSize: 16, margin: 0 }}>
                 🚐 In de bus
-                {busRows.length > 0 && <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>{busRows.length} stops</span>}
+                {busRows.length > 0 && (
+                  <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>
+                    {busRows.length} stops
+                  </span>
+                )}
               </h2>
               {busRows.length > 0 && mapsUrl && (
                 <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{
@@ -211,8 +309,7 @@ export default function BezorgenPage() {
                       padding: "10px 14px",
                       borderTop: i > 0 ? "1px solid var(--border)" : "none",
                       background: dragOver === row.customerId ? "var(--accent-light)" : "transparent",
-                      cursor: "grab",
-                      transition: "background 0.1s",
+                      cursor: "grab", transition: "background 0.1s",
                     }}
                   >
                     <span style={{ color: "var(--border-strong)", fontSize: 16, cursor: "grab" }}>⠿</span>
@@ -221,6 +318,14 @@ export default function BezorgenPage() {
                       <span style={{ fontSize: 14, fontWeight: 500 }}>{row.name}</span>
                       <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{row.city}</span>
                       {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 8 }}>{row.notes}</span>}
+                      {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
+                        <span key={ni} style={{ fontSize: 11, color: "var(--warn)", marginLeft: 8, display: "block" }}>📝 {n}</span>
+                      ))}
+                      {inBusTimes[row.customerId] && (
+                        <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>
+                          🚐 In bus om {fmtTime(inBusTimes[row.customerId])}
+                        </span>
+                      )}
                     </div>
                     {/* Quantities summary */}
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -261,12 +366,16 @@ export default function BezorgenPage() {
           <section>
             <h2 style={{ fontSize: 16, marginBottom: 10 }}>
               Alle bestellingen
-              {pendingRows.length > 0 && <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>{pendingRows.length} nog te bezorgen</span>}
+              {pendingRows.length > 0 && (
+                <span style={{ fontSize: 13, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400, marginLeft: 8 }}>
+                  {pendingRows.length} nog te bezorgen
+                </span>
+              )}
             </h2>
             <div className="card" style={{ overflow: "hidden" }}>
               {rows.map((row, i) => {
                 const isDone = delivered[row.customerId];
-                const inBus = busOrder.includes(row.customerId);
+                const inBus  = busOrder.includes(row.customerId);
                 return (
                   <div key={row.customerId} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
@@ -308,6 +417,18 @@ export default function BezorgenPage() {
                       </span>
                       <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{row.city}</span>
                       {row.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>{row.notes}</span>}
+                      {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
+                        <span key={ni} style={{ fontSize: 11, color: "var(--warn)", display: "block" }}>📝 {n}</span>
+                      ))}
+                      {/* Timestamps */}
+                      <div style={{ display: "flex", gap: 12, marginTop: 1 }}>
+                        {inBusTimes[row.customerId] && (
+                          <span style={{ fontSize: 11, color: "#b45309" }}>🚐 {fmtTime(inBusTimes[row.customerId])}</span>
+                        )}
+                        {deliveredTimes[row.customerId] && (
+                          <span style={{ fontSize: 11, color: "#16a34a" }}>✓ {fmtTime(deliveredTimes[row.customerId])}</span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Quantities */}
@@ -347,25 +468,25 @@ export default function BezorgenPage() {
 
       {/* Delivery note modal */}
       {noteModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(28,16,9,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:24 }}>
-          <div style={{ background:"var(--surface)", borderRadius:14, width:"100%", maxWidth:420, padding:"1.75rem", display:"flex", flexDirection:"column", gap:14 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <h2 style={{ margin:0, fontSize:18 }}>Notitie toevoegen</h2>
-              <button onClick={()=>setNoteModal(null)} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"var(--text-subtle)" }}>×</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
+          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 420, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Notitie toevoegen</h2>
+              <button onClick={() => setNoteModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
             </div>
-            <p style={{ fontSize:13, color:"var(--text-muted)", margin:0 }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               Voor <strong>{noteModal.name}</strong> — {date}
             </p>
-            <textarea value={noteText} onChange={e=>setNoteText(e.target.value)} rows={4}
+            <textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={4}
               placeholder="bijv. niemand thuis, op 2e adres afgeleverd, klant had klacht over kwaliteit…"
-              style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 12px", fontSize:14, fontFamily:"var(--font-body)", resize:"vertical" }} />
-            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-              <button onClick={()=>setNoteModal(null)} className="btn-secondary">Annuleren</button>
-              <button onClick={saveNote} disabled={savingNote||!noteText.trim()} className="btn-primary">
-                {savingNote?"Opslaan…":"Opslaan"}
+              style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: 14, fontFamily: "var(--font-body)", resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setNoteModal(null)} className="btn-secondary">Annuleren</button>
+              <button onClick={saveNote} disabled={savingNote || !noteText.trim()} className="btn-primary">
+                {savingNote ? "Opslaan…" : "Opslaan"}
               </button>
             </div>
-            <p style={{ fontSize:11, color:"var(--text-subtle)", margin:0 }}>
+            <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>
               Deze notitie is zichtbaar in het logboek en facturatie.
             </p>
           </div>

@@ -32,8 +32,10 @@ model Tenant {
   oneOffOrders     OneOffOrder[]
   productionDays   ProductionDay[]
   customers        Customer[]
-  deliveryNotes    DeliveryNote[]
-  announcements    Announcement[]
+  deliveryNotes      DeliveryNote[]
+  deliveryStatuses   DeliveryStatus[]
+  announcements      Announcement[]
+  productionBatches  ProductionBatch[]
 }
 
 // ─── Owner announcements (dashboard message to staff) ──────────────────────────
@@ -217,9 +219,10 @@ model Customer {
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id])
   user            User?                @relation(fields: [userId], references: [id])
-  recurringOrders RecurringOrder[]
-  oneOffOrders    OneOffOrder[]
-  deliveryNotes   DeliveryNote[]
+  recurringOrders  RecurringOrder[]
+  oneOffOrders     OneOffOrder[]
+  deliveryNotes    DeliveryNote[]
+  deliveryStatuses DeliveryStatus[]
 
   @@index([tenantId])
 }
@@ -384,6 +387,24 @@ model DeliveryNote {
   @@index([tenantId, customerId])
 }
 
+// Tracks per-customer delivery timestamps per day
+model DeliveryStatus {
+  id          String    @id @default(cuid())
+  tenantId    String
+  date        DateTime
+  customerId  String
+  inBusAt     DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@unique([tenantId, date, customerId])
+  @@index([tenantId, date])
+}
+
 model CityRoute {
   id        String  @id @default(cuid())
   tenantId  String
@@ -392,4 +413,29 @@ model CityRoute {
 
   @@unique([tenantId, city])
   @@index([tenantId])
+}
+
+// ─── Production batch tracking ────────────────────────────────────────────────
+// One row per mixer batch per group per production day.
+// Status flow: todo → in_mixer → rijzen → klaar
+model ProductionBatch {
+  id             String    @id @default(cuid())
+  tenantId       String
+  productionDate DateTime
+  mixerGroup     String    // "boeren", "baguette", "spelt", "volkoren", "rogge"
+  groupLabel     String    // "Boerenmix", "Baguettedeeg", etc.
+  batchNumber    Int
+  totalLoaves    Int       @default(0)
+  status         String    @default("todo")
+  startedAt      DateTime? // timestamp when moved to in_mixer
+  rijzenAt       DateTime? // timestamp when moved to rijzen
+  klaarAt        DateTime? // timestamp when moved to klaar
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, productionDate, mixerGroup, batchNumber])
+  @@index([tenantId, productionDate])
 }

@@ -22,8 +22,15 @@ type LogEntry = {
   city: string | null;
   notes: string | null;
   deliveryNote?: string;
+  inBusAt?: string | null;
+  deliveredAt?: string | null;
   lines: LogLine[];
 };
+
+function fmtTime(iso: string | null | undefined) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+}
 
 function colName(name: string) {
   return name.replace("Boeren ","B. ").replace(" KG","kg")
@@ -143,7 +150,13 @@ export default function LogboekPage() {
                   </div>
                 )}
                 {e.notes && <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>{e.notes}</p>}
-                {e.deliveryNote && <p style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, margin: 0 }}>🚐 {e.deliveryNote}</p>}
+                {e.deliveryNote && <p style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, margin: 0 }}>📝 {e.deliveryNote}</p>}
+                {(e.inBusAt || e.deliveredAt) && (
+                  <div style={{ display: "flex", gap: 12, marginTop: 2 }}>
+                    {e.inBusAt     && <span style={{ fontSize: 11, color: "#b45309" }}>🚐 In bus {fmtTime(e.inBusAt)}</span>}
+                    {e.deliveredAt && <span style={{ fontSize: 11, color: "#16a34a" }}>✓ Geleverd {fmtTime(e.deliveredAt)}</span>}
+                  </div>
+                )}
               </div>
             );
           })}

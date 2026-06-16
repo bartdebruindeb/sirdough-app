@@ -62,6 +62,8 @@ export async function GET(req: Request) {
       city: string | null;
       notes: string | null;
       deliveryNote?: string;
+      inBusAt?: string | null;
+      deliveredAt?: string | null;
       lines: { breadTypeId: string; breadTypeName: string; quantity: number }[];
     };
 
@@ -115,7 +117,7 @@ export async function GET(req: Request) {
       if (shopCustomer) await addWinkelEntries(tid, shopCfg.name, shopCustomer.id, shopCustomer.city, fromDate, toDatePast, entries);
     }
 
-    // Merge delivery notes (added by bezorger) into matching entries
+    // Merge delivery notes
     const deliveryNotes = await prisma.deliveryNote.findMany({
       where: {
         tenantId: tid,
@@ -128,13 +130,27 @@ export async function GET(req: Request) {
       if (entry) {
         entry.deliveryNote = dn.note;
       } else {
-        // No matching order entry — still show the note as its own row
         const customer = await prisma.customer.findFirst({ where: { id: dn.customerId } });
         entries.push({
           type: "winkel", date: dateStr, customerName: customer?.name ?? "?",
           customerId: dn.customerId, city: customer?.city ?? null, notes: null,
           lines: [], deliveryNote: dn.note,
         });
+      }
+    }
+
+    // Merge delivery timestamps
+    const deliveryStatuses = await prisma.deliveryStatus.findMany({
+      where: {
+        tenantId: tid,
+        date: { gte: new Date(from + "T00:00:00Z"), lte: new Date(to + "T23:59:59Z") },
+      },
+    });
+    for (const ds of deliveryStatuses) {
+      const dateStr = ds.date.toISOString().slice(0, 10);
+      for (const entry of entries.filter(e => e.date === dateStr && e.customerId === ds.customerId)) {
+        entry.inBusAt     = ds.inBusAt?.toISOString()     ?? null;
+        entry.deliveredAt = ds.deliveredAt?.toISOString() ?? null;
       }
     }
 
