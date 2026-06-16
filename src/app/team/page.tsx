@@ -141,7 +141,7 @@ export default function TeamPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                ✓ Uitnodigingslink aangemaakt voor <strong>{email}</strong> als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 7 dagen.
+                ✓ Uitnodigingslink aangemaakt voor <strong>{email}</strong> als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 48 uur.
               </p>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
                 <p style={{ fontSize: 12, wordBreak: "break-all", margin: 0 }}>{inviteUrl}</p>
@@ -272,7 +272,7 @@ export default function TeamPage() {
             ) : regenUrl ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                  ✓ Nieuwe link aangemaakt — de oude link werkt niet meer. Geldig 7 dagen.
+                  ✓ Nieuwe link aangemaakt — de oude link werkt niet meer. Geldig 48 uur.
                 </p>
                 <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
                   <p style={{ fontSize: 12, wordBreak: "break-all", margin: 0 }}>{regenUrl}</p>

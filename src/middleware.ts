@@ -16,6 +16,6 @@ export const config = {
   // Protect everything except the login page, NextAuth API routes,
   // the customer invite/onboarding page, and Next.js internals/static assets.
   matcher: [
-    "/((?!login|api/auth|uitnodiging|mijn-bestellingen|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|api/auth|uitnodiging|_next/static|_next/image|favicon.ico).*)",
   ],
 };

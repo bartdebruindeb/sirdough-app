@@ -12,9 +12,6 @@ export type TenantContext = { tenantId: string; tenantSlug?: string };
  * database can never cause requests to resolve to the wrong bakery.
  */
 export function getTenantFromRequest(req: Request): TenantContext {
-  const headerTenant = req.headers.get("x-tenant-id");
-  if (headerTenant) return { tenantId: headerTenant };
-
   const envSlug = process.env.TENANT_SLUG;
   if (envSlug) return { tenantId: envSlug, tenantSlug: envSlug };
 
