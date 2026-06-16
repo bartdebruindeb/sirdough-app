@@ -122,32 +122,32 @@ function ProductionWidget({ role }: { role: string | null }) {
           </div>
         </div>
         {/* Right: batch status */}
-        <div style={{ padding: "1rem 1.25rem" }}>
+        <div style={{ display: "flex", flexDirection: "column" }}>
           {totalBatches === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: 0 }}>Geen batches aangemaakt voor vandaag.</p>
+            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: "1rem 1.25rem" }}>Geen batches aangemaakt voor vandaag.</p>
           ) : (
             <>
-              <div style={{ marginBottom: 10 }}>
-                <p style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Voortgang</p>
-                <div style={{ height: 8, background: "var(--border)", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: allDone ? "#4ade80" : "var(--accent)", borderRadius: 4, transition: "width 0.4s" }} />
+              <div style={{ padding: "0.6rem 1rem 0.5rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+                <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden", marginBottom: 4 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: allDone ? "#4ade80" : "var(--accent)", borderRadius: 3, transition: "width 0.4s" }} />
                 </div>
-                <p style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--text)", margin: 0 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: allDone ? "#16a34a" : "var(--text)", margin: 0 }}>
                   {allDone ? "🎉 Alles klaar!" : `${done}/${totalBatches} klaar`}
                 </p>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4, overflowY: "auto", maxHeight: 220 }}>
-                {batches.map(b => {
+              <div style={{ flex: 1, overflowY: "auto", padding: "4px 6px" }}>
+                {[...batches].sort((a, b) => {
+                  const ord: Record<string, number> = { klaar: 0, eindvormen: 1, voorvormen: 2, rijzen: 3, in_mixer: 4, todo: 5 };
+                  return (ord[a.status] ?? 9) - (ord[b.status] ?? 9);
+                }).map(b => {
                   const isActive = b.status !== "todo" && b.status !== "klaar";
                   const tsKey = STATUS_AT[b.status] as keyof Batch;
                   const ts = tsKey ? (b[tsKey] as string | null) : null;
                   return (
-                    <div key={b.id} style={{ background: b.status === "klaar" ? "#f0fdf4" : b.status === "todo" ? "var(--surface-2)" : "var(--surface)", border: `1px solid var(--border)`, borderLeft: `3px solid ${STATUS_COLOR[b.status]}`, borderRadius: 6, padding: "5px 10px", opacity: b.status === "todo" ? 0.6 : 1 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500 }}>{b.groupLabel} #{b.batchNumber}</span>
-                        <span style={{ fontSize: 11, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{ts ? fmtTime(ts) : ""}</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: STATUS_COLOR[b.status], fontWeight: 600, marginTop: 1 }}>{STATUS_LABEL[b.status]}</div>
+                    <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 6, borderLeft: `3px solid ${STATUS_COLOR[b.status]}`, borderRadius: 4, padding: "3px 8px", marginBottom: 3, background: b.status === "klaar" ? "#f0fdf4" : b.status === "todo" ? "var(--surface-2)" : "var(--surface)", opacity: b.status === "todo" ? 0.55 : 1 }}>
+                      <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.groupLabel} #{b.batchNumber}</span>
+                      <span style={{ fontSize: 11, color: STATUS_COLOR[b.status], fontWeight: 600, whiteSpace: "nowrap" }}>{STATUS_LABEL[b.status]}</span>
+                      {ts && <span style={{ fontSize: 10, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{fmtTime(ts)}</span>}
                     </div>
                   );
                 })}
