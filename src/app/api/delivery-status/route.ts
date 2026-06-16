@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   try {
     const { tenantId, tenantSlug } = getTenantFromRequest(req);
     const role = await getRoleFromRequest(req);
-    requirePermission(role, "delivery:note");
+    requirePermission(role, "delivery:write");
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, ActionSchema);

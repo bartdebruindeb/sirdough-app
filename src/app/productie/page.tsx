@@ -457,13 +457,12 @@ export default function ProductiePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
-  // Per-breadtype quantity adjustments (client-only, reset on date change)
-  const [adj, setAdj]         = useState<Record<string, number>>({});
   // Per-group mixer count for planning
   const [mixerCounts, setMixerCounts] = useState<Record<string, number>>({});
   // Production batches from DB
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [savingPlan, setSavingPlan]   = useState(false);
+  const [saveError, setSaveError]     = useState("");
   // Deeg calculator visibility
   const [showDeeg, setShowDeeg]       = useState(false);
 
@@ -499,7 +498,7 @@ export default function ProductiePage() {
       .catch(() => {});
   }, [date, role]);
 
-  useEffect(() => { loadPlan(date); setAdj({}); }, [date]);
+  useEffect(() => { loadPlan(date); }, [date]);
   useEffect(() => { loadBatches(); }, [loadBatches]);
   // Auto-refresh batches every 30s (so multiple workers see each other's updates)
   useEffect(() => {
@@ -521,16 +520,16 @@ export default function ProductiePage() {
     setDate(d.toISOString().slice(0, 10));
   }
 
-  // Adjusted groups & lines (flow to deeg calculator, desem, manden)
-  const adjGroups = plan ? applyAdj(plan.mixerGroups, adj) : [];
-  const adjLines  = plan ? plan.breadLines.map(l => ({ ...l, totalQty: Math.max(0, l.totalQty + (adj[l.breadTypeId] ?? 0)) })) : [];
+  const planGroups = plan?.mixerGroups ?? [];
+  const planLines  = plan?.breadLines  ?? [];
 
   // ── Save plan to DB ──
   async function savePlan() {
+    if (!plan) return;
     const hasProgress = batches.some(b => b.status !== "todo");
     if (hasProgress && !confirm("Sommige batches zijn al gestart. Wil je het plan opnieuw maken? De voortgang gaat verloren.")) return;
-    setSavingPlan(true);
-    const toCreate = adjGroups.filter(mg => mg.totalLoaves > 0).flatMap(mg => {
+    setSavingPlan(true); setSaveError("");
+    const toCreate = planGroups.filter(mg => mg.totalLoaves > 0).flatMap(mg => {
       const count = Math.max(1, mixerCounts[mg.group] ?? 1);
       const base  = Math.floor(mg.totalLoaves / count);
       const rem   = mg.totalLoaves - base * count;
@@ -540,22 +539,30 @@ export default function ProductiePage() {
         totalLoaves: i === 0 ? base + rem : base,
       }));
     });
-    await fetch("/digitalbakery/api/production/batches", {
+    if (toCreate.length === 0) {
+      setSaveError("Geen broodsoorten met aantallen gevonden. Controleer de bestellingen voor deze dag.");
+      setSavingPlan(false); return;
+    }
+    const res = await fetch("/digitalbakery/api/production/batches", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ date, batches: toCreate }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setSaveError(d.message ?? d.error ?? `Opslaan mislukt (${res.status})`);
+      setSavingPlan(false); return;
+    }
     setSavingPlan(false);
     loadBatches();
   }
 
-  const hasAny        = plan && plan.breadLines.some(l => l.totalQty > 0);
-  const prodLabel     = plan ? `${WEEKDAYS[plan.weekday]} ${plan.productionDate}` : "";
-  const delivWeekday  = plan ? getWeekday(plan.deliveryDate) : 1;
-  const delivLabel    = plan ? `${WEEKDAYS[delivWeekday]} ${plan.deliveryDate}` : "";
-  const batchGroups   = batches.reduce<Record<string, Batch[]>>((acc, b) => { (acc[b.mixerGroup] ??= []).push(b); return acc; }, {});
-  const totalDone     = batches.filter(b => b.status === "klaar").length;
-  const hasAdj        = Object.values(adj).some(v => v !== 0);
+  const hasAny       = plan && plan.breadLines.some(l => l.totalQty > 0);
+  const prodLabel    = plan ? `${WEEKDAYS[plan.weekday]} ${plan.productionDate}` : "";
+  const delivWeekday = plan ? getWeekday(plan.deliveryDate) : 1;
+  const delivLabel   = plan ? `${WEEKDAYS[delivWeekday]} ${plan.deliveryDate}` : "";
+  const batchGroups  = batches.reduce<Record<string, Batch[]>>((acc, b) => { (acc[b.mixerGroup] ??= []).push(b); return acc; }, {});
+  const totalDone    = batches.filter(b => b.status === "klaar").length;
 
   return (
     <div style={{ padding: "2.5rem 3rem", maxWidth: 1100 }}>
@@ -602,90 +609,84 @@ export default function ProductiePage() {
       {!loading && !error && plan && (
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
-          {/* ── 1. Aantallen + aanpassingen ── */}
+          {/* ── 1. Aantallen ── */}
           <section className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
               <h2 style={{ fontSize: 16, margin: 0 }}>Aantallen — {delivLabel}</h2>
-              {hasAdj && (
-                <button onClick={() => setAdj({})} className="btn-secondary" style={{ fontSize: 12 }}>↺ Reset aanpassingen</button>
-              )}
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left",   padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                    <th style={{ textAlign: "right",  padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                    <th style={{ textAlign: "right",  padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
-                    <th style={{ textAlign: "right",  padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
-                    <th style={{ textAlign: "center", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Aanpassing</th>
-                    <th style={{ textAlign: "right",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
+                    <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
+                    <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.breadLines.map((line, i) => {
-                    const delta    = adj[line.breadTypeId] ?? 0;
-                    const adjTotal = Math.max(0, line.totalQty + delta);
-                    const changed  = delta !== 0;
-                    return (
-                      <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", opacity: adjTotal === 0 && line.totalQty === 0 ? 0.3 : 1 }}>
-                        <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "center" }}>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <button onClick={() => setAdj(a => ({ ...a, [line.breadTypeId]: delta - 1 }))}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid var(--border)", background: delta < 0 ? "#fee2e2" : "var(--surface)", cursor: "pointer", fontSize: 15, fontWeight: 700, lineHeight: 1, color: "var(--danger)" }}>−</button>
-                            <span style={{ minWidth: 30, textAlign: "center", fontSize: 13, fontWeight: 600,
-                              color: delta > 0 ? "#16a34a" : delta < 0 ? "var(--danger)" : "var(--text-subtle)" }}>
-                              {delta > 0 ? `+${delta}` : delta < 0 ? String(delta) : "0"}
-                            </span>
-                            <button onClick={() => setAdj(a => ({ ...a, [line.breadTypeId]: delta + 1 }))}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid var(--border)", background: delta > 0 ? "#dcfce7" : "var(--surface)", cursor: "pointer", fontSize: 15, fontWeight: 700, lineHeight: 1, color: "#16a34a" }}>+</button>
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px 20px", textAlign: "right" }}>
-                          {adjTotal > 0
-                            ? <span style={{ fontWeight: 700, fontSize: 15, color: changed ? (delta > 0 ? "#16a34a" : "var(--danger)") : "var(--accent)" }}>{adjTotal}</span>
-                            : <span style={{ color: "var(--text-subtle)" }}>—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {planLines.map((line, i) => (
+                    <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", opacity: line.totalQty === 0 ? 0.3 : 1 }}>
+                      <td style={{ padding: "8px 20px" }}>{line.name}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
+                      <td style={{ padding: "8px 20px", textAlign: "right" }}>
+                        {line.totalQty > 0
+                          ? <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
+                          : <span style={{ color: "var(--text-subtle)" }}>—</span>}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </section>
 
           {/* ── 2. Mixer plan ── */}
-          {adjGroups.length > 0 && (
+          {planGroups.filter(mg => mg.totalLoaves > 0).length > 0 && (
             <section className="card" style={{ padding: "1.25rem 1.5rem" }}>
               <h2 style={{ fontSize: 16, marginBottom: 4 }}>Mixer plan</h2>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
                 Stel het aantal mixers per deegsoort in en sla het plan op om de baklijst te starten.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12, marginBottom: 20 }}>
-                {adjGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
-                  const count    = Math.max(1, mixerCounts[mg.group] ?? 1);
-                  const perMixer = Math.ceil(mg.totalLoaves / count);
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginBottom: 20 }}>
+                {planGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
+                  const count       = Math.max(1, mixerCounts[mg.group] ?? 1);
+                  const perMixer    = Math.ceil(mg.totalLoaves / count);
+                  const doughPerMixer = mg.totalDoughNoFillingsKg / count;
                   return (
-                    <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
-                      <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 14 }}>{mg.label}</p>
-                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px" }}>{mg.totalLoaves} stuks</p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+                      <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 15 }}>{mg.label}</p>
+                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>{mg.totalLoaves} stuks · {mg.totalDoughNoFillingsKg.toFixed(2)} kg deeg</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
                         <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.max(1, (c[mg.group] ?? 1) - 1) }))}
-                          style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 16 }}>−</button>
-                        <span style={{ fontWeight: 700, fontSize: 17, minWidth: 22, textAlign: "center" }}>{count}</span>
+                          style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>−</button>
+                        <span style={{ fontWeight: 700, fontSize: 18, minWidth: 24, textAlign: "center" }}>{count}</span>
                         <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.min(10, (c[mg.group] ?? 1) + 1) }))}
-                          style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 16 }}>+</button>
+                          style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>+</button>
                       </div>
-                      <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>~{perMixer} stuks per mixer</p>
+                      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ color: "var(--text-muted)" }}>Per mixer stuks</span>
+                          <strong>~{perMixer}</strong>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ color: "var(--text-muted)" }}>Per mixer deeg</span>
+                          <strong>{doughPerMixer.toFixed(2)} kg</strong>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
               </div>
+              {saveError && (
+                <div style={{ background: "var(--warn-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", color: "var(--warn)", fontSize: 13, marginBottom: 12 }}>
+                  {saveError}
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button onClick={savePlan} disabled={savingPlan} className="btn-primary" style={{ fontSize: 14, padding: "10px 24px" }}>
                   {savingPlan ? "Opslaan…" : batches.length > 0 ? "🔄 Plan opnieuw opslaan" : "✓ Plan opslaan & starten"}
@@ -730,7 +731,7 @@ export default function ProductiePage() {
           )}
 
           {/* ── 4. Deeg calculator (collapsible) ── */}
-          {adjGroups.length > 0 && (
+          {planGroups.length > 0 && (
             <section>
               <button onClick={() => setShowDeeg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 17, fontWeight: 600, padding: 0, color: "var(--text)", marginBottom: showDeeg ? 14 : 0 }}>
                 <span style={{ transform: showDeeg ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s", fontSize: 13 }}>▶</span>
@@ -738,7 +739,7 @@ export default function ProductiePage() {
               </button>
               {showDeeg && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                  {adjGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} />)}
+                  {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} />)}
                 </div>
               )}
             </section>
@@ -747,8 +748,8 @@ export default function ProductiePage() {
           {/* ── 5. Desem + Manden ── */}
           {hasAny && (
             <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-              <DesemTotaal groups={nextPlan?.mixerGroups ?? adjGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
-              <MandenTotaal lines={adjLines} />
+              <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
+              <MandenTotaal lines={planLines} />
             </section>
           )}
 
@@ -759,7 +760,7 @@ export default function ProductiePage() {
                 <p style={{ fontSize: 13, margin: 0, color: "var(--text-subtle)" }}>Desem hieronder is voor de volgende bakdag.</p>
               </div>
               <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-                <DesemTotaal groups={nextPlan?.mixerGroups ?? plan.mixerGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
+                <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
               </section>
             </div>
           )}

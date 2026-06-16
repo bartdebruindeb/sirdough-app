@@ -43,10 +43,6 @@ function shortName(name: string) {
     .replace("Gekiemde Rogge", "G.Rogge").replace("Volkoren", "Volk.");
 }
 
-function fmtTime(iso: string | null) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-}
 
 export default function BezorgenPage() {
   const { role, can } = useRole();
@@ -321,11 +317,6 @@ export default function BezorgenPage() {
                       {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
                         <span key={ni} style={{ fontSize: 11, color: "var(--warn)", marginLeft: 8, display: "block" }}>📝 {n}</span>
                       ))}
-                      {inBusTimes[row.customerId] && (
-                        <span style={{ fontSize: 11, color: "var(--text-subtle)", display: "block" }}>
-                          🚐 In bus om {fmtTime(inBusTimes[row.customerId])}
-                        </span>
-                      )}
                     </div>
                     {/* Quantities summary */}
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -420,15 +411,6 @@ export default function BezorgenPage() {
                       {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
                         <span key={ni} style={{ fontSize: 11, color: "var(--warn)", display: "block" }}>📝 {n}</span>
                       ))}
-                      {/* Timestamps */}
-                      <div style={{ display: "flex", gap: 12, marginTop: 1 }}>
-                        {inBusTimes[row.customerId] && (
-                          <span style={{ fontSize: 11, color: "#b45309" }}>🚐 {fmtTime(inBusTimes[row.customerId])}</span>
-                        )}
-                        {deliveredTimes[row.customerId] && (
-                          <span style={{ fontSize: 11, color: "#16a34a" }}>✓ {fmtTime(deliveredTimes[row.customerId])}</span>
-                        )}
-                      </div>
                     </div>
 
                     {/* Quantities */}

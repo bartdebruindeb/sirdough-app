@@ -368,8 +368,8 @@ export default function HomePage() {
       {/* ── Production totals: today + tomorrow ── */}
       <ProductionSummaryWidget role={role} />
 
-      {/* ── Delivery status widget ── */}
-      <DeliveryWidget role={role} />
+      {/* ── Delivery status widget — owner only ── */}
+      {role === "OWNER" && <DeliveryWidget role={role} />}
 
       {/* ── Production batch progress ── */}
       <ProductionWidget role={role} />
