@@ -22,6 +22,7 @@ export default function TeamPage() {
   const [regenUrl, setRegenUrl] = useState("");
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenCopied, setRegenCopied] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function load() {
     fetch("/digitalbakery/api/team")
@@ -227,15 +228,24 @@ export default function TeamPage() {
                 className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px", cursor: isLocked ? "not-allowed" : "pointer", opacity: isLocked ? 0.6 : 1 }}>
                 {w.active ? "Deactiveer" : "Activeer"}
               </button>
-              <button onClick={async () => {
-                if (!confirm(`${w.name ?? w.email} definitief verwijderen?`)) return;
-                setError("");
-                const res = await fetch(`/digitalbakery/api/team?id=${w.id}`, { method: "DELETE" });
-                if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
-                load();
-              }} disabled={isLocked} title={isLocked ? lockReason : undefined} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: isLocked ? "not-allowed" : "pointer", color: isLocked ? "var(--text-subtle)" : "var(--danger)", opacity: isLocked ? 0.5 : 1 }}>
-                Verwijder
-              </button>
+              {confirmDeleteId === w.id ? (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "var(--danger)" }}>Zeker weten?</span>
+                  <button onClick={async () => {
+                    setConfirmDeleteId(null); setError("");
+                    const res = await fetch(`/digitalbakery/api/team?id=${w.id}`, { method: "DELETE" });
+                    if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
+                    load();
+                  }} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "#fee2e2", cursor: "pointer", color: "var(--danger)", fontWeight: 600 }}>
+                    Ja, verwijder
+                  </button>
+                  <button onClick={() => setConfirmDeleteId(null)} className="btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }}>Nee</button>
+                </div>
+              ) : (
+                <button onClick={() => !isLocked && setConfirmDeleteId(w.id)} disabled={isLocked} title={isLocked ? lockReason : undefined} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "none", cursor: isLocked ? "not-allowed" : "pointer", color: isLocked ? "var(--text-subtle)" : "var(--danger)", opacity: isLocked ? 0.5 : 1 }}>
+                  Verwijder
+                </button>
+              )}
             </div>
           );
           })}
