@@ -215,6 +215,8 @@ model Customer {
   notes     String?
   /// Free-text bread preference shown to staff when placing orders, e.g. "1,5kg, sesam"
   preferredBread String?
+  lat       Float?
+  lng       Float?
   active    Boolean @default(true)
   userId    String? @unique  // linked User account for customer portal
 

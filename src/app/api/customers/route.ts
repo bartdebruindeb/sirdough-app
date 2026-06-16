@@ -85,6 +85,8 @@ const UpdateCustomerSchema = z.object({
   notes: z.string().optional(),
   preferredBread: z.string().optional(),
   active: z.boolean().optional(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
 });
 
 export async function PATCH(req: Request) {
@@ -108,6 +110,8 @@ export async function PATCH(req: Request) {
         ...(data.notes !== undefined && { notes: data.notes || null }),
         ...(data.preferredBread !== undefined && { preferredBread: data.preferredBread || null }),
         ...(data.active !== undefined && { active: data.active }),
+        ...(data.lat !== undefined && { lat: data.lat }),
+        ...(data.lng !== undefined && { lng: data.lng }),
       },
     });
     return Response.json(customer);

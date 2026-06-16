@@ -49,17 +49,18 @@ export async function GET(req: Request) {
     // Merge into per-customer delivery rows
     const deliveryMap = new Map<string, {
       customerId: string; name: string; city: string; address: string; cityOrder: number;
-      notes: string; isShop: boolean;
+      notes: string; isShop: boolean; lat: number | null; lng: number | null;
       quantities: Record<string, number>;
     }>();
 
-    const addOrder = (customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean, lines: { breadTypeId: string; quantity: number }[]) => {
+    const addOrder = (customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean, lines: { breadTypeId: string; quantity: number }[], lat?: number | null, lng?: number | null) => {
       const key = customerId;
       if (!deliveryMap.has(key)) {
         deliveryMap.set(key, {
           customerId, name, city, address,
           cityOrder: cityOrder[city] ?? 99,
           notes, isShop,
+          lat: lat ?? null, lng: lng ?? null,
           quantities: {},
         });
       }
@@ -73,14 +74,16 @@ export async function GET(req: Request) {
       addOrder(
         ro.customerId, ro.customer.name, ro.customer.city ?? "",
         ro.customer.address ?? "", ro.notes ?? "", false,
-        ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity }))
+        ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+        ro.customer.lat, ro.customer.lng,
       );
     }
     for (const oo of oneOff) {
       addOrder(
         oo.customerId, oo.customer.name, oo.customer.city ?? "",
         oo.customer.address ?? "", oo.notes ?? "", false,
-        oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity }))
+        oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+        oo.customer.lat, oo.customer.lng,
       );
     }
 
@@ -97,7 +100,7 @@ export async function GET(req: Request) {
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
         addOrder(shopCustomer.id, shopCfg.name, shopCustomer.city ?? shopCfg.name,
-          shopCustomer.address ?? shopCfg.name, "", true, lines);
+          shopCustomer.address ?? shopCfg.name, "", true, lines, shopCustomer.lat, shopCustomer.lng);
       }
     }
 

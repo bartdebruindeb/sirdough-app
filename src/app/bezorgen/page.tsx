@@ -12,6 +12,7 @@ type BreadType = { id: string; name: string; slug: string };
 type DeliveryRow = {
   customerId: string; name: string; city: string; address: string;
   cityOrder: number; notes: string; isShop: boolean;
+  lat: number | null; lng: number | null;
   quantities: Record<string, number>;
 };
 type DeliveryData = {
@@ -229,6 +230,8 @@ export default function BezorgenPage() {
     name: r.name,
     city: r.city,
     address: r.address,
+    lat: r.lat ?? null,
+    lng: r.lng ?? null,
     busIndex: busOrder.includes(r.customerId) ? busOrder.indexOf(r.customerId) : null,
     delivered: !!delivered[r.customerId],
     deliveredAt: deliveredTimes[r.customerId] ?? null,

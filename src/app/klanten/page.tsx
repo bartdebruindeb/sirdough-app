@@ -8,6 +8,7 @@ type Customer = {
   id: string; name: string; city: string | null; address: string | null;
   email: string | null; phone: string | null; notes: string | null;
   preferredBread: string | null;
+  lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
 };
 
@@ -188,6 +189,30 @@ export default function KlantenPage() {
 
   const [toast, setToast] = useState("");
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
+
+  const [geocodingId, setGeocodingId] = useState<string | null>(null);
+  async function geocodeCustomer(c: Customer) {
+    if (!c.address) { showToast("Vul eerst een adres in."); return; }
+    setGeocodingId(c.id);
+    try {
+      const q = encodeURIComponent(`${c.address}, ${c.city ?? ""}, Nederland`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+        headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
+      });
+      const data = await res.json();
+      if (!data[0]) { showToast(`Adres niet gevonden voor ${c.name}.`); return; }
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      await fetch("/digitalbakery/api/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+        body: JSON.stringify({ id: c.id, lat, lng }),
+      });
+      showToast(`✓ Locatie opgeslagen voor ${c.name} (${lat.toFixed(4)}, ${lng.toFixed(4)}).`);
+      load();
+    } catch { showToast("Geocoding mislukt."); }
+    finally { setGeocodingId(null); }
+  }
   const [deleteModal, setDeleteModal] = useState<{ customer: Customer; needsForce: boolean; orderCount: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -355,7 +380,28 @@ export default function KlantenPage() {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {/* Location pin — green if stored, button if missing */}
+                  {c.address && (
+                    c.lat && c.lng ? (
+                      <button
+                        onClick={() => geocodeCustomer(c)}
+                        title={`Locatie opgeslagen (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}). Klik om opnieuw te geocoderen.`}
+                        style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #86efac", background: "var(--success-bg)", color: "var(--success)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                      >
+                        {geocodingId === c.id ? "…" : "📍✓"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => geocodeCustomer(c)}
+                        disabled={geocodingId === c.id}
+                        title="Sla geografische locatie op voor de routekaart"
+                        style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer" }}
+                      >
+                        {geocodingId === c.id ? "Zoeken…" : "📍 Locatie"}
+                      </button>
+                    )
+                  )}
                   <button onClick={() => setEditing(c.id)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                     Bewerken
                   </button>
