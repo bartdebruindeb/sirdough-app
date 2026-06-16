@@ -117,7 +117,7 @@ export default function WinkelPage() {
 
   // ── Prefill edit quantities whenever shop data or week changes ────────────
   useEffect(() => {
-    if (!shopData) return;
+    if (!shopData?.logs) return;
     const newQtys: Record<string, Record<string, number>> = {};
     for (const date of weekDays) {
       const wd = getWeekday(date);
