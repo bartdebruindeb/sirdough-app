@@ -293,8 +293,8 @@ export default function ReceptenPage() {
   useEffect(() => { load(); }, []);
 
   async function deleteBreadType(bt: BreadType) {
-    if (!confirm(`${bt.name} verwijderen? Dit kan niet ongedaan worden.`)) return;
-    await fetch(`/digitalbakery/api/bread-types?id=${bt.id}`, { method: "DELETE", headers: { "x-role": "OWNER" } });
+    if (!confirm(`"${bt.name}" permanent verwijderen?\n\nLet op: eerdere bestellingen voor dit broodsoort blijven bestaan in het systeem maar het broodsoort zelf verdwijnt. Dit kan niet ongedaan worden.`)) return;
+    await fetch(`/digitalbakery/api/bread-types?id=${bt.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     load();
   }
 
@@ -383,6 +383,12 @@ export default function ReceptenPage() {
                             style={{ fontSize: 12, padding: "5px 12px" }}
                           >
                             {isEditing ? "Annuleer" : "Bewerken"}
+                          </button>
+                          <button
+                            onClick={() => deleteBreadType(bt)}
+                            style={{ fontSize: 12, padding: "5px 12px", background: "none", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", color: "var(--danger)" }}
+                          >
+                            Verwijderen
                           </button>
                         </div>
                       )}

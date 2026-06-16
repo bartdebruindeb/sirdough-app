@@ -214,11 +214,14 @@ export default function KlantenPage() {
   }
 
   async function deleteCustomer(c: Customer) {
-    const msg = `${c.name} verwijderen?${c.active ? "\n\nDeze klant heeft bestellingen en wordt gedeactiveerd." : ""}`;
-    if (!confirm(msg)) return;
-    const res = await fetch(`/digitalbakery/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    if (!confirm(`"${c.name}" verwijderen?`)) return;
+    const res  = await fetch(`/digitalbakery/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     const data = await res.json();
-    if (data.deactivated) alert(`${c.name} is gedeactiveerd omdat er nog bestellingen zijn.`);
+    if (data.needsConfirm) {
+      const orders = data.hasOrders + data.hasRecurring;
+      if (!confirm(`Let op: ${c.name} heeft ${orders} bestelling(en) in het systeem. Als je verwijdert gaan al deze bestellingen ook verloren. Weet je het zeker?`)) return;
+      await fetch(`/digitalbakery/api/customers?id=${c.id}&force=1`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    }
     load();
   }
 

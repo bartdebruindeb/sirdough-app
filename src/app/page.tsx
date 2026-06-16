@@ -1,8 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/role-context";
-import { ALL_NAV } from "@/lib/nav";
 
 type Batch = {
   id: string; mixerGroup: string; groupLabel: string; batchNumber: number;
@@ -87,95 +86,146 @@ function ProductionSummaryWidget({ role }: { role: string | null }) {
   );
 }
 
-// ── Today's delivery status ────────────────────────────────────────────────────
-function DeliveryWidget({ role }: { role: string | null }) {
+// ── Delivery map (owner only) ─────────────────────────────────────────────────
+type MapStop = {
+  customerId: string; name: string; city: string | null; address: string | null;
+  inBusAt: string | null; deliveredAt: string | null;
+  lat?: number; lng?: number;
+};
+
+async function geocode(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
+  const q = encodeURIComponent(`${address}, ${city ?? ""}, Netherlands`);
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+      headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
+    });
+    const d = await r.json();
+    if (d[0]) return { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon) };
+  } catch {}
+  return null;
+}
+
+function DeliveryMapWidget({ role }: { role: string | null }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [statuses, setStatuses]   = useState<DeliveryStatus[]>([]);
-  const [totalRows, setTotalRows] = useState(0);
-  const [loaded, setLoaded]       = useState(false);
+  const mapRef    = useRef<HTMLDivElement>(null);
+  const leafletRef = useRef<any>(null);
 
-  useEffect(() => {
-    fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
-      .then(r => r.json())
-      .then(d => { setStatuses(d.statuses ?? []); setLoaded(true); })
-      .catch(() => setLoaded(true));
-    fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } })
-      .then(r => r.json())
-      .then(d => setTotalRows((d.rows ?? []).length))
-      .catch(() => {});
+  const [stops, setStops]   = useState<MapStop[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
 
-    const id = setInterval(() => {
-      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
-        .then(r => r.json()).then(d => setStatuses(d.statuses ?? [])).catch(() => {});
-    }, 30000);
-    return () => clearInterval(id);
-  }, [role, today]);
+  async function loadData() {
+    const [bezorgenRes, statusRes] = await Promise.all([
+      fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+    ]);
+    const rows: any[] = bezorgenRes.rows ?? [];
+    const statuses: DeliveryStatus[] = statusRes.statuses ?? [];
+    const statusMap = new Map(statuses.map((s: DeliveryStatus) => [s.customerId, s]));
 
-  if (!loaded || (statuses.length === 0 && totalRows === 0)) return null;
-
-  const delivered   = statuses.filter(s => s.deliveredAt);
-  const inBus       = statuses.filter(s => s.inBusAt && !s.deliveredAt);
-  const allDelivered = totalRows > 0 && delivered.length === totalRows;
-
-  function fmtTime(iso: string | null) {
-    if (!iso) return null;
-    return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+    const mapped: MapStop[] = rows.map((r: any) => {
+      const st = statusMap.get(r.customerId);
+      return { customerId: r.customerId, name: r.name, city: r.city, address: r.address, inBusAt: st?.inBusAt ?? null, deliveredAt: st?.deliveredAt ?? null };
+    });
+    setStops(mapped);
+    setLoaded(true);
+    return mapped;
   }
 
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      const mapped = await loadData();
+      if (cancelled || !mapRef.current || mapped.length === 0) return;
+
+      // Dynamically load Leaflet CSS + JS
+      if (!document.getElementById("leaflet-css")) {
+        const link = document.createElement("link");
+        link.id = "leaflet-css"; link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      const L = await import("leaflet" as any).catch(() => null);
+      if (!L || cancelled) return;
+
+      // Fix default icon paths broken by webpack
+      (L as any).Icon.Default.mergeOptions({ iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png", iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png", shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png" });
+
+      if (leafletRef.current) { leafletRef.current.remove(); }
+      const map = (L as any).map(mapRef.current, { zoomControl: true }).setView([52.01, 4.36], 12);
+      leafletRef.current = map;
+      (L as any).tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+
+      // Geocode and add markers
+      setGeocoding(true);
+      const bounds: [number, number][] = [];
+      for (const stop of mapped) {
+        if (!stop.address) continue;
+        await new Promise(r => setTimeout(r, 300)); // respect Nominatim rate limit
+        const coord = await geocode(stop.address, stop.city);
+        if (!coord || cancelled) continue;
+        bounds.push([coord.lat, coord.lng]);
+
+        const isDone  = !!stop.deliveredAt;
+        const isInBus = !!stop.inBusAt && !isDone;
+        const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "#6b7280";
+        const label   = isDone ? "✓" : isInBus ? "🚐" : "·";
+        const icon = (L as any).divIcon({
+          html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;color:white;font-weight:700;">${label}</div>`,
+          className: "", iconSize: [32, 32], iconAnchor: [16, 16],
+        });
+        const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Nog te bezorgen";
+        (L as any).marker([coord.lat, coord.lng], { icon })
+          .addTo(map)
+          .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><span style="font-size:12px;color:#666">${stop.address}</span>` : ""}`);
+      }
+      if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+      setGeocoding(false);
+    }
+    init();
+    const interval = setInterval(() => { loadData().then(s => setStops(s)); }, 30000);
+    return () => { cancelled = true; clearInterval(interval); leafletRef.current?.remove(); };
+  }, [role, today]);
+
+  if (!loaded) return null;
+  const total     = stops.length;
+  const delivered = stops.filter(s => s.deliveredAt).length;
+  const inBus     = stops.filter(s => s.inBusAt && !s.deliveredAt).length;
+  if (total === 0) return null;
+  const allDone   = delivered === total;
+
   return (
-    <div style={{
-      background: allDelivered ? "#f0fdf4" : "var(--surface)",
-      border: `1px solid ${allDelivered ? "#4ade80" : "var(--border)"}`,
-      borderRadius: 12, padding: "1.25rem 1.5rem", marginBottom: "1.5rem",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDelivered ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>
+    <div style={{ background: allDone ? "#f0fdf4" : "var(--surface)", border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+      <div style={{ padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDone ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>
           🚐 Bezorging vandaag
         </h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: allDelivered ? "#16a34a" : "var(--text-muted)" }}>
-            {allDelivered ? "🎉 Alles bezorgd!" : `${delivered.length}/${totalRows} geleverd`}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "#6b7280" }}>⬤ Te bezorgen</span>
+          <span style={{ fontSize: 12, color: "#b45309" }}>⬤ In de bus</span>
+          <span style={{ fontSize: 12, color: "#16a34a" }}>⬤ Geleverd</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--accent)" }}>
+            {allDone ? "🎉 Alles bezorgd!" : `${delivered}/${total} geleverd${inBus > 0 ? ` · ${inBus} onderweg` : ""}`}
           </span>
           <Link href="/digitalbakery/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
         </div>
       </div>
-
-      {/* Progress bar */}
-      {totalRows > 0 && (
-        <div style={{ height: 5, background: "var(--border)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${Math.round((delivered.length / totalRows) * 100)}%`, background: allDelivered ? "#4ade80" : "#1a73e8", borderRadius: 3, transition: "width 0.4s" }} />
-        </div>
-      )}
-
-      {inBus.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "#b45309", margin: "0 0 5px" }}>In de bus</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {inBus.map(s => (
-              <span key={s.customerId} style={{ fontSize: 12, background: "#fefce8", border: "1px solid #fbbf24", borderRadius: 8, padding: "4px 10px", color: "#92400e" }}>
-                {s.customerName} <span style={{ color: "#b45309", fontWeight: 500 }}>· {fmtTime(s.inBusAt)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {delivered.length > 0 && (
-        <div>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16a34a", margin: "0 0 5px" }}>Geleverd</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {delivered.map(s => (
-              <span key={s.customerId} style={{ fontSize: 12, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "4px 10px", color: "#166534" }}>
-                {s.customerName} <span style={{ color: "#16a34a", fontWeight: 500 }}>· {fmtTime(s.deliveredAt)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {statuses.length === 0 && totalRows > 0 && (
-        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Bezorging nog niet gestart — {totalRows} stops gepland.</p>
-      )}
+      {geocoding && <p style={{ fontSize: 12, color: "var(--text-subtle)", padding: "0 1.5rem 8px", margin: 0 }}>Adressen laden op kaart…</p>}
+      <div ref={mapRef} style={{ height: 380, width: "100%" }} />
+      {/* Stop list below map */}
+      <div style={{ borderTop: "1px solid var(--border)", padding: "10px 16px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {stops.map(s => {
+          const isDone  = !!s.deliveredAt;
+          const isInBus = !!s.inBusAt && !isDone;
+          const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "var(--text-subtle)";
+          const time    = isDone ? fmtTime(s.deliveredAt) : isInBus ? fmtTime(s.inBusAt) : null;
+          return (
+            <span key={s.customerId} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 8, background: isDone ? "#f0fdf4" : isInBus ? "#fefce8" : "var(--surface-2)", border: `1px solid ${isDone ? "#86efac" : isInBus ? "#fbbf24" : "var(--border)"}`, color }}>
+              {s.name}{time ? ` · ${time}` : ""}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -264,7 +314,7 @@ function getGreeting(hour: number) {
 }
 
 export default function HomePage() {
-  const { role, can, canAccess } = useRole();
+  const { role, can } = useRole();
   const [today, setToday] = useState("");
   const [greeting, setGreeting] = useState("Goedemorgen");
 
@@ -368,32 +418,11 @@ export default function HomePage() {
       {/* ── Production totals: today + tomorrow ── */}
       <ProductionSummaryWidget role={role} />
 
-      {/* ── Delivery status widget — owner only ── */}
-      {role === "OWNER" && <DeliveryWidget role={role} />}
+      {/* ── Delivery map — owner only ── */}
+      {role === "OWNER" && <DeliveryMapWidget role={role} />}
 
       {/* ── Production batch progress ── */}
       <ProductionWidget role={role} />
-
-      {/* ── Pages available to this role ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-        {ALL_NAV.filter(item => item.href !== "/" && canAccess(item.href)).map(({ href, label, desc, color }) => (
-          <Link key={href} href={href} style={{
-            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
-            padding: "1.25rem", textDecoration: "none", color: "inherit", display: "block",
-          }} className="dash-card">
-            <div style={{ width: 36, height: 36, background: color, borderRadius: 8, marginBottom: 12 }} />
-            <p style={{ fontFamily: "var(--font-display)", fontSize: 17, margin: "0 0 5px" }}>{label}</p>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{desc}</p>
-          </Link>
-        ))}
-      </div>
-
-      <style>{`
-        .dash-card:hover { box-shadow: 0 4px 16px rgba(28,16,9,0.08); transform: translateY(-2px); transition: all 0.15s; }
-        @media (max-width: 860px) {
-          .dash-card { padding: 1rem !important; }
-        }
-      `}</style>
     </div>
   );
 }

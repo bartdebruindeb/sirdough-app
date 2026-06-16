@@ -384,18 +384,6 @@ const BATCH_BTN: Record<string, string>    = { todo: "▶ In mixer",       in_mi
 function BatchCard({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }) {
   const { role } = useRole();
   const [updating, setUpdating] = useState(false);
-  const [elapsed, setElapsed]   = useState("");
-
-  useEffect(() => {
-    if (batch.status !== "in_mixer" || !batch.startedAt) { setElapsed(""); return; }
-    const tick = () => {
-      const ms = Date.now() - new Date(batch.startedAt!).getTime();
-      setElapsed(`${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [batch.status, batch.startedAt]);
 
   async function advance() {
     const next = BATCH_NEXT[batch.status];
@@ -436,7 +424,6 @@ function BatchCard({ batch, onUpdated }: { batch: Batch; onUpdated: () => void }
           {batch.startedAt && (
             <span style={{ color: batch.status === "in_mixer" ? "#b45309" : "var(--text-muted)" }}>
               🕐 In mixer {fmtTime(batch.startedAt)}
-              {batch.status === "in_mixer" && elapsed && <strong style={{ marginLeft: 4 }}>({elapsed})</strong>}
             </span>
           )}
           {batch.rijzenAt && <span style={{ color: "var(--text-muted)" }}>↑ Rijzen {fmtTime(batch.rijzenAt)}</span>}

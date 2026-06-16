@@ -185,17 +185,21 @@ export async function DELETE(req: Request) {
     const id = url.searchParams.get("id");
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
 
-    // Check for active orders first
-    const hasOrders = await prisma.oneOffOrder.count({ where: { customerId: id, tenantId: tid } });
+    const force = url.searchParams.get("force") === "1";
+
+    const hasOrders    = await prisma.oneOffOrder.count({ where: { customerId: id, tenantId: tid } });
     const hasRecurring = await prisma.recurringOrder.count({ where: { customerId: id, tenantId: tid } });
 
-    if (hasOrders > 0 || hasRecurring > 0) {
-      // Soft delete — deactivate instead
-      await prisma.customer.updateMany({ where: { id, tenantId: tid }, data: { active: false } });
-      return Response.json({ deleted: false, deactivated: true });
+    // Without force flag, return info so the UI can show a warning
+    if ((hasOrders > 0 || hasRecurring > 0) && !force) {
+      return Response.json({ needsConfirm: true, hasOrders, hasRecurring });
     }
 
-    // Hard delete if no orders
+    // Hard delete — cascade related records first
+    await prisma.deliveryStatus.deleteMany({ where: { customerId: id, tenantId: tid } });
+    await prisma.deliveryNote.deleteMany({ where: { customerId: id, tenantId: tid } });
+    await prisma.oneOffOrder.deleteMany({ where: { customerId: id, tenantId: tid } });
+    await prisma.recurringOrder.deleteMany({ where: { customerId: id, tenantId: tid } });
     await prisma.customer.deleteMany({ where: { id, tenantId: tid } });
     return Response.json({ deleted: true });
   } catch (e) {
