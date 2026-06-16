@@ -78,7 +78,6 @@ function ProductionWidget({ role }: { role: string | null }) {
   const done = batches.filter(b => b.status === "klaar").length;
   const allDone = totalBatches > 0 && done === totalBatches;
   const pct = totalBatches > 0 ? Math.round((done / totalBatches) * 100) : 0;
-  const activeBatches = batches.filter(b => b.status !== "todo" && b.status !== "klaar");
 
   const thS: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", padding: "5px 10px", textAlign: "right", borderBottom: "2px solid var(--border)", whiteSpace: "nowrap" };
   const tdS: React.CSSProperties = { fontSize: 13, padding: "5px 10px", textAlign: "right", borderBottom: "1px solid var(--border)" };
@@ -137,27 +136,22 @@ function ProductionWidget({ role }: { role: string | null }) {
                   {allDone ? "🎉 Alles klaar!" : `${done}/${totalBatches} klaar`}
                 </p>
               </div>
-              {activeBatches.length === 0 ? (
-                <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-                  {done === totalBatches && totalBatches > 0 ? "Alle batches zijn klaar." : "Geen actieve batches."}
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                  {activeBatches.map(b => {
-                    const tsKey = STATUS_AT[b.status] as keyof Batch;
-                    const ts = tsKey ? (b[tsKey] as string | null) : null;
-                    return (
-                      <div key={b.id} style={{ background: "var(--surface-2)", border: `1px solid var(--border)`, borderLeft: `3px solid ${STATUS_COLOR[b.status]}`, borderRadius: 6, padding: "6px 10px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{b.groupLabel} #{b.batchNumber}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{ts ? fmtTime(ts) : ""}</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: STATUS_COLOR[b.status], fontWeight: 600, marginTop: 1 }}>{STATUS_LABEL[b.status]}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4, overflowY: "auto", maxHeight: 220 }}>
+                {batches.map(b => {
+                  const isActive = b.status !== "todo" && b.status !== "klaar";
+                  const tsKey = STATUS_AT[b.status] as keyof Batch;
+                  const ts = tsKey ? (b[tsKey] as string | null) : null;
+                  return (
+                    <div key={b.id} style={{ background: b.status === "klaar" ? "#f0fdf4" : b.status === "todo" ? "var(--surface-2)" : "var(--surface)", border: `1px solid var(--border)`, borderLeft: `3px solid ${STATUS_COLOR[b.status]}`, borderRadius: 6, padding: "5px 10px", opacity: b.status === "todo" ? 0.6 : 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500 }}>{b.groupLabel} #{b.batchNumber}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{ts ? fmtTime(ts) : ""}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      <div style={{ fontSize: 11, color: STATUS_COLOR[b.status], fontWeight: 600, marginTop: 1 }}>{STATUS_LABEL[b.status]}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </div>
@@ -305,8 +299,9 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
 
       const bounds: [number, number][] = [];
 
-      // Bakery marker (always shown as origin)
-      const BAKERY: [number, number] = [51.9097, 4.4328];
+      // Geocode bakery address with cache (falls back to Rotterdam center)
+      const bakeryCoord = await geocodeStop("De Weegbreestraat 23a", "Rotterdam") ?? { lat: 51.9097, lng: 4.4328 };
+      const BAKERY: [number, number] = [bakeryCoord.lat, bakeryCoord.lng];
       bounds.push(BAKERY);
       const bakeryIcon = L.divIcon({
         html: `<div style="width:34px;height:34px;border-radius:50%;background:#92400e;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
@@ -352,8 +347,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
         const isShop  = stop.isShop;
-        const baseColor = isShop ? "#0f766e" : "#4f46e5";
-        const color   = isDone ? "#16a34a" : isInBus ? baseColor : "#6b7280";
+        const color   = isDone ? "#16a34a" : isInBus ? "#7F77DD" : "#6b7280";
         const emoji   = isDone ? "✓" : isShop ? "🏪" : "📦";
         const size    = isInBus ? 34 : isDone ? 30 : 26;
         const fontSize = isInBus ? 15 : isDone ? 13 : 13;
