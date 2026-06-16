@@ -259,12 +259,27 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       setMapReady(true);
 
       setGeocoding(true);
-      const bounds: [number, number][] = [];
+      // Geocode: cached addresses are instant, only rate-limit fresh fetches
+      const geocoded: { stop: MapStop; coord: { lat: number; lng: number } }[] = [];
+      let freshFetched = 0;
       for (const stop of stops) {
         if (!stop.address || cancelled) continue;
-        const coord = await geocodeStop(stop.address, stop.city);
-        if (!coord || cancelled) continue;
-        // Only delay if not cached (fresh fetch)
+        // Check cache before fetching to avoid unnecessary delay
+        const cacheKey = `geo:${stop.address}|${stop.city ?? ""}`;
+        let fromCache = false;
+        try {
+          const item = localStorage.getItem(cacheKey);
+          if (item) { const { lat, lng, ts } = JSON.parse(item); if (Date.now() - ts < 30 * 24 * 3600 * 1000) { geocoded.push({ stop, coord: { lat, lng } }); fromCache = true; } }
+        } catch {}
+        if (!fromCache) {
+          if (freshFetched > 0) await new Promise(r => setTimeout(r, 1100));
+          const coord = await geocodeStop(stop.address, stop.city);
+          if (coord && !cancelled) { geocoded.push({ stop, coord }); freshFetched++; }
+        }
+      }
+      if (cancelled) return;
+      const bounds: [number, number][] = [];
+      for (const { stop, coord } of geocoded) {
         bounds.push([coord.lat, coord.lng]);
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
@@ -277,10 +292,9 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         const timeStr = isDone ? `✓ Geleverd ${fmtTime(stop.deliveredAt)}` : isInBus ? `🚐 In bus ${fmtTime(stop.inBusAt)}` : "Te bezorgen";
         L.marker([coord.lat, coord.lng], { icon }).addTo(map)
           .bindPopup(`<strong>${stop.name}</strong><br/><span style="color:${color};font-weight:600">${timeStr}</span>${stop.address ? `<br/><small style="color:#666">${stop.address}</small>` : ""}`);
-        await new Promise(r => setTimeout(r, 1100)); // Nominatim rate limit
       }
-      if (!cancelled && bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
-      if (!cancelled) setGeocoding(false);
+      if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+      setGeocoding(false);
     })();
 
     return () => { cancelled = true; leafletRef.current?.remove(); leafletRef.current = null; setMapReady(false); };

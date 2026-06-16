@@ -61,6 +61,14 @@ async function geocode(address: string, city: string): Promise<LatLng | null> {
 }
 
 async function getRoute(from: LatLng, to: LatLng): Promise<{ coords: [number,number][]; distanceKm: number; durationMin: number } | null> {
+  const cacheKey = `route:${from.lat.toFixed(5)},${from.lng.toFixed(5)}-${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < 7 * 24 * 3600 * 1000) return data; // 7-day TTL
+    }
+  } catch {}
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url);
@@ -68,7 +76,9 @@ async function getRoute(from: LatLng, to: LatLng): Promise<{ coords: [number,num
     const route = data.routes?.[0];
     if (!route) return null;
     const coords: [number,number][] = route.geometry.coordinates.map(([lng, lat]: [number,number]) => [lat, lng]);
-    return { coords, distanceKm: route.distance / 1000, durationMin: Math.round(route.duration / 60) };
+    const result = { coords, distanceKm: route.distance / 1000, durationMin: Math.round(route.duration / 60) };
+    try { localStorage.setItem(cacheKey, JSON.stringify({ data: result, ts: Date.now() })); } catch {}
+    return result;
   } catch { return null; }
 }
 
@@ -160,15 +170,18 @@ export default function BezorgenMap({ rows }: Props) {
 
       if (positioned.length === 0) return;
 
-      // Draw OSRM route only through in-bus stops (in order)
+      // Draw OSRM route only through in-bus stops (in order) — all fetches in parallel
       const inBusPositioned = positioned
         .filter(x => x.row.busIndex !== null)
         .sort((a, b) => (a.row.busIndex ?? 0) - (b.row.busIndex ?? 0));
 
-      for (let i = 0; i < inBusPositioned.length - 1; i++) {
+      const routeResults = await Promise.all(
+        inBusPositioned.slice(0, -1).map((p, i) => getRoute(p.latlng, inBusPositioned[i + 1].latlng))
+      );
+      for (let i = 0; i < routeResults.length; i++) {
+        const route = routeResults[i];
         const a = inBusPositioned[i].latlng;
         const b = inBusPositioned[i + 1].latlng;
-        const route = await getRoute(a, b);
         if (route) {
           const line = L.polyline(route.coords, { color: "#6366f1", weight: 4, opacity: 0.8 }).addTo(map);
           line.bindPopup(`${route.distanceKm.toFixed(1)} km · ${fmtDuration(route.durationMin)}`);
