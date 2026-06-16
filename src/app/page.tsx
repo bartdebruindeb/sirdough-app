@@ -301,12 +301,13 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, stops.length]);
 
-  if (!loaded) return null;
-  const total     = stops.length;
+  const total     = loaded ? stops.length : 0;
   const delivered = stops.filter(s => s.deliveredAt).length;
   const inBus     = stops.filter(s => s.inBusAt && !s.deliveredAt).length;
-  if (total === 0) return null;
-  const allDone = delivered === total;
+  const allDone   = total > 0 && delivered === total;
+
+  // Don't render the widget at all if loaded and no stops
+  if (loaded && total === 0) return null;
 
   return (
     <div style={{ background: allDone ? "#f0fdf4" : "var(--surface)", border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
@@ -316,15 +317,22 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           Bezorging vandaag
         </h3>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--accent)" }}>
-            {allDone ? "🎉 Alles bezorgd!" : `${delivered}/${total} geleverd${inBus > 0 ? ` · ${inBus} onderweg` : ""}`}
-          </span>
+          {loaded && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--accent)" }}>
+              {allDone ? "🎉 Alles bezorgd!" : `${delivered}/${total} geleverd${inBus > 0 ? ` · ${inBus} onderweg` : ""}`}
+            </span>
+          )}
           <Link href="/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", minHeight: 300 }}>
-        {/* Left: map */}
+        {/* Left: map — always rendered so mapRef is available for Leaflet */}
         <div style={{ position: "relative", borderRight: "1px solid var(--border)" }}>
+          {!loaded && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1, fontSize: 12, color: "var(--text-subtle)" }}>
+              Laden…
+            </div>
+          )}
           {geocoding && (
             <div style={{ position: "absolute", top: 8, left: 8, zIndex: 500, background: "rgba(255,255,255,0.85)", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "var(--text-subtle)" }}>
               Adressen laden…
