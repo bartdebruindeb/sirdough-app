@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/role-context";
+import { bakeryConfig } from "@/config/bakery.config";
 
 type Batch = {
   id: string; mixerGroup: string; groupLabel: string; batchNumber: number;
@@ -299,16 +300,14 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
 
       const bounds: [number, number][] = [];
 
-      // Geocode bakery address with cache (falls back to Rotterdam center)
-      const bakeryCoord = await geocodeStop("De Weegbreestraat 23a", "Rotterdam") ?? { lat: 51.9097, lng: 4.4328 };
-      const BAKERY: [number, number] = [bakeryCoord.lat, bakeryCoord.lng];
+      const BAKERY: [number, number] = [bakeryConfig.bakeryLat, bakeryConfig.bakeryLng];
       bounds.push(BAKERY);
       const bakeryIcon = L.divIcon({
         html: `<div style="width:34px;height:34px;border-radius:50%;background:#92400e;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
         className: "", iconSize: [34, 34], iconAnchor: [17, 17],
       });
       L.marker(BAKERY, { icon: bakeryIcon }).addTo(map)
-        .bindPopup("<strong>Bakkerij</strong><br/><small>De Weegbreestraat 23a, Rotterdam</small>");
+        .bindPopup(`<strong>Bakkerij</strong><br/><small>${bakeryConfig.bakeryAddress}</small>`);
 
       // Draw OSRM roads between: bakery → in-bus stops (in inBusAt order) → delivered stops
       const inBusOrdered = geocoded
@@ -341,16 +340,20 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         }
       }
 
+      // Determine the next destination: first in-bus stop ordered by inBusAt
+      const nextDestId = inBusOrdered[0]?.stop.customerId ?? null;
+
       // Draw stop markers — shops get 🏪 (teal), delivery customers get 📦 (indigo)
       for (const { stop, coord } of geocoded) {
         bounds.push([coord.lat, coord.lng]);
         const isDone  = !!stop.deliveredAt;
         const isInBus = !!stop.inBusAt && !isDone;
+        const isNext  = !isDone && stop.customerId === nextDestId;
         const isShop  = stop.isShop;
-        const color   = isDone ? "#16a34a" : isInBus ? "#7F77DD" : "#6b7280";
+        const color   = isDone ? "#16a34a" : isNext ? "#dc2626" : isInBus ? "#7F77DD" : "#6b7280";
         const emoji   = isDone ? "✓" : isShop ? "🏪" : "📦";
-        const size    = isInBus ? 34 : isDone ? 30 : 26;
-        const fontSize = isInBus ? 15 : isDone ? 13 : 13;
+        const size    = isNext ? 38 : isInBus ? 34 : isDone ? 30 : 26;
+        const fontSize = isNext ? 17 : isInBus ? 15 : isDone ? 13 : 13;
         const icon = L.divIcon({
           html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;color:white;font-weight:700;">${isDone ? emoji : emoji}</div>`,
           className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
@@ -372,6 +375,9 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   const delivered = stops.filter(s => s.deliveredAt).length;
   const inBus     = stops.filter(s => s.inBusAt && !s.deliveredAt).length;
   const allDone   = total > 0 && delivered === total;
+  const nextDestId = stops
+    .filter(s => s.inBusAt && !s.deliveredAt)
+    .sort((a, b) => (a.inBusAt ?? "").localeCompare(b.inBusAt ?? ""))[0]?.customerId ?? null;
 
   // Don't render the widget at all if loaded and no stops
   if (loaded && total === 0) return null;
@@ -418,14 +424,24 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
               </tr>
             </thead>
             <tbody>
-              {stops.map((s, i) => {
+              {[...stops]
+                .sort((a, b) => {
+                  const rank = (s: MapStop) => s.deliveredAt ? 0 : s.inBusAt ? 1 : 2;
+                  const ra = rank(a), rb = rank(b);
+                  if (ra !== rb) return ra - rb;
+                  if (ra === 0) return (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""); // newest delivered first
+                  if (ra === 1) return (a.inBusAt ?? "").localeCompare(b.inBusAt ?? ""); // delivery sheet order
+                  return 0;
+                })
+                .map((s, i) => {
                 const isDone  = !!s.deliveredAt;
                 const isInBus = !!s.inBusAt && !isDone;
-                const color   = isDone ? "#16a34a" : isInBus ? "#b45309" : "var(--text-subtle)";
+                const isNext  = !isDone && s.customerId === nextDestId;
+                const color   = isDone ? "#16a34a" : isNext ? "#dc2626" : isInBus ? "#b45309" : "var(--text-subtle)";
                 const statusLabel = isDone ? "Geleverd" : isInBus ? "In de bus" : "Te bezorgen";
                 const time = isDone ? fmtTime(s.deliveredAt) : isInBus ? fmtTime(s.inBusAt) : null;
                 return (
-                  <tr key={s.customerId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", background: isDone ? "#f0fdf4" : isInBus ? "#fefce8" : "transparent" }}>
+                  <tr key={s.customerId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", background: isDone ? "#f0fdf4" : isNext ? "#fef2f2" : isInBus ? "#fefce8" : "transparent" }}>
                     <td style={{ padding: "8px 14px", fontWeight: isDone ? 400 : 500 }}>
                       {s.name}
                       {s.city && <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 4 }}>({s.city})</span>}

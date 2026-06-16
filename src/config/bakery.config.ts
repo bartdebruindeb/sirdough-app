@@ -57,6 +57,11 @@ export const bakeryConfig = {
    * so it's clear to the bakery owner what it's for).
    */
   protectedAdminEmail: "bdb785@gmail.com",
+
+  /** Bakery address shown on the map and used as route start point */
+  bakeryAddress: "De Weegbreestraat 23a, Rotterdam",
+  bakeryLat: 51.9097,
+  bakeryLng: 4.4328,
 } as const;
 
 /** Convenience: shop names only, for places that need a simple list */

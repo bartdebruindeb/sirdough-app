@@ -35,11 +35,13 @@ export async function GET(req: Request) {
 const CreateCustomerSchema = z.object({
   name: z.string().min(1),
   city: z.string().optional(),
-  address: z.string().optional(),
+  address: z.string().optional().nullable(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   notes: z.string().optional(),
   preferredBread: z.string().optional(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -67,6 +69,7 @@ export async function POST(req: Request) {
         phone: input.phone || null,
         notes: input.notes || null,
         preferredBread: input.preferredBread || null,
+        ...(input.lat != null && input.lng != null && { lat: input.lat, lng: input.lng }),
       },
     });
     return Response.json(customer, { status: 201 });

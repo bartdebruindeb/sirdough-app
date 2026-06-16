@@ -32,6 +32,10 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
 
+  const [addrStatus, setAddrStatus] = useState<"idle" | "checking" | "ok" | "fail">(
+    initial?.lat && initial?.lng ? "ok" : "idle"
+  );
+
   async function submit() {
     if (!name.trim()) { setError("Naam is verplicht."); return; }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -41,8 +45,42 @@ function CustomerForm({ initial, onSave, onCancel }: {
       setError("Telefoonnummer bevat ongeldige tekens."); return;
     }
     setSaving(true); setError("");
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if (address.trim()) {
+      setAddrStatus("checking");
+      try {
+        const q = encodeURIComponent(`${address.trim()}, ${city ?? ""}, Nederland`);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+          headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
+        });
+        const data = await res.json();
+        if (data[0]) {
+          lat = parseFloat(data[0].lat);
+          lng = parseFloat(data[0].lon);
+          setAddrStatus("ok");
+        } else {
+          setAddrStatus("fail");
+          setAddress("");
+          setError("Adres niet gevonden — het veld is leeggemaakt. Vul een geldig adres in of laat het leeg.");
+          setSaving(false);
+          return;
+        }
+      } catch {
+        setAddrStatus("fail");
+        setAddress("");
+        setError("Adres kon niet worden gevalideerd. Probeer opnieuw.");
+        setSaving(false);
+        return;
+      }
+    } else {
+      setAddrStatus("idle");
+    }
+
     try {
-      await onSave({ name: name.trim(), city, address, email, phone, notes, preferredBread });
+      await onSave({ name: name.trim(), city, address: address.trim() || null, lat, lng, email, phone, notes, preferredBread });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
     }
@@ -62,8 +100,17 @@ function CustomerForm({ initial, onSave, onCancel }: {
         </div>
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Adres (voor bezorgroute)</label>
-        <input value={address} onChange={e => setAddress(e.target.value)} style={inp} placeholder="Brabantse Turfmarkt 25, 2611 CG Delft" />
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+          Adres (voor bezorgroute)
+          {addrStatus === "ok" && <span style={{ marginLeft: 6, color: "var(--success)", fontWeight: 600 }}>✓ gevonden</span>}
+          {addrStatus === "checking" && <span style={{ marginLeft: 6, color: "var(--text-subtle)" }}>Controleren…</span>}
+        </label>
+        <input
+          value={address}
+          onChange={e => { setAddress(e.target.value); setAddrStatus("idle"); }}
+          style={{ ...inp, borderColor: addrStatus === "ok" ? "#86efac" : addrStatus === "fail" ? "var(--danger)" : undefined }}
+          placeholder="Brabantse Turfmarkt 25, 2611 CG Delft"
+        />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
@@ -87,7 +134,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button onClick={onCancel} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
         <button onClick={submit} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
-          {saving ? "Opslaan…" : "Opslaan"}
+          {addrStatus === "checking" ? "Adres controleren…" : saving ? "Opslaan…" : "Opslaan"}
         </button>
       </div>
     </div>
@@ -191,27 +238,56 @@ export default function KlantenPage() {
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   const [geocodingId, setGeocodingId] = useState<string | null>(null);
+  const [geocodingAll, setGeocodingAll] = useState(false);
+
+  async function geocodeSingle(c: Customer): Promise<boolean> {
+    if (!c.address) return false;
+    const q = encodeURIComponent(`${c.address}, ${c.city ?? ""}, Nederland`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+      headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
+    });
+    const data = await res.json();
+    if (!data[0]) return false;
+    const lat = parseFloat(data[0].lat);
+    const lng = parseFloat(data[0].lon);
+    await fetch("/digitalbakery/api/customers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+      body: JSON.stringify({ id: c.id, lat, lng }),
+    });
+    return true;
+  }
+
   async function geocodeCustomer(c: Customer) {
     if (!c.address) { showToast("Vul eerst een adres in."); return; }
     setGeocodingId(c.id);
     try {
-      const q = encodeURIComponent(`${c.address}, ${c.city ?? ""}, Nederland`);
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-        headers: { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" },
-      });
-      const data = await res.json();
-      if (!data[0]) { showToast(`Adres niet gevonden voor ${c.name}.`); return; }
-      const lat = parseFloat(data[0].lat);
-      const lng = parseFloat(data[0].lon);
-      await fetch("/digitalbakery/api/customers", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-        body: JSON.stringify({ id: c.id, lat, lng }),
-      });
-      showToast(`✓ Locatie opgeslagen voor ${c.name} (${lat.toFixed(4)}, ${lng.toFixed(4)}).`);
+      const ok = await geocodeSingle(c);
+      if (!ok) { showToast(`Adres niet gevonden voor ${c.name}.`); return; }
+      showToast(`✓ Locatie opgeslagen voor ${c.name}.`);
       load();
     } catch { showToast("Geocoding mislukt."); }
     finally { setGeocodingId(null); }
+  }
+
+  async function geocodeAll() {
+    const missing = customers.filter(c => c.address && (!c.lat || !c.lng));
+    if (missing.length === 0) { showToast("Alle adressen hebben al een locatie."); return; }
+    setGeocodingAll(true);
+    let ok = 0, fail = 0;
+    for (const c of missing) {
+      setGeocodingId(c.id);
+      try {
+        const success = await geocodeSingle(c);
+        if (success) ok++; else fail++;
+      } catch { fail++; }
+      // Nominatim rate limit: max 1 req/sec
+      await new Promise(r => setTimeout(r, 1100));
+    }
+    setGeocodingId(null);
+    setGeocodingAll(false);
+    showToast(`✓ ${ok} locaties opgeslagen${fail > 0 ? `, ${fail} niet gevonden` : ""}.`);
+    load();
   }
   const [deleteModal, setDeleteModal] = useState<{ customer: Customer; needsForce: boolean; orderCount: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -286,9 +362,20 @@ export default function KlantenPage() {
             {activeCount} actief · {filtered.length} totaal
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowNew(true)} style={{ fontSize: 13 }}>
-          + Nieuwe klant
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={geocodeAll}
+            disabled={geocodingAll}
+            title="Geocodeer alle klanten zonder opgeslagen locatie"
+            style={{ fontSize: 13 }}
+          >
+            {geocodingAll ? `📍 Bezig… (${customers.filter(c => c.address && (!c.lat || !c.lng)).length} resterend)` : "📍 Alle locaties"}
+          </button>
+          <button className="btn-primary" onClick={() => setShowNew(true)} style={{ fontSize: 13 }}>
+            + Nieuwe klant
+          </button>
+        </div>
       </div>
 
       {/* New customer form */}
