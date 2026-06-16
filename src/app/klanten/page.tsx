@@ -18,6 +18,24 @@ const inp: React.CSSProperties = {
   fontSize: 13, background: "var(--surface)", width: "100%",
 };
 
+// Parse housenumber + letter from the end of a Dutch address string
+function parseHuisnr(addr: string): { huisnummer: string; huisletter: string } {
+  const m = addr.match(/(\d+)\s*([a-zA-Z]?)$/);
+  return m ? { huisnummer: m[1], huisletter: m[2] } : { huisnummer: "", huisletter: "" };
+}
+
+// PDOK — official Dutch address lookup (returns street, city, lat, lng)
+async function pdokLookup(postcode: string, huisnummer: string, huisletter: string): Promise<{ straat: string; stad: string; lat: number; lng: number } | null> {
+  const q = encodeURIComponent(`${postcode.replace(/\s/g, "")} ${huisnummer}${huisletter}`.trim());
+  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&fl=straatnaam,woonplaatsnaam,centroide_ll&rows=1`);
+  const data = await res.json();
+  const doc = data.response?.docs?.[0];
+  if (!doc?.straatnaam) return null;
+  const m = doc.centroide_ll?.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+  if (!m) return null;
+  return { straat: doc.straatnaam, stad: doc.woonplaatsnaam ?? "", lat: parseFloat(m[2]), lng: parseFloat(m[1]) };
+}
+
 const NOM = "https://nominatim.openstreetmap.org/search";
 const NOM_HEADERS = { "Accept-Language": "nl", "User-Agent": "SirdoughApp/1.0" };
 
@@ -61,19 +79,46 @@ function CustomerForm({ initial, onSave, onCancel }: {
   onCancel: () => void;
 }) {
   const [name, setName]             = useState(initial?.name ?? "");
-  const [city, setCity]             = useState(initial?.city ?? "");
-  const [address, setAddress]       = useState(initial?.address ?? "");
-  const [postalCode, setPostalCode] = useState(initial?.postalCode ?? "");
   const [email, setEmail]           = useState(initial?.email ?? "");
   const [phone, setPhone]           = useState(initial?.phone ?? "");
   const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
+
+  // Address lookup via PDOK
+  const initHuisnr = parseHuisnr(initial?.address ?? "");
+  const [postcode, setPostcode]       = useState(initial?.postalCode ?? "");
+  const [huisnummer, setHuisnummer]   = useState(initHuisnr.huisnummer);
+  const [huisletter, setHuisletter]   = useState(initHuisnr.huisletter);
+  const [foundStraat, setFoundStraat] = useState(initial?.address ?? "");
+  const [foundStad, setFoundStad]     = useState(initial?.city ?? "");
+  const [foundLat, setFoundLat]       = useState<number|null>(initial?.lat ?? null);
+  const [foundLng, setFoundLng]       = useState<number|null>(initial?.lng ?? null);
+  const [lookupStatus, setLookupStatus] = useState<"idle"|"looking"|"found"|"fail">(
+    initial?.address ? "found" : "idle"
+  );
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
 
-  const [addrStatus, setAddrStatus] = useState<"idle" | "checking" | "ok" | "fail">(
-    initial?.lat && initial?.lng ? "ok" : "idle"
-  );
+  async function doLookup() {
+    if (!postcode.trim() || !huisnummer.trim()) return;
+    setLookupStatus("looking");
+    try {
+      const result = await pdokLookup(postcode.trim(), huisnummer.trim(), huisletter.trim());
+      if (result) {
+        const fullAddress = `${result.straat} ${huisnummer.trim()}${huisletter.trim()}`;
+        setFoundStraat(fullAddress);
+        setFoundStad(result.stad);
+        setFoundLat(result.lat);
+        setFoundLng(result.lng);
+        setLookupStatus("found");
+      } else {
+        setFoundStraat(""); setFoundStad(""); setFoundLat(null); setFoundLng(null);
+        setLookupStatus("fail");
+      }
+    } catch {
+      setLookupStatus("fail");
+    }
+  }
 
   async function submit() {
     if (!name.trim()) { setError("Naam is verplicht."); return; }
@@ -84,38 +129,16 @@ function CustomerForm({ initial, onSave, onCancel }: {
       setError("Telefoonnummer bevat ongeldige tekens."); return;
     }
     setSaving(true); setError("");
-
-    let lat: number | null = null;
-    let lng: number | null = null;
-
-    if (address.trim()) {
-      setAddrStatus("checking");
-      try {
-        const coord = await geocodeAddress(address.trim(), postalCode.trim(), city.trim());
-        if (coord) {
-          lat = coord.lat;
-          lng = coord.lng;
-          setAddrStatus("ok");
-        } else {
-          setAddrStatus("fail");
-          setAddress("");
-          setError("Adres niet gevonden — het veld is leeggemaakt. Vul een geldig adres in of laat het leeg.");
-          setSaving(false);
-          return;
-        }
-      } catch {
-        setAddrStatus("fail");
-        setAddress("");
-        setError("Adres kon niet worden gevalideerd. Probeer opnieuw.");
-        setSaving(false);
-        return;
-      }
-    } else {
-      setAddrStatus("idle");
-    }
-
     try {
-      await onSave({ name: name.trim(), city, address: address.trim() || null, postalCode: postalCode.trim() || null, lat, lng, email, phone, notes, preferredBread });
+      await onSave({
+        name: name.trim(),
+        city: foundStad || null,
+        address: foundStraat || null,
+        postalCode: postcode.trim() || null,
+        lat: foundLat,
+        lng: foundLng,
+        email, phone, notes, preferredBread,
+      });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
     }
@@ -124,39 +147,37 @@ function CustomerForm({ initial, onSave, onCancel }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam *</label>
-          <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes" />
-        </div>
-        <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stad</label>
-          <input value={city} onChange={e => setCity(e.target.value)} style={inp} placeholder="Delft" />
-        </div>
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam *</label>
+        <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
-        <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-            Straat + huisnummer
-            {addrStatus === "ok" && <span style={{ marginLeft: 6, color: "var(--success)", fontWeight: 600 }}>✓ gevonden</span>}
-            {addrStatus === "checking" && <span style={{ marginLeft: 6, color: "var(--text-subtle)" }}>Controleren…</span>}
-          </label>
-          <input
-            value={address}
-            onChange={e => { setAddress(e.target.value); setAddrStatus("idle"); }}
-            style={{ ...inp, borderColor: addrStatus === "ok" ? "#86efac" : addrStatus === "fail" ? "var(--danger)" : undefined }}
-            placeholder="Brabantse Turfmarkt 25"
-          />
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Adres (voor bezorgroute)</label>
+        <div style={{ display: "grid", gridTemplateColumns: "110px 80px 60px 1fr", gap: 8, alignItems: "end" }}>
+          <div>
+            <label style={{ fontSize: 10, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>Postcode</label>
+            <input value={postcode} onChange={e=>{setPostcode(e.target.value);setLookupStatus("idle");}} style={inp} placeholder="2611 CG" />
+          </div>
+          <div>
+            <label style={{ fontSize: 10, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>Huisnr.</label>
+            <input value={huisnummer} onChange={e=>{setHuisnummer(e.target.value);setLookupStatus("idle");}} style={inp} placeholder="25" />
+          </div>
+          <div>
+            <label style={{ fontSize: 10, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>Toev.</label>
+            <input value={huisletter} onChange={e=>{setHuisletter(e.target.value);setLookupStatus("idle");}} style={inp} placeholder="a" />
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button type="button" onClick={doLookup} disabled={lookupStatus==="looking"||!postcode.trim()||!huisnummer.trim()} className="btn-secondary" style={{ fontSize: 12, padding: "7px 12px", width: "100%" }}>
+              {lookupStatus==="looking" ? "Zoeken…" : "🔍 Zoek adres"}
+            </button>
+          </div>
         </div>
-        <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Postcode</label>
-          <input
-            value={postalCode}
-            onChange={e => { setPostalCode(e.target.value); setAddrStatus("idle"); }}
-            style={{ ...inp, width: 110 }}
-            placeholder="2611 CG"
-          />
-        </div>
+        {lookupStatus==="found" && foundStraat && (
+          <p style={{ fontSize: 12, color: "var(--success)", margin: "6px 0 0", fontWeight: 500 }}>✓ {foundStraat}, {foundStad}</p>
+        )}
+        {lookupStatus==="fail" && (
+          <p style={{ fontSize: 12, color: "var(--danger)", margin: "6px 0 0" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
@@ -180,7 +201,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button onClick={onCancel} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
         <button onClick={submit} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
-          {addrStatus === "checking" ? "Adres controleren…" : saving ? "Opslaan…" : "Opslaan"}
+          {saving ? "Opslaan…" : "Opslaan"}
         </button>
       </div>
     </div>

@@ -529,7 +529,7 @@ export default function BestellingenPage() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const [tab, setTab] = useState<"eenmalig"|"vast"|"klant">("eenmalig");
+  const [tab, setTab] = useState<"eenmalig"|"vast"|"planning"|"klant">("eenmalig");
   const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
   const [recurringCityFilter, setRecurringCityFilter] = useState("");
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([1,7]);
@@ -544,6 +544,55 @@ export default function BestellingenPage() {
   const logboekDefaultTo   = (() => { const d = new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10); })();
   const [logboekFrom, setLogboekFrom] = useState(logboekDefaultFrom);
   const [logboekTo,   setLogboekTo]   = useState(logboekDefaultTo);
+
+  // ── Week planning ────────────────────────────────────────────────────────────
+  const [wpMonday, setWpMonday] = useState<string>(()=>{
+    const d=new Date(); const day=d.getDay(); const diff=day===0?-6:1-day; d.setDate(d.getDate()+diff);
+    return d.toISOString().slice(0,10);
+  });
+  const [wpOrders, setWpOrders] = useState<OneOffOrder[]>([]);
+  const [wpLoading, setWpLoading] = useState(false);
+  const [wpEditKey, setWpEditKey] = useState<string|null>(null); // "customerId_date"
+  const [wpEditQty, setWpEditQty] = useState<Record<string,number>>({});
+  const [wpSaving, setWpSaving] = useState(false);
+
+  const wpSunday = (()=>{ const d=new Date(wpMonday+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+6); return d.toISOString().slice(0,10); })();
+
+  function loadWpOrders(monday: string) {
+    setWpLoading(true);
+    const sunday = (()=>{ const d=new Date(monday+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+6); return d.toISOString().slice(0,10); })();
+    fetch(`/digitalbakery/api/bestellingen?from=${monday}&to=${sunday}`,{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json()).then(d=>{ setWpOrders(d.orders??[]); if(d.breadTypes?.length) setBreadTypes(d.breadTypes); })
+      .finally(()=>setWpLoading(false));
+  }
+  function wpShiftWeek(delta: number) {
+    const d=new Date(wpMonday+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+delta*7);
+    const next=d.toISOString().slice(0,10); setWpMonday(next); loadWpOrders(next);
+  }
+  function wpStartEdit(customerId: string, date: string, ro: RecurringOrder) {
+    const oneOff = wpOrders.find(o=>o.customerId===customerId && o.deliveryDate.slice(0,10)===date);
+    const base: Record<string,number> = {};
+    const src = oneOff ? oneOff.lines : ro.lines;
+    for (const l of src) base[l.breadTypeId]=l.quantity;
+    setWpEditQty(base); setWpEditKey(`${customerId}_${date}`);
+  }
+  async function wpSaveRow(customerId: string, date: string) {
+    setWpSaving(true);
+    const lines = Object.entries(wpEditQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
+    const existing = wpOrders.find(o=>o.customerId===customerId && o.deliveryDate.slice(0,10)===date);
+    if (lines.length===0 && existing) {
+      await fetch(`/digitalbakery/api/bestellingen?id=${existing.id}`,{method:"DELETE",headers:{"x-role":role??""}});
+    } else if (lines.length>0 && existing) {
+      await fetch("/digitalbakery/api/bestellingen/lines",{method:"PUT",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({orderId:existing.id,lines})});
+    } else if (lines.length>0) {
+      await fetch("/digitalbakery/api/bestellingen",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({customerId,deliveryDate:date,lines})});
+    }
+    setWpEditKey(null); setWpSaving(false); loadWpOrders(wpMonday);
+  }
+  async function wpDeleteOverride(orderId: string) {
+    await fetch(`/digitalbakery/api/bestellingen?id=${orderId}`,{method:"DELETE",headers:{"x-role":role??""}});
+    loadWpOrders(wpMonday);
+  }
 
   // Week-edit modal: edit all recurring days for one customer
   const [weekEditCustomerId, setWeekEditCustomerId] = useState<string|null>(null);
@@ -579,6 +628,7 @@ export default function BestellingenPage() {
   }
   useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); },[fromDate,toDate]);
   useEffect(()=>{ loadHistory(); },[historyCustomerId, logboekFrom, logboekTo]);
+  useEffect(()=>{ if(tab==="planning") loadWpOrders(wpMonday); },[tab]);
 
   async function saveClosedWeekdays(days: number[]) {
     setSavingSettings(true);
@@ -730,7 +780,7 @@ export default function BestellingenPage() {
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:"1.5rem", flexWrap:"wrap", gap:10 }}>
         <h1 style={{ fontSize:28 }}>Bestellingen</h1>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Logboek"]] as const).map(([t,label])=>(
+          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["planning","Weekplanning"],["klant","Logboek"]] as const).map(([t,label])=>(
             <button key={t} onClick={()=>setTab(t as any)} style={{
               padding:"7px 14px", borderRadius:8, border:"1px solid var(--border)",
               background:tab===t?"var(--accent)":"var(--surface)",
@@ -967,6 +1017,119 @@ export default function BestellingenPage() {
           })}
         </div>
       )}
+
+      {/* ── WEEKPLANNING ── */}
+      {tab==="planning" && (()=>{
+        // Compute the 7 days of the selected week, skip closed weekdays
+        const wpDays = Array.from({length:7},(_,i)=>{
+          const d=new Date(wpMonday+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+i);
+          const jsDay=d.getUTCDay(); const weekday=jsDay===0?7:jsDay;
+          return {date:d.toISOString().slice(0,10), weekday};
+        }).filter(d=>!closedWeekdays.includes(d.weekday));
+
+        const wpBTs = [...breadTypes].sort((a,b)=>{
+          const ai=SLUG_ORDER.indexOf(a.slug??""); const bi=SLUG_ORDER.indexOf(b.slug??"");
+          return (ai===-1?99:ai)-(bi===-1?99:bi);
+        }).filter(bt=>bt.customerOrderable);
+
+        const fmtDate = (s:string)=>new Date(s+"T12:00:00Z").toLocaleDateString("nl-NL",{weekday:"long",day:"numeric",month:"long"});
+        const fmtWeekRange = ()=>{
+          const from=new Date(wpMonday+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"});
+          const to=new Date(wpSunday+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"});
+          return `${from} – ${to}`;
+        };
+
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            {/* Week navigator */}
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <button onClick={()=>wpShiftWeek(-1)} className="btn-secondary" style={{padding:"6px 12px"}}>← Vorige week</button>
+              <span style={{fontWeight:600,fontSize:15}}>{fmtWeekRange()}</span>
+              <button onClick={()=>wpShiftWeek(1)} className="btn-secondary" style={{padding:"6px 12px"}}>Volgende week →</button>
+              {wpMonday>today && (
+                <button onClick={()=>{const d=new Date();const day=d.getDay();const diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);const m=d.toISOString().slice(0,10);setWpMonday(m);loadWpOrders(m);}} className="btn-secondary" style={{padding:"6px 12px",fontSize:12}}>
+                  Huidige week
+                </button>
+              )}
+              {wpLoading && <span style={{fontSize:12,color:"var(--text-subtle)"}}>Laden…</span>}
+            </div>
+
+            {wpDays.map(day=>{
+              const recurringForDay = recurring.filter(r=>r.weekday===day.weekday && r.active && r.lines.some(l=>l.quantity>0));
+              if (recurringForDay.length===0) return null;
+              return (
+                <section key={day.date}>
+                  <h2 style={{fontSize:13,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text-subtle)",marginBottom:10}}>
+                    {fmtDate(day.date)}
+                  </h2>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {recurringForDay.map(ro=>{
+                      const oneOff = wpOrders.find(o=>o.customerId===ro.customerId && o.deliveryDate.slice(0,10)===day.date);
+                      const isOverride = !!oneOff;
+                      const editKey = `${ro.customerId}_${day.date}`;
+                      const isEditing = wpEditKey===editKey;
+                      const displayLines = isOverride
+                        ? oneOff!.lines.filter(l=>l.quantity>0)
+                        : ro.lines.filter(l=>l.quantity>0);
+
+                      return (
+                        <div key={ro.id} style={{border:`1px solid ${isEditing?"var(--accent)":isOverride?"#fbbf24":"var(--border)"}`,borderRadius:8,padding:"10px 14px",background:isEditing?"var(--accent-light)":isOverride?"#fffbeb":"var(--surface)"}}>
+                          {isEditing ? (
+                            <div>
+                              <div style={{fontWeight:500,fontSize:13,marginBottom:10}}>{ro.customer.name}{ro.customer.city&&<span style={{fontWeight:400,fontSize:12,color:"var(--text-subtle)",marginLeft:6}}>({ro.customer.city})</span>}</div>
+                              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                                {wpBTs.map(bt=>(
+                                  <label key={bt.id} style={{display:"flex",flexDirection:"column",gap:3,alignItems:"center",minWidth:54}}>
+                                    <span style={{fontSize:10,color:"var(--text-subtle)",textTransform:"uppercase",letterSpacing:"0.03em",textAlign:"center"}}>{colName(bt.name)}</span>
+                                    <input type="number" min={0} value={wpEditQty[bt.id]??0}
+                                      onChange={e=>setWpEditQty(q=>({...q,[bt.id]:Math.max(0,parseInt(e.target.value)||0)}))}
+                                      style={{width:52,textAlign:"center",border:"1px solid var(--border)",borderRadius:6,padding:"5px 4px",fontSize:13,background:"var(--surface)",fontFamily:"var(--font-body)"}} />
+                                  </label>
+                                ))}
+                              </div>
+                              <div style={{display:"flex",gap:6}}>
+                                <button onClick={()=>wpSaveRow(ro.customerId,day.date)} disabled={wpSaving} className="btn-primary" style={{fontSize:12,padding:"5px 14px"}}>
+                                  {wpSaving?"…":"✓ Opslaan"}
+                                </button>
+                                <button onClick={()=>setWpEditKey(null)} className="btn-secondary" style={{fontSize:12,padding:"5px 10px"}}>✕</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                              <span style={{fontWeight:500,fontSize:13,minWidth:140}}>{ro.customer.name}{ro.customer.city&&<span style={{fontWeight:400,fontSize:12,color:"var(--text-subtle)",marginLeft:4}}>({ro.customer.city})</span>}</span>
+                              {isOverride && <span style={{fontSize:10,background:"#fef3c7",color:"#92400e",padding:"2px 7px",borderRadius:8,fontWeight:600}}>Aangepast</span>}
+                              <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap"}}>
+                                {displayLines.map(l=>(
+                                  <span key={l.breadTypeId} style={{fontSize:11,background:"var(--accent-light)",color:"var(--accent)",padding:"2px 7px",borderRadius:10}}>
+                                    {colName('breadType' in l ? (l as any).breadType.name : breadTypes.find(b=>b.id===l.breadTypeId)?.name??"")} ×{l.quantity}
+                                  </span>
+                                ))}
+                              </div>
+                              {canWrite && (
+                                <div style={{display:"flex",gap:5,flexShrink:0}}>
+                                  <button onClick={()=>wpStartEdit(ro.customerId,day.date,ro)} style={{fontSize:11,padding:"4px 10px",borderRadius:6,border:"1px solid var(--border)",background:"none",cursor:"pointer",color:"var(--text-subtle)"}}>✎ Aanpassen</button>
+                                  {isOverride && (
+                                    <button onClick={()=>wpDeleteOverride(oneOff!.id)} style={{fontSize:11,padding:"4px 8px",borderRadius:6,border:"1px solid #fca5a5",background:"none",cursor:"pointer",color:"var(--danger)"}}>✕ Herstellen</button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+            {wpDays.every(day=>recurring.filter(r=>r.weekday===day.weekday&&r.active).length===0) && (
+              <div className="card" style={{padding:"2rem",textAlign:"center",color:"var(--text-subtle)",fontSize:13}}>
+                Geen vaste bestellingen voor deze week.
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── LOGBOEK ── */}
       {tab==="klant" && (
