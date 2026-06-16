@@ -70,7 +70,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
-function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void }) {
+function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
   const { role } = useRole();
   const today = new Date().toISOString().slice(0,10);
   const [customerId, setCustomerId] = useState("");
@@ -82,9 +82,16 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
   const [success, setSuccess] = useState("");
   const hasLines = Object.values(qty).some(v => v > 0);
 
+  function getDateWeekday(d: string) { const dt = new Date(d+"T12:00:00Z"); const j=dt.getUTCDay(); return j===0?7:j; }
+
   async function save() {
-    if (!customerId) { setError("Selecteer een klant."); return; }
+    if (!customerId) { setError("Selecteer eerst een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
+    if (closedWeekdays.includes(getDateWeekday(date))) {
+      const dayName = WEEKDAYS[getDateWeekday(date)];
+      setError(`${dayName} is een gesloten dag — geen levering mogelijk.`);
+      return;
+    }
     setSaving(true); setError(""); setSuccess("");
     const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
     const res = await fetch("/digitalbakery/api/bestellingen", {
@@ -127,7 +134,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
         </div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
-        {breadTypes.map(bt=>(
+        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
             <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
@@ -137,7 +144,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
       </div>
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
       {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
-      <button onClick={save} disabled={saving||!customerId||!hasLines} className="btn-primary" style={{ fontSize:13 }}>
+      <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
         {saving?"Opslaan…":"Bestelling toevoegen"}
       </button>
     </div>
@@ -147,7 +154,7 @@ function NewOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[
 
 
 // ── New recurring order form ──────────────────────────────────────────────────
-function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void }) {
+function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
   const { role } = useRole();
   const [customerId, setCustomerId] = useState("");
   const [weekday, setWeekday] = useState(2);
@@ -159,8 +166,9 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
   const hasLines = Object.values(qty).some(v => v > 0);
 
   async function save() {
-    if (!customerId) { setError("Selecteer een klant."); return; }
+    if (!customerId) { setError("Selecteer eerst een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
+    if (closedWeekdays.includes(weekday)) { setError(`${WEEKDAYS[weekday]} is een gesloten dag.`); return; }
     setSaving(true); setError(""); setSuccess("");
     const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
     const res = await fetch("/digitalbakery/api/bestellingen/recurring", {
@@ -196,7 +204,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Dag</label>
           <select value={weekday} onChange={e=>setWeekday(parseInt(e.target.value))} style={inp}>
-            {[2,3,4,5,6].map(wd=><option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
+            {[1,2,3,4,5,6,7].filter(wd=>!closedWeekdays.includes(wd)).map(wd=><option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
           </select>
         </div>
         <div>
@@ -205,7 +213,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
         </div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
-        {breadTypes.map(bt=>(
+        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>(
           <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
             <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
@@ -215,7 +223,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved }: { customers: 
       </div>
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
       {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
-      <button onClick={save} disabled={saving||!customerId||!hasLines} className="btn-primary" style={{ fontSize:13 }}>
+      <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
         {saving?"Opslaan…":"Vaste bestelling toevoegen"}
       </button>
     </div>
@@ -406,14 +414,18 @@ export default function BestellingenPage() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const [tab, setTab] = useState<"eenmalig"|"vast">("eenmalig");
+  const [tab, setTab] = useState<"eenmalig"|"vast"|"klant">("eenmalig");
   const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
   const [recurringCityFilter, setRecurringCityFilter] = useState("");
+  const [closedWeekdays, setClosedWeekdays] = useState<number[]>([1,7]);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [historyCustomerId, setHistoryCustomerId] = useState("");
+  const [historyOrders, setHistoryOrders] = useState<OneOffOrder[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   function loadOneOff() {
     fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
-        // Only update customers from one-off if we don't have them yet
         if (d.customers?.length) setCustomers(d.customers);
       });
   }
@@ -421,7 +433,30 @@ export default function BestellingenPage() {
     fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setRecurring(d.orders??[]); if (d.customers?.length) setCustomers(d.customers); });
   }
-  useEffect(()=>{ loadOneOff(); loadRecurring(); },[fromDate,toDate]);
+  function loadSettings() {
+    fetch("/digitalbakery/api/settings",{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json()).then(d=>{ if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays); });
+  }
+  function loadHistory(cid: string) {
+    if (!cid) { setHistoryOrders([]); return; }
+    setLoadingHistory(true);
+    fetch(`/digitalbakery/api/bestellingen?customerId=${cid}`,{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json()).then(d=>{ setHistoryOrders(d.orders??[]); setLoadingHistory(false); });
+  }
+  useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); },[fromDate,toDate]);
+  useEffect(()=>{ loadHistory(historyCustomerId); },[historyCustomerId]);
+
+  async function saveClosedWeekdays(days: number[]) {
+    setSavingSettings(true);
+    await fetch("/digitalbakery/api/settings",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""}, body:JSON.stringify({closedWeekdays:days})});
+    setSavingSettings(false);
+    setClosedWeekdays(days);
+  }
+
+  function isFutureOrder(deliveryDate: string) {
+    const d = deliveryDate.includes("T") ? deliveryDate.slice(0,10) : deliveryDate;
+    return d >= today;
+  }
 
   async function deleteOrder(id: string) {
     if (!confirm("Bestelling verwijderen?")) return;
@@ -516,7 +551,7 @@ export default function BestellingenPage() {
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:"1.5rem", flexWrap:"wrap", gap:10 }}>
         <h1 style={{ fontSize:28 }}>Bestellingen</h1>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"]] as const).map(([t,label])=>(
+          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Per klant"]] as const).map(([t,label])=>(
             <button key={t} onClick={()=>setTab(t as any)} style={{
               padding:"7px 14px", borderRadius:8, border:"1px solid var(--border)",
               background:tab===t?"var(--accent)":"var(--surface)",
@@ -537,8 +572,32 @@ export default function BestellingenPage() {
                   {showManage?"▲ Verberg":"▼ Beheer broodsoorten"}
                 </button>
               </div>
-              {showManage && isOwner && <BreadTypeManager breadTypes={breadTypes} onChanged={()=>{ loadOneOff(); }} />}
-              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} />
+              {showManage && isOwner && (
+                <>
+                  <BreadTypeManager breadTypes={breadTypes} onChanged={()=>{ loadOneOff(); }} />
+                  <div className="card" style={{ padding:"1.25rem 1.5rem", marginBottom:0 }}>
+                    <h3 style={{ fontSize:14, marginBottom:"0.75rem" }}>Gesloten dagen</h3>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:8 }}>
+                      {[1,2,3,4,5,6,7].map(wd=>(
+                        <button key={wd} onClick={()=>{
+                          const next = closedWeekdays.includes(wd) ? closedWeekdays.filter(d=>d!==wd) : [...closedWeekdays,wd];
+                          saveClosedWeekdays(next);
+                        }} disabled={savingSettings} style={{
+                          padding:"6px 12px", borderRadius:8, fontSize:12, cursor:"pointer", border:"1px solid", fontFamily:"var(--font-body)",
+                          borderColor:closedWeekdays.includes(wd)?"var(--danger)":"var(--border)",
+                          background:closedWeekdays.includes(wd)?"#fef2f2":"var(--surface-2)",
+                          color:closedWeekdays.includes(wd)?"var(--danger)":"var(--text-subtle)",
+                          opacity:savingSettings?0.6:1,
+                        }}>
+                          {closedWeekdays.includes(wd)?"✕":"+"} {WEEKDAYS[wd]}
+                        </button>
+                      ))}
+                    </div>
+                    <p style={{ fontSize:11, color:"var(--text-subtle)", margin:0 }}>Rood = gesloten dag (geen bestellingen/productie mogelijk).</p>
+                  </div>
+                </>
+              )}
+              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} />
             </>
           )}
 
@@ -557,7 +616,7 @@ export default function BestellingenPage() {
           </div>
 
           {canWrite && (() => {
-            const allOneOffIds = [...ordersByDate.values()].flat().map(o=>o.id);
+            const allOneOffIds = [...ordersByDate.values()].flat().filter(o=>isFutureOrder(o.deliveryDate)).map(o=>o.id);
             const allSelected = allOneOffIds.length > 0 && allOneOffIds.every(id=>selectedOrders.has(id));
             return allOneOffIds.length > 0 ? (
               <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
@@ -623,7 +682,7 @@ export default function BestellingenPage() {
                     return (
                       <div key={order.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:isEditing?"var(--surface-2)":selectedOrders.has(order.id)?"var(--accent-light)":"var(--surface)" }}>
                         <div style={{ display:"flex", alignItems:"flex-start", gap:8 }}>
-                          {canWrite && !isEditing && (
+                          {canWrite && !isEditing && isFutureOrder(order.deliveryDate) && (
                             <input type="checkbox" checked={selectedOrders.has(order.id)} onChange={()=>toggleSelect(order.id)}
                               style={{ marginTop:3, width:16, height:16, flexShrink:0, cursor:"pointer" }} />
                           )}
@@ -657,10 +716,14 @@ export default function BestellingenPage() {
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={()=>startEditOrder(order)}
-                                    style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>✎</button>
-                                  <button onClick={()=>deleteOrder(order.id)}
-                                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1 }}>×</button>
+                                  {isFutureOrder(order.deliveryDate) && (
+                                    <button onClick={()=>startEditOrder(order)}
+                                      style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer", color:"var(--text-subtle)" }}>✎</button>
+                                  )}
+                                  {isFutureOrder(order.deliveryDate) && (
+                                    <button onClick={()=>deleteOrder(order.id)}
+                                      style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:16, lineHeight:1 }}>×</button>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -695,7 +758,7 @@ export default function BestellingenPage() {
       {tab==="vast"&&(
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
           {canWriteRecurring && (
-            <NewRecurringOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadRecurring} />
+            <NewRecurringOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
           )}
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <p style={{ fontSize:13, color:"var(--text-muted)", margin:0 }}>
@@ -743,6 +806,62 @@ export default function BestellingenPage() {
               </section>
             );
           })}
+        </div>
+      )}
+
+      {/* ── PER KLANT ── */}
+      {tab==="klant" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+          <div>
+            <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:6 }}>Klant selecteren</label>
+            <select value={historyCustomerId} onChange={e=>setHistoryCustomerId(e.target.value)}
+              style={{ border:"1px solid var(--border)", borderRadius:7, padding:"8px 12px", fontSize:13, background:"var(--surface)", minWidth:260 }}>
+              <option value="">— kies een klant —</option>
+              {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
+                <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
+              ))}
+            </select>
+          </div>
+
+          {historyCustomerId && (
+            loadingHistory ? <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p> :
+            historyOrders.length === 0 ? (
+              <div className="card" style={{ padding:"2rem", textAlign:"center", color:"var(--text-subtle)", fontSize:13 }}>
+                Geen bestellingen gevonden voor deze klant.
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                <p style={{ fontSize:12, color:"var(--text-subtle)", margin:0 }}>{historyOrders.length} bestelling{historyOrders.length!==1?"en":""} gevonden</p>
+                {[...historyOrders].sort((a,b)=>b.deliveryDate.localeCompare(a.deliveryDate)).map(order=>{
+                  const dateStr = order.deliveryDate.includes("T") ? order.deliveryDate.slice(0,10) : order.deliveryDate;
+                  const d = new Date(dateStr+"T12:00:00Z");
+                  const dateLabel = d.toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"long",year:"numeric"});
+                  const isPast = dateStr < today;
+                  const lines = order.lines.filter(l=>l.quantity>0);
+                  return (
+                    <div key={order.id} style={{
+                      border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px",
+                      background: isPast ? "var(--surface-2)" : "var(--surface)",
+                      opacity: isPast ? 0.75 : 1,
+                    }}>
+                      <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length?6:0 }}>
+                        <span style={{ fontWeight:600, fontSize:13, color: isPast ? "var(--text-subtle)" : "inherit" }}>{dateLabel}</span>
+                        {isPast && <span style={{ fontSize:10, background:"var(--surface-2)", color:"var(--text-subtle)", padding:"2px 7px", borderRadius:8, border:"1px solid var(--border)" }}>Verleden</span>}
+                        {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
+                      </div>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {lines.map(l=>(
+                          <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>
+                            {colName(l.breadType.name)} {l.quantity}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
         </div>
       )}
 

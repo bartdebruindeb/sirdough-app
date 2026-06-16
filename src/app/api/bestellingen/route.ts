@@ -17,11 +17,13 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const from = url.searchParams.get("from");
     const to   = url.searchParams.get("to");
+    const customerId = url.searchParams.get("customerId");
 
     const orders = await prisma.oneOffOrder.findMany({
       where: {
         tenantId: tid,
-        ...(from || to ? {
+        ...(customerId ? { customerId } : {}),
+        ...(!customerId && (from || to) ? {
           deliveryDate: {
             ...(from ? { gte: new Date(from + "T00:00:00Z") } : {}),
             ...(to   ? { lte: new Date(to   + "T23:59:59Z") } : {}),

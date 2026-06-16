@@ -10,7 +10,7 @@ const WEEKDAYS_FULL  = ["", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrij
 const SHOP_COORDS: Record<string, { lat: number; lon: number }> =
   Object.fromEntries(bakeryConfig.shops.map(s => [s.name, { lat: s.lat, lon: s.lon }]));
 
-type BreadType = { id: string; slug: string; name: string; hasRecipe?: boolean };
+type BreadType = { id: string; slug: string; name: string; hasRecipe?: boolean; customerOrderable?: boolean };
 type LogEntry  = {
   id: string; date: string;
   quantities: Record<string, number>;
@@ -171,7 +171,7 @@ export default function WinkelPage() {
   // ── Active bread types ────────────────────────────────────────────────────
   const allBreadTypes = shopData?.breadTypes ?? [];
   const activeBreadTypes = allBreadTypes.filter(bt =>
-    bt.hasRecipe ||
+    bt.customerOrderable ||
     Object.values(shopData?.templateByWeekday ?? {}).some(wk => (wk[bt.id] ?? 0) > 0) ||
     (shopData?.logs ?? []).some(l => ((l.quantities as any)[bt.slug] ?? 0) > 0)
   );

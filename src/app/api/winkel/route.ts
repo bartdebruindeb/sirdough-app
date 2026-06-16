@@ -71,7 +71,7 @@ export async function GET(req: Request) {
         weatherCode: l.weatherCode,
         weatherIcon: l.weatherCode != null ? weatherIcon(l.weatherCode) : null,
       })),
-      breadTypes: breadTypes.map(bt => ({ id: bt.id, slug: bt.slug, name: bt.name, hasRecipe: !!bt.recipe })),
+      breadTypes: breadTypes.map(bt => ({ id: bt.id, slug: bt.slug, name: bt.name, hasRecipe: !!bt.recipe, customerOrderable: bt.customerOrderable })),
       templateByWeekday,
     });
   } catch (e) {
