@@ -75,7 +75,7 @@ function ProductionSummaryWidget({ role }: { role: string | null }) {
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>
           🍞 Productie aantallen
         </h3>
-        <Link href="/digitalbakery/productie" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Productie</Link>
+        <Link href="/productie" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Productie</Link>
       </div>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
         <DayColumn label="Vandaag bakken" lines={todayLines} />
@@ -207,7 +207,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: allDone ? "#16a34a" : "var(--accent)" }}>
             {allDone ? "🎉 Alles bezorgd!" : `${delivered}/${total} geleverd${inBus > 0 ? ` · ${inBus} onderweg` : ""}`}
           </span>
-          <Link href="/digitalbakery/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
+          <Link href="/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
         </div>
       </div>
       {geocoding && <p style={{ fontSize: 12, color: "var(--text-subtle)", padding: "0 1.5rem 8px", margin: 0 }}>Adressen laden op kaart…</p>}
@@ -299,7 +299,7 @@ function ProductionWidget({ role }: { role: string | null }) {
           </div>
         </div>
       ))}
-      <Link href="/digitalbakery/productie" style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
+      <Link href="/productie" style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
         → Ga naar productiepagina
       </Link>
     </div>

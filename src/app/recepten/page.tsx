@@ -72,7 +72,7 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
   );
 }
 
-function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }) {
+function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSaved: () => void; allCategories: string[] }) {
   const r = bt.recipe;
   const [waterPct,  setWater]  = useState(r?.waterPct  ?? 71.5);
   const [desemPct,  setDesem]  = useState(r?.desemPct  ?? 15);
@@ -80,6 +80,7 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
   const [inwasPct,  setInwas]  = useState(r?.inwasPct  ?? 6);
   const [doughWeight, setDough] = useState(r?.doughWeightPerLoaf ?? 1000);
   const [basketType, setBasketType] = useState(bt.basketType ?? "");
+  const [category, setCategory] = useState(bt.category ?? "");
   const [notes,     setNotes]  = useState(r?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
@@ -91,12 +92,11 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
 
   async function save() {
     setSaving(true);
-    // Save basket type on the bread type
-    if (basketType !== bt.basketType) {
+    if (basketType !== bt.basketType || category !== bt.category) {
       await fetch("/digitalbakery/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, basketType }),
+        body: JSON.stringify({ id: bt.id, basketType, category }),
       });
     }
     await fetch("/digitalbakery/api/recipes", {
@@ -172,6 +172,13 @@ function RecipeOwnerEdit({ bt, onSaved }: { bt: BreadType; onSaved: () => void }
       </div>
 
       <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Categorie</label>
+        <select value={category} onChange={e => setCategory(e.target.value)}
+          style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
+          {[...new Set([...allCategories, category])].filter(Boolean).map(c => (
+            <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+          ))}
+        </select>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandtype</label>
         <input value={basketType} onChange={e => setBasketType(e.target.value)}
           style={{ ...inputStyle, width: "100%", marginBottom: 10 }} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
@@ -282,6 +289,8 @@ export default function ReceptenPage() {
   const [editMode, setEditMode] = useState<Record<string, boolean>>({});
   const [showNewBread, setShowNewBread] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BreadType | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
     setLoading(true);
@@ -292,9 +301,12 @@ export default function ReceptenPage() {
   }
   useEffect(() => { load(); }, []);
 
-  async function deleteBreadType(bt: BreadType) {
-    if (!confirm(`"${bt.name}" permanent verwijderen?\n\nLet op: eerdere bestellingen voor dit broodsoort blijven bestaan in het systeem maar het broodsoort zelf verdwijnt. Dit kan niet ongedaan worden.`)) return;
-    await fetch(`/digitalbakery/api/bread-types?id=${bt.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    await fetch(`/digitalbakery/api/bread-types?id=${deleteTarget.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    setDeleting(false);
+    setDeleteTarget(null);
     load();
   }
 
@@ -385,7 +397,7 @@ export default function ReceptenPage() {
                             {isEditing ? "Annuleer" : "Bewerken"}
                           </button>
                           <button
-                            onClick={() => deleteBreadType(bt)}
+                            onClick={() => setDeleteTarget(bt)}
                             style={{ fontSize: 12, padding: "5px 12px", background: "none", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", color: "var(--danger)" }}
                           >
                             Verwijderen
@@ -396,7 +408,7 @@ export default function ReceptenPage() {
                     {isOpen && (
                       <div style={{ borderTop: "1px solid var(--border)", padding: "1rem 1.25rem", background: "var(--surface-2)" }}>
                         {isOwner && isEditing
-                          ? <RecipeOwnerEdit bt={bt} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
+                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
                           : <RecipeWorkerView bt={bt} qty={qty} />
                         }
                       </div>
@@ -412,6 +424,28 @@ export default function ReceptenPage() {
       {/* New bread type modal */}
       {showNewBread && (
         <NewBreadTypeModal onClose={() => setShowNewBread(false)} onSaved={() => { setShowNewBread(false); load(); }} existingCategories={categories} />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
+          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 400, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 16 }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Broodsoort verwijderen</h2>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
+              Weet je zeker dat je <strong>{deleteTarget.name}</strong> permanent wil verwijderen?
+            </p>
+            <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0, background: "var(--warn-bg)", padding: "8px 12px", borderRadius: 8 }}>
+              Eerdere bestellingen blijven bestaan maar het broodsoort zelf verdwijnt. Dit kan niet ongedaan worden.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary" disabled={deleting}>Annuleren</button>
+              <button onClick={confirmDelete} disabled={deleting}
+                style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--danger)", color: "white", cursor: "pointer", fontSize: 14, fontFamily: "var(--font-body)" }}>
+                {deleting ? "Verwijderen…" : "Ja, verwijderen"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

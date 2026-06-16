@@ -423,6 +423,12 @@ export default function BestellingenPage() {
   const [historyOrders, setHistoryOrders] = useState<OneOffOrder[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Vast week-table edit state
+  const [vastEdits, setVastEdits] = useState<Map<string,{lines:Record<string,number>;active:boolean}>>(new Map());
+  const [vastDirty, setVastDirty] = useState<Set<string>>(new Set());
+  const [vastSaving, setVastSaving] = useState(false);
+  const [vastMsg, setVastMsg] = useState<{ok:boolean;text:string}|null>(null);
+
   function loadOneOff() {
     fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
@@ -431,7 +437,19 @@ export default function BestellingenPage() {
   }
   function loadRecurring() {
     fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ setRecurring(d.orders??[]); if (d.customers?.length) setCustomers(d.customers); });
+      .then(r=>r.json()).then(d=>{
+        const orders: RecurringOrder[] = d.orders ?? [];
+        setRecurring(orders);
+        if (d.customers?.length) setCustomers(d.customers);
+        const edits = new Map<string,{lines:Record<string,number>;active:boolean}>();
+        for (const o of orders) {
+          const lines: Record<string,number> = {};
+          for (const l of o.lines) lines[l.breadTypeId] = l.quantity;
+          edits.set(o.id, { lines, active: o.active });
+        }
+        setVastEdits(edits);
+        setVastDirty(new Set());
+      });
   }
   function loadSettings() {
     fetch("/digitalbakery/api/settings",{headers:{"x-role":role ?? ""}})
@@ -499,6 +517,37 @@ export default function BestellingenPage() {
     setSavingEdit(false); setEditingOrderId(null); loadOneOff();
   }
 
+  async function saveVastTable() {
+    setVastSaving(true); setVastMsg(null);
+    try {
+      const toSave = recurring.filter(o => vastDirty.has(o.id));
+      await Promise.all(toSave.map(o => {
+        const edit = vastEdits.get(o.id);
+        if (!edit) return Promise.resolve();
+        // active toggle
+        const activeChanged = edit.active !== o.active;
+        const linesPayload = Object.entries(edit.lines).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
+        return Promise.all([
+          fetch("/digitalbakery/api/bestellingen/recurring", {
+            method:"POST", headers:{"Content-Type":"application/json","x-role":role??""},
+            body:JSON.stringify({ customerId:o.customerId, weekday:o.weekday, lines:linesPayload }),
+          }),
+          activeChanged ? fetch("/digitalbakery/api/bestellingen/recurring", {
+            method:"PATCH", headers:{"Content-Type":"application/json","x-role":role??""},
+            body:JSON.stringify({ id:o.id, active:edit.active }),
+          }) : Promise.resolve(),
+        ]);
+      }));
+      setVastMsg({ ok:true, text:`✓ ${toSave.length} bestelling${toSave.length!==1?"en":""} opgeslagen.` });
+      setVastDirty(new Set());
+      loadRecurring();
+    } catch(e) {
+      setVastMsg({ ok:false, text:`Fout bij opslaan: ${e instanceof Error?e.message:"onbekend"}` });
+    }
+    setVastSaving(false);
+    setTimeout(()=>setVastMsg(null), 5000);
+  }
+
   // Group by date — fix: use T12:00:00Z to avoid timezone issues
   const ordersByDate=new Map<string,OneOffOrder[]>();
   for (const o of orders) {
@@ -551,7 +600,7 @@ export default function BestellingenPage() {
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:"1.5rem", flexWrap:"wrap", gap:10 }}>
         <h1 style={{ fontSize:28 }}>Bestellingen</h1>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Per klant"]] as const).map(([t,label])=>(
+          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Logboek"]] as const).map(([t,label])=>(
             <button key={t} onClick={()=>setTab(t as any)} style={{
               padding:"7px 14px", borderRadius:8, border:"1px solid var(--border)",
               background:tab===t?"var(--accent)":"var(--surface)",
@@ -645,36 +694,13 @@ export default function BestellingenPage() {
 
           {[...allDates].sort().map(date=>{
             const dayOrders=ordersByDate.get(date)??[];
-            const dayRecurring=recurringForDate(date);
-            if (dayOrders.length===0 && dayRecurring.length===0) return null;
+            if (dayOrders.length===0) return null;
             const d=new Date(date+"T12:00:00Z");
             const dateLabel=d.toLocaleDateString("nl-NL",{weekday:"long",day:"numeric",month:"long"});
             return (
               <section key={date}>
                 <h2 style={{ fontSize:14, textTransform:"uppercase", letterSpacing:"0.06em", color:"var(--text-subtle)", marginBottom:8 }}>{dateLabel}</h2>
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {/* Recurring orders for this day */}
-                  {dayRecurring.map(ro=>{
-                    const lines = ro.lines.filter(l=>l.quantity>0);
-                    return (
-                      <div key={"rec-"+ro.id} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background:"#f0fdf4" }}>
-                        <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length||ro.notes?6:0 }}>
-                          <span style={{ fontWeight:500, fontSize:13 }}>{ro.customer.name}</span>
-                          {ro.customer.city && <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{ro.customer.city}</span>}
-                          <span style={{ fontSize:10, background:"var(--success-bg)", color:"var(--success)", padding:"2px 7px", borderRadius:8 }}>Vast</span>
-                          {ro.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{ro.notes}</span>}
-                        </div>
-                        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                          {lines.map(l=>(
-                            <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>
-                              {colName(l.breadType.name)} {l.quantity}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-
                   {/* One-off orders */}
                   {dayOrders.map(order=>{
                     const isEditing=editingOrderId===order.id;
@@ -760,17 +786,16 @@ export default function BestellingenPage() {
           {canWriteRecurring && (
             <NewRecurringOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
           )}
+
+          {/* filters */}
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-            <p style={{ fontSize:13, color:"var(--text-muted)", margin:0 }}>
-              Schakel vaste bestellingen aan/uit. Klik op 📅 Plannen om specifieke data over te slaan of toe te voegen.
-            </p>
             <select value={recurringCityFilter} onChange={e=>setRecurringCityFilter(e.target.value)}
               style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
               <option value="">Alle steden</option>
               {recurringCities.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
             <select value={recurringCustomerFilter} onChange={e=>setRecurringCustomerFilter(e.target.value)}
-              style={{ marginLeft:"auto", border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
+              style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
               <option value="">Alle klanten</option>
               {recurringCustomers
                 .filter(c => !recurringCityFilter || (c.city ?? "") === recurringCityFilter)
@@ -782,45 +807,108 @@ export default function BestellingenPage() {
               </button>
             )}
           </div>
-          {recurringCustomerFilter && filteredRecurring.length===0 && (
-            <p style={{ fontSize:13, color:"var(--text-subtle)", textAlign:"center", padding:"1.5rem 0" }}>
-              Geen vaste bestellingen voor deze klant.
-            </p>
-          )}
-          {[2,3,4,5,6].map(wd=>{
-            const dayOrders=recurringByDay.get(wd)??[];
-            if (dayOrders.length===0) return null;
-            const activeCount=dayOrders.filter(o=>o.active).length;
-            return (
-              <section key={wd}>
-                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-                  <h2 style={{ fontSize:14, textTransform:"uppercase", letterSpacing:"0.06em", color:"var(--text-subtle)", margin:0 }}>{WEEKDAYS[wd]}</h2>
-                  <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{activeCount}/{dayOrders.length} actief</span>
-                  <div style={{ flex:1, height:1, background:"var(--border)" }}/>
-                </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                  {dayOrders.map(order=>(
-                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} />
-                  ))}
-                </div>
-              </section>
+
+          {/* week table */}
+          {(()=>{
+            const vastBreadTypes = breadTypes
+              .filter(bt => recurring.some(r => r.lines.some(l => l.breadTypeId === bt.id)) || bt.customerOrderable)
+              .sort((a,b)=>{ const ai=SLUG_ORDER.indexOf(a.slug); const bi=SLUG_ORDER.indexOf(b.slug); return (ai===-1?99:ai)-(bi===-1?99:bi); });
+
+            if (filteredRecurring.length === 0) return (
+              <p style={{ fontSize:13, color:"var(--text-subtle)", textAlign:"center", padding:"1.5rem 0" }}>
+                Geen vaste bestellingen gevonden.
+              </p>
             );
-          })}
+
+            const tdStyle: React.CSSProperties = { padding:"6px 8px", borderBottom:"1px solid var(--border)", fontSize:13, verticalAlign:"middle" };
+            const thStyle: React.CSSProperties = { padding:"6px 8px", fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", borderBottom:"2px solid var(--border)", textAlign:"left", whiteSpace:"nowrap" };
+
+            return (
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Klant</th>
+                      <th style={thStyle}>Dag</th>
+                      {vastBreadTypes.map(bt=>(
+                        <th key={bt.id} style={{ ...thStyle, textAlign:"center" }}>{colName(bt.name)}</th>
+                      ))}
+                      <th style={{ ...thStyle, textAlign:"center" }}>Actief</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...filteredRecurring].sort((a,b)=>a.customer.name.localeCompare(b.customer.name)||a.weekday-b.weekday).map(order=>{
+                      const edit = vastEdits.get(order.id) ?? { lines:{}, active:order.active };
+                      const isDirty = vastDirty.has(order.id);
+                      function setEdit(upd: Partial<typeof edit>) {
+                        setVastEdits(prev=>new Map(prev).set(order.id,{...edit,...upd}));
+                        setVastDirty(prev=>new Set(prev).add(order.id));
+                      }
+                      return (
+                        <tr key={order.id} style={{ background: isDirty ? "var(--accent-light)" : undefined, opacity: edit.active ? 1 : 0.5 }}>
+                          <td style={tdStyle}>{order.customer.name}{order.customer.city?<span style={{ fontSize:11, color:"var(--text-subtle)" }}> ({order.customer.city})</span>:null}</td>
+                          <td style={{ ...tdStyle, color:"var(--text-subtle)", whiteSpace:"nowrap" }}>{WEEKDAYS[order.weekday]}</td>
+                          {vastBreadTypes.map(bt=>(
+                            <td key={bt.id} style={{ ...tdStyle, textAlign:"center" }}>
+                              {canWriteRecurring ? (
+                                <input type="number" min={0} max={99}
+                                  value={edit.lines[bt.id] ?? 0}
+                                  onChange={e=>setEdit({ lines:{...edit.lines,[bt.id]:Math.max(0,parseInt(e.target.value)||0)} })}
+                                  style={{ width:44, border:"1px solid var(--border)", borderRadius:5, padding:"3px 5px", fontSize:12, textAlign:"center", background:"var(--surface)" }}
+                                />
+                              ) : (
+                                <span>{edit.lines[bt.id] || ""}</span>
+                              )}
+                            </td>
+                          ))}
+                          <td style={{ ...tdStyle, textAlign:"center" }}>
+                            {canWriteRecurring ? (
+                              <input type="checkbox" checked={edit.active}
+                                onChange={e=>setEdit({ active:e.target.checked })}
+                                style={{ width:16, height:16, cursor:"pointer" }}
+                              />
+                            ) : (
+                              <span>{edit.active ? "✓" : "–"}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* save bar */}
+          {canWriteRecurring && (
+            <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:4 }}>
+              <button onClick={saveVastTable} disabled={vastSaving || vastDirty.size===0}
+                style={{ padding:"9px 22px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontWeight:600, fontSize:13, cursor: vastDirty.size===0 ? "default" : "pointer", opacity: vastDirty.size===0 ? 0.5 : 1 }}>
+                {vastSaving ? "Opslaan…" : `Opslaan${vastDirty.size>0?` (${vastDirty.size} gewijzigd)`:""}`}
+              </button>
+              {vastMsg && (
+                <span style={{ fontSize:13, color: vastMsg.ok ? "var(--accent)" : "var(--danger)" }}>{vastMsg.text}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── PER KLANT ── */}
+      {/* ── LOGBOEK ── */}
       {tab==="klant" && (
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          <div>
-            <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:6 }}>Klant selecteren</label>
-            <select value={historyCustomerId} onChange={e=>setHistoryCustomerId(e.target.value)}
-              style={{ border:"1px solid var(--border)", borderRadius:7, padding:"8px 12px", fontSize:13, background:"var(--surface)", minWidth:260 }}>
-              <option value="">— kies een klant —</option>
-              {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
-                <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
-              ))}
-            </select>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end" }}>
+            <div>
+              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:6 }}>Klant</label>
+              <select value={historyCustomerId} onChange={e=>setHistoryCustomerId(e.target.value)}
+                style={{ border:"1px solid var(--border)", borderRadius:7, padding:"8px 12px", fontSize:13, background:"var(--surface)", minWidth:260 }}>
+                <option value="">— kies een klant —</option>
+                {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
+                  <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {historyCustomerId && (
@@ -844,10 +932,20 @@ export default function BestellingenPage() {
                       background: isPast ? "var(--surface-2)" : "var(--surface)",
                       opacity: isPast ? 0.75 : 1,
                     }}>
-                      <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap", marginBottom:lines.length?6:0 }}>
-                        <span style={{ fontWeight:600, fontSize:13, color: isPast ? "var(--text-subtle)" : "inherit" }}>{dateLabel}</span>
-                        {isPast && <span style={{ fontSize:10, background:"var(--surface-2)", color:"var(--text-subtle)", padding:"2px 7px", borderRadius:8, border:"1px solid var(--border)" }}>Verleden</span>}
-                        {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
+                      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:lines.length?6:0 }}>
+                        <div style={{ flex:1, display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
+                          <span style={{ fontWeight:600, fontSize:13, color: isPast ? "var(--text-subtle)" : "inherit" }}>{dateLabel}</span>
+                          {isPast
+                            ? <span style={{ fontSize:10, background:"var(--surface-2)", color:"var(--text-subtle)", padding:"2px 7px", borderRadius:8, border:"1px solid var(--border)" }}>Verleden</span>
+                            : <span style={{ fontSize:10, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:8 }}>Toekomst</span>
+                          }
+                          {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
+                        </div>
+                        {!isPast && canWrite && (
+                          <button onClick={()=>deleteOrder(order.id)}
+                            style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-subtle)", fontSize:18, lineHeight:1, padding:"0 4px" }}
+                            title="Bestelling verwijderen">×</button>
+                        )}
                       </div>
                       <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                         {lines.map(l=>(

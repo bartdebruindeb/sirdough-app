@@ -1,6 +1,9 @@
 "use client";
 import { useRole } from "@/lib/role-context";
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+
+const BezorgenMap = dynamic(() => import("./BezorgenMap"), { ssr: false, loading: () => null });
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -352,6 +355,14 @@ export default function BezorgenPage() {
               </div>
             )}
           </section>
+
+          {/* ── ROUTE MAP ── */}
+          {busRows.length > 0 && (
+            <section>
+              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Route kaart</h2>
+              <BezorgenMap rows={busRows} />
+            </section>
+          )}
 
           {/* ── FULL LIST ── */}
           <section>
