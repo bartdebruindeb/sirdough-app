@@ -347,15 +347,19 @@ function DesemTotaal({ groups, deliveryDate }: { groups: MixerGroup[]; deliveryD
 
 // ─── MandenTotaal ─────────────────────────────────────────────────────────────
 function MandenTotaal({ lines }: { lines: BreadLine[] }) {
-  // Group basket lines by basketType + basketStyle using DB fields
-  // Only include lines that have a basketType assigned
-  const basketLines = lines.filter(l => l.basketType && l.totalQty > 0);
+  const get = (slug: string) => lines.find(l => l.slug === slug)?.totalQty ?? 0;
 
-  // Build rows: group by basketType, sub-group by basketStyle
+  // Lines that have basketType set — dynamic (future)
+  // Lines without basketType — fall back to hardcoded slug grouping
+  const hasBasketType = (slug: string) => !!(lines.find(l => l.slug === slug)?.basketType);
+
+  // Collect slugs already covered by basketType so we don't double-count
+  const coveredByDynamic = new Set(lines.filter(l => l.basketType && l.totalQty > 0).map(l => l.slug));
+
+  // Dynamic rows from basketType field
   const byType = new Map<string, { gebloemd: number; ongebloemd: number; other: number; names: string[] }>();
-  for (const l of basketLines) {
+  for (const l of lines.filter(l => l.basketType && l.totalQty > 0)) {
     const type = l.basketType!;
-    // Morning buns: 1 basket per 4 units
     const basketQty = l.slug === "morning-buns" ? Math.ceil(l.totalQty / 4) : l.totalQty;
     if (!byType.has(type)) byType.set(type, { gebloemd: 0, ongebloemd: 0, other: 0, names: [] });
     const entry = byType.get(type)!;
@@ -366,14 +370,33 @@ function MandenTotaal({ lines }: { lines: BreadLine[] }) {
     if (!entry.names.includes(l.name)) entry.names.push(l.name);
   }
 
-  // Sort by canonical order
-  const ORDER = ["750 gram", "rond", "1 kg", "1,5 kg"];
-  const rows = [...byType.entries()].sort((a, b) => {
-    const ai = ORDER.indexOf(a[0]); const bi = ORDER.indexOf(b[0]);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
+  // Hardcoded fallback rows for slugs without basketType assigned yet
+  const slugGet = (slug: string) => coveredByDynamic.has(slug) ? 0 : get(slug);
+  const kleineMand    = slugGet("boeren-kl");
+  const ruitjesOngebl = ["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn"].reduce((s, sl) => s + slugGet(sl), 0);
+  const ruitjesBloemd = ["boeren-gr","boeren-15kg","volkoren","volkoren-15kg"].reduce((s, sl) => s + slugGet(sl), 0);
+  const mand15kg      = ["boeren-15kg","sesam-15kg","zaden-15kg"].reduce((s, sl) => s + slugGet(sl), 0);
+  const morningBuns   = coveredByDynamic.has("morning-buns") ? 0 : Math.ceil(get("morning-buns") / 4);
+  const rondeMand     = ["olijf","rozijn"].reduce((s, sl) => s + slugGet(sl), 0) + morningBuns;
 
-  if (rows.length === 0) return null;
+  const hardcodedRows: { label: string; count: number; note: string }[] = [
+    kleineMand    > 0 ? { label: "Kleine mand",  count: kleineMand,                    note: "Boeren KL" } : null,
+    (ruitjesOngebl + ruitjesBloemd) > 0 ? { label: "Ruitjes mand", count: ruitjesOngebl + ruitjesBloemd, note: `waarvan ${ruitjesOngebl} ongebloemd` } : null,
+    mand15kg      > 0 ? { label: "1,5 kg mand",  count: mand15kg,                      note: "Boeren, Sesam, Zaden 1,5 kg" } : null,
+    rondeMand     > 0 ? { label: "Ronde mand",   count: rondeMand,                     note: "Olijf, Rozijn, Morning buns (÷4)" } : null,
+  ].filter(Boolean) as { label: string; count: number; note: string }[];
+
+  const ORDER = ["750 gram", "rond", "1 kg", "1,5 kg"];
+  const dynamicRows = [...byType.entries()]
+    .sort((a, b) => (ORDER.indexOf(a[0]) + 1 || 99) - (ORDER.indexOf(b[0]) + 1 || 99))
+    .map(([type, entry]) => {
+      const total = entry.gebloemd + entry.ongebloemd + entry.other;
+      const note = [entry.gebloemd > 0 && `${entry.gebloemd} gebloemd`, entry.ongebloemd > 0 && `${entry.ongebloemd} ongebloemd`].filter(Boolean).join(" · ") || entry.names.join(", ");
+      return { label: type, count: total, note };
+    });
+
+  const allRows = [...dynamicRows, ...hardcodedRows];
+  if (allRows.every(r => r.count === 0)) return null;
 
   return (
     <div className="card" style={{ overflow: "hidden" }}>
@@ -382,19 +405,13 @@ function MandenTotaal({ lines }: { lines: BreadLine[] }) {
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <tbody>
-          {rows.map(([type, entry], i) => {
-            const total = entry.gebloemd + entry.ongebloemd + entry.other;
-            const note = entry.gebloemd > 0 || entry.ongebloemd > 0
-              ? [entry.gebloemd > 0 && `${entry.gebloemd} gebloemd`, entry.ongebloemd > 0 && `${entry.ongebloemd} ongebloemd`].filter(Boolean).join(" · ")
-              : entry.names.join(", ");
-            return (
-              <tr key={type} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                <td style={{ padding: "10px 20px", fontWeight: 500 }}>{type}</td>
-                <td style={{ padding: "10px 16px", textAlign: "right" }}><span className="badge badge-amber">{total}</span></td>
-                <td style={{ padding: "10px 20px", color: "var(--text-subtle)", fontSize: 12 }}>{note}</td>
-              </tr>
-            );
-          })}
+          {allRows.map((r, i) => (
+            <tr key={r.label} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+              <td style={{ padding: "10px 20px" }}>{r.label}</td>
+              <td style={{ padding: "10px 16px", textAlign: "right" }}><span className="badge badge-amber">{r.count}</span></td>
+              <td style={{ padding: "10px 20px", color: "var(--text-subtle)", fontSize: 12 }}>{r.note}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
