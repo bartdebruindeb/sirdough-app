@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       data: { tenantId: tid, customerId, token, expiresAt },
     });
 
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000/digitalbakery";
+    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     const inviteUrl = `${baseUrl}/uitnodiging?token=${token}`;
 
     return Response.json({ inviteUrl, email: customer.email });

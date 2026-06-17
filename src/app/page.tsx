@@ -49,9 +49,9 @@ function ProductionWidget({ role }: { role: string | null }) {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch(`/digitalbakery/api/production?date=${today}`,    { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/production?date=${tomorrow}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/production/batches?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/production?date=${today}`,    { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/production?date=${tomorrow}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/production/batches?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
     ]).then(([t, tm, b]) => {
       if (cancelled) return;
       setTodayLines((t.breadLines ?? []).filter((l: BreadLine) => l.totalQty > 0));
@@ -60,7 +60,7 @@ function ProductionWidget({ role }: { role: string | null }) {
       setLoaded(true);
     }).catch(() => { if (!cancelled) setLoaded(true); });
     const id = setInterval(() => {
-      fetch(`/digitalbakery/api/production/batches?date=${today}`, { headers: { "x-role": role ?? "" } })
+      fetch(`/api/production/batches?date=${today}`, { headers: { "x-role": role ?? "" } })
         .then(r => r.json()).then(d => { if (!cancelled) setBatches(d.batches ?? []); }).catch(() => {});
     }, 30000);
     return () => { cancelled = true; clearInterval(id); };
@@ -226,8 +226,8 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
-      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
     ]).then(([bezorgenRes, statusRes]) => {
       if (cancelled) return;
       const rows: any[] = bezorgenRes.rows ?? [];
@@ -240,7 +240,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       setLoaded(true);
     }).catch(() => { if (!cancelled) setLoaded(true); });
     const interval = setInterval(() => {
-      fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
+      fetch(`/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } })
         .then(r => r.json()).then(d => { if (!cancelled) setStops(prev => prev.map(s => { const st = (d.statuses ?? []).find((x: any) => x.customerId === s.customerId); return st ? { ...s, inBusAt: st.inBusAt, deliveredAt: st.deliveredAt } : s; })); })
         .catch(() => {});
     }, 30000);

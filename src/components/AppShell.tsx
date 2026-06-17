@@ -15,7 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const cleanPath = pathname.replace("/digitalbakery", "") || "/";
+  const cleanPath = pathname.replace("", "") || "/";
   const isPublic = PUBLIC_PATHS.some(p => cleanPath === p || cleanPath.startsWith(p + "/"));
 
   // Close the mobile menu whenever the route changes

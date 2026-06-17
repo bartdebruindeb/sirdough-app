@@ -95,13 +95,13 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
   async function save() {
     setSaving(true);
     if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true)) {
-      await fetch("/digitalbakery/api/bread-types", {
+      await fetch("/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
         body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category, showInProduction }),
       });
     }
-    await fetch("/digitalbakery/api/recipes", {
+    await fetch("/api/recipes", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
       body: JSON.stringify({
@@ -243,7 +243,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
   async function save() {
     if (!name.trim()) { setError("Naam is verplicht."); return; }
     setSaving(true); setError("");
-    const res = await fetch("/digitalbakery/api/bread-types", {
+    const res = await fetch("/api/bread-types", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":"OWNER"},
       body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType, basketStyle: basketStyle || null, showInProduction }),
     });
@@ -345,7 +345,7 @@ export default function ReceptenPage() {
 
   function load() {
     setLoading(true);
-    fetch("/digitalbakery/api/recipes", { headers: { "x-role": role ?? "" } })
+    fetch("/api/recipes", { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => { setBreadTypes(d.breadTypes ?? []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -357,7 +357,7 @@ export default function ReceptenPage() {
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    const res = await fetch(`/digitalbakery/api/bread-types?id=${deleteTarget.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    const res = await fetch(`/api/bread-types?id=${deleteTarget.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     const data = await res.json().catch(() => ({}));
     setDeleting(false);
     setDeleteTarget(null);

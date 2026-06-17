@@ -83,7 +83,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 
   async function toggle(bt: BreadType) {
     setSaving(bt.id);
-    await fetch("/digitalbakery/api/bread-types", {
+    await fetch("/api/bread-types", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
       body: JSON.stringify({ id: bt.id, customerOrderable: !bt.customerOrderable }),
@@ -153,7 +153,7 @@ export default function WinkelPage() {
   const load = useCallback(() => {
     if (!selectedShop) return;
     setLoading(true);
-    fetch(`/digitalbakery/api/winkel?shop=${encodeURIComponent(selectedShop)}&days=60`, {
+    fetch(`/api/winkel?shop=${encodeURIComponent(selectedShop)}&days=60`, {
       headers: { "x-role": role ?? "" },
     })
       .then(r => r.json())
@@ -202,7 +202,7 @@ export default function WinkelPage() {
     const qty = editQtys[date] ?? {};
     const w   = weathers[date];
     setSaving(date);
-    await fetch("/digitalbakery/api/winkel", {
+    await fetch("/api/winkel", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({

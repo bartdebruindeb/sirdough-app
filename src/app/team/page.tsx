@@ -25,7 +25,7 @@ export default function TeamPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function load() {
-    fetch("/digitalbakery/api/team")
+    fetch("/api/team")
       .then(r => r.json())
       .then(d => { setWorkers(d.users ?? []); setLoading(false); });
   }
@@ -34,7 +34,7 @@ export default function TeamPage() {
   async function invite() {
     if (!email) { setError("E-mailadres is verplicht."); return; }
     setSaving(true); setError("");
-    const res = await fetch("/digitalbakery/api/team", {
+    const res = await fetch("/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, name, role: inviteRole }),
@@ -47,7 +47,7 @@ export default function TeamPage() {
 
   async function toggleActive(w: Worker) {
     setError("");
-    const res = await fetch("/digitalbakery/api/team", {
+    const res = await fetch("/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: w.id, active: !w.active }),
@@ -58,7 +58,7 @@ export default function TeamPage() {
 
   async function changeRole(w: Worker, role: AppRole) {
     setError("");
-    const res = await fetch("/digitalbakery/api/team", {
+    const res = await fetch("/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: w.id, role }),
@@ -69,7 +69,7 @@ export default function TeamPage() {
 
   async function regenerateLink(w: Worker) {
     setRegenFor(w); setRegenUrl(""); setRegenLoading(true); setRegenCopied(false);
-    const res = await fetch("/digitalbakery/api/team", {
+    const res = await fetch("/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: w.id, email: w.email, name: w.name ?? undefined, role: w.role }),
@@ -233,7 +233,7 @@ export default function TeamPage() {
                   <span style={{ fontSize: 12, color: "var(--danger)" }}>Zeker weten?</span>
                   <button onClick={async () => {
                     setConfirmDeleteId(null); setError("");
-                    const res = await fetch(`/digitalbakery/api/team?id=${w.id}`, { method: "DELETE" });
+                    const res = await fetch(`/api/team?id=${w.id}`, { method: "DELETE" });
                     if (!res.ok) { const d = await res.json().catch(()=>({})); setError(d.message ?? "Mislukt."); return; }
                     load();
                   }} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid #fca5a5", background: "#fee2e2", cursor: "pointer", color: "var(--danger)", fontWeight: 600 }}>

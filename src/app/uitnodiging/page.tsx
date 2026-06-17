@@ -27,7 +27,7 @@ function UitnodigingContent() {
 
   useEffect(() => {
     if (!token) { setStatus("invalid"); setMessage("Geen uitnodigingstoken gevonden."); return; }
-    fetch(`/digitalbakery/api/invite?token=${token}`)
+    fetch(`/api/invite?token=${token}`)
       .then(r => r.json())
       .then(d => {
         if (d.valid) {
@@ -46,7 +46,7 @@ function UitnodigingContent() {
     if (password !== password2) { setError("Wachtwoorden komen niet overeen."); return; }
     setSaving(true); setError("");
 
-    const res = await fetch("/digitalbakery/api/invite", {
+    const res = await fetch("/api/invite", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, password }),

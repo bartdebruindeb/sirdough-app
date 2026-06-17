@@ -57,7 +57,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: {
-    signIn: "/digitalbakery/login",
+    signIn: "/login",
   },
   session: { strategy: "jwt" },
 };

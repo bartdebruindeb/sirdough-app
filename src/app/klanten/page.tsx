@@ -217,7 +217,7 @@ function InviteModal({ customer, onClose }: { customer: Customer; onClose: () =>
 
   async function generate() {
     setLoading(true); setError("");
-    const res = await fetch("/digitalbakery/api/invite", {
+    const res = await fetch("/api/invite", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId: customer.id }),
@@ -294,7 +294,7 @@ export default function KlantenPage() {
 
   function load() {
     setLoading(true);
-    fetch(`/digitalbakery/api/customers?sort=${sortBy}`, { headers: { "x-role": role ?? "" } })
+    fetch(`/api/customers?sort=${sortBy}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => { setCustomers(d.customers ?? []); setLoading(false); });
   }
@@ -311,7 +311,7 @@ export default function KlantenPage() {
     if (!c.address) return false;
     const coord = await geocodeAddress(c.address, c.postalCode ?? "", c.city ?? "");
     if (!coord) return false;
-    await fetch("/digitalbakery/api/customers", {
+    await fetch("/api/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ id: c.id, lat: coord.lat, lng: coord.lng }),
@@ -354,7 +354,7 @@ export default function KlantenPage() {
   const [deleting, setDeleting] = useState(false);
 
   async function createCustomer(data: any) {
-    const res = await fetch("/digitalbakery/api/customers", {
+    const res = await fetch("/api/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify(data),
@@ -366,7 +366,7 @@ export default function KlantenPage() {
   }
 
   async function updateCustomer(id: string, data: any) {
-    const res = await fetch("/digitalbakery/api/customers", {
+    const res = await fetch("/api/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ id, ...data }),
@@ -378,7 +378,7 @@ export default function KlantenPage() {
   }
 
   async function startDelete(c: Customer) {
-    const res  = await fetch(`/digitalbakery/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    const res  = await fetch(`/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     const data = await res.json();
     if (data.deleted) { showToast(`✓ ${c.name} verwijderd.`); load(); return; }
     if (data.needsConfirm) {
@@ -389,7 +389,7 @@ export default function KlantenPage() {
   async function confirmForceDelete() {
     if (!deleteModal) return;
     setDeleting(true);
-    await fetch(`/digitalbakery/api/customers?id=${deleteModal.customer.id}&force=1`, { method: "DELETE", headers: { "x-role": role ?? "" } });
+    await fetch(`/api/customers?id=${deleteModal.customer.id}&force=1`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     setDeleting(false);
     setDeleteModal(null);
     showToast(`✓ ${deleteModal.customer.name} verwijderd.`);
@@ -397,7 +397,7 @@ export default function KlantenPage() {
   }
 
   async function toggleActive(c: Customer) {
-    await fetch("/digitalbakery/api/customers", {
+    await fetch("/api/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ id: c.id, active: !c.active }),

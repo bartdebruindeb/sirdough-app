@@ -72,7 +72,7 @@ export default function BezorgenPage() {
   const [dragOver, setDragOver] = useState<string | null>(null);
 
   function loadNotes(d: string) {
-    fetch(`/digitalbakery/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
+    fetch(`/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(data => {
         const map: Record<string, string[]> = {};
@@ -90,8 +90,8 @@ export default function BezorgenPage() {
     setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({});
 
     Promise.all([
-      fetch(`/digitalbakery/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/delivery-status?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/delivery-status?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
     ]).then(([delivData, statusData]) => {
       if (delivData.error) { setError(delivData.message ?? delivData.error); setLoading(false); return; }
       setData(delivData);
@@ -136,7 +136,7 @@ export default function BezorgenPage() {
   }
 
   async function postStatus(customerId: string, action: string) {
-    await fetch("/digitalbakery/api/delivery-status", {
+    await fetch("/api/delivery-status", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ date, customerId, action }),
@@ -194,7 +194,7 @@ export default function BezorgenPage() {
     if (!noteModal || !noteText.trim()) return;
     setSavingNote(true);
     const note = noteText.trim();
-    await fetch("/digitalbakery/api/delivery-notes", {
+    await fetch("/api/delivery-notes", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId: noteModal.customerId, date, note }),

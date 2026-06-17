@@ -446,7 +446,7 @@ function BatchCard({ batch, lines, compact, onUpdated }: { batch: Batch; lines?:
     const next = BATCH_NEXT[batch.status];
     if (!next || updating) return;
     setUpdating(true);
-    await fetch("/digitalbakery/api/production/batches", {
+    await fetch("/api/production/batches", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ id: batch.id, status: next }),
@@ -535,7 +535,7 @@ function BatchAdvanceButton({ batch, onUpdated }: { batch: Batch; onUpdated: () 
   async function advance() {
     if (updating) return;
     setUpdating(true);
-    await fetch("/digitalbakery/api/production/batches", {
+    await fetch("/api/production/batches", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ id: batch.id, status: next }),
@@ -576,8 +576,8 @@ export default function ProductiePage() {
     setLoading(true); setError("");
     const next = (() => { const nd = new Date(d + "T12:00:00Z"); nd.setUTCDate(nd.getUTCDate() + 1); return nd.toISOString().slice(0, 10); })();
     Promise.all([
-      fetch(`/digitalbakery/api/production?date=${d}`,    { headers: { "x-role": role ?? "" } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/production?date=${next}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/production?date=${d}`,    { headers: { "x-role": role ?? "" } }).then(r => r.json()),
+      fetch(`/api/production?date=${next}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
     ]).then(([data, nextData]) => {
       if (data.error) { setError(data.message ?? data.error); setLoading(false); return; }
       setPlan({ ...data, breadLines: data.breadLines ?? [], mixerGroups: data.mixerGroups ?? [] });
@@ -588,7 +588,7 @@ export default function ProductiePage() {
 
   // ── Load batches ──
   const loadBatches = useCallback(() => {
-    fetch(`/digitalbakery/api/production/batches?date=${date}`, { headers: { "x-role": role ?? "" } })
+    fetch(`/api/production/batches?date=${date}`, { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => {
         const bs: Batch[] = d.batches ?? [];
@@ -649,7 +649,7 @@ export default function ProductiePage() {
       setSaveError("Geen broodsoorten met aantallen gevonden. Controleer de bestellingen voor deze dag.");
       setSavingPlan(false); return;
     }
-    const res = await fetch("/digitalbakery/api/production/batches", {
+    const res = await fetch("/api/production/batches", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ date, batches: toCreate }),

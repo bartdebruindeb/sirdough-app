@@ -64,8 +64,8 @@ export default function MijnBestellingenPage() {
 
   function load() {
     Promise.all([
-      fetch("/digitalbakery/api/bestellingen/recurring", { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
-      fetch(`/digitalbakery/api/bestellingen?from=${new Date().toISOString().slice(0,10)}`, { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
+      fetch("/api/bestellingen/recurring", { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
+      fetch(`/api/bestellingen?from=${new Date().toISOString().slice(0,10)}`, { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
     ]).then(([rec, oo]) => {
       setRecurring(rec.orders ?? []);
       setUpcoming(oo.orders ?? []);
@@ -84,7 +84,7 @@ export default function MijnBestellingenPage() {
 
   async function saveRecurring(order: RecurringOrder) {
     setSaving(true);
-    await fetch("/digitalbakery/api/bestellingen/recurring", {
+    await fetch("/api/bestellingen/recurring", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": MOCK_ROLE },
       body: JSON.stringify({
@@ -104,7 +104,7 @@ export default function MijnBestellingenPage() {
     if (!newDate || Object.values(newQty).every(v => v === 0)) return;
     if (!isEditable(newDate)) return;
     setSavingNew(true);
-    await fetch("/digitalbakery/api/bestellingen", {
+    await fetch("/api/bestellingen", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": MOCK_ROLE },
       body: JSON.stringify({
@@ -123,7 +123,7 @@ export default function MijnBestellingenPage() {
 
   async function deleteOneOff(id: string) {
     if (!confirm("Bestelling annuleren?")) return;
-    await fetch(`/digitalbakery/api/bestellingen?id=${id}`, { method: "DELETE", headers: { "x-role": MOCK_ROLE } });
+    await fetch(`/api/bestellingen?id=${id}`, { method: "DELETE", headers: { "x-role": MOCK_ROLE } });
     load();
   }
 

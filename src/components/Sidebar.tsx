@@ -21,7 +21,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   if (!role) return null;
 
   // Strip basepath prefix if any
-  const cleanPath = pathname.replace("/digitalbakery", "") || "/";
+  const cleanPath = pathname.replace("", "") || "/";
 
   const visibleNav = ALL_NAV.filter(item => canAccess(item.href));
 
@@ -87,7 +87,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               </div>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/digitalbakery/login" })}
+              onClick={() => signOut({ callbackUrl: "/login" })}
               style={{
                 width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #3c2a1e",
                 background: "transparent", color: "#9c8878", cursor: "pointer", fontSize: 12,

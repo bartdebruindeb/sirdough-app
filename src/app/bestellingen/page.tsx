@@ -37,7 +37,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 
   async function toggle(bt: BreadType) {
     setSaving(bt.id);
-    await fetch("/digitalbakery/api/bread-types", {
+    await fetch("/api/bread-types", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
       body: JSON.stringify({ id: bt.id, customerOrderable: !bt.customerOrderable }),
@@ -96,7 +96,7 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
     }
     setSaving(true); setError(""); setSuccess("");
     const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
-    const res = await fetch("/digitalbakery/api/bestellingen", {
+    const res = await fetch("/api/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, deliveryDate: date, notes: notes||undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
@@ -173,7 +173,7 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
     if (closedWeekdays.includes(weekday)) { setError(`${WEEKDAYS[weekday]} is een gesloten dag.`); return; }
     setSaving(true); setError(""); setSuccess("");
     const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
-    const res = await fetch("/digitalbakery/api/bestellingen/recurring", {
+    const res = await fetch("/api/bestellingen/recurring", {
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, weekday, notes: notes || undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
@@ -272,7 +272,7 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
     setSaving(true); setError(""); setSuccess("");
     for (const wd of daysWithOrders) {
       const lines = Object.entries(qty[wd] ?? {}).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
-      await fetch("/digitalbakery/api/bestellingen/recurring", {
+      await fetch("/api/bestellingen/recurring", {
         method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
         body: JSON.stringify({ customerId, weekday: wd, lines }),
       });
@@ -363,7 +363,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
 
   async function toggle() {
     setToggling(true);
-    await fetch("/digitalbakery/api/bestellingen/recurring", {
+    await fetch("/api/bestellingen/recurring", {
       method:"PATCH", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ id:order.id, active:!order.active }),
     });
@@ -373,12 +373,12 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
   async function deleteOrder() {
     if (!confirm(`Vaste bestelling van ${order.customer.name} (${WEEKDAYS[order.weekday]}) definitief verwijderen?`)) return;
     setDeleting(true);
-    await fetch(`/digitalbakery/api/bestellingen/recurring?id=${order.id}`, { method:"DELETE", headers:{"x-role":role ?? ""} });
+    await fetch(`/api/bestellingen/recurring?id=${order.id}`, { method:"DELETE", headers:{"x-role":role ?? ""} });
     setDeleting(false); onChanged();
   }
 
   async function saveEdit() {
-    await fetch("/digitalbakery/api/bestellingen/recurring", {
+    await fetch("/api/bestellingen/recurring", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ customerId:order.customerId, weekday:order.weekday,
         lines: Object.entries(editQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
@@ -388,14 +388,14 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
 
   async function loadExceptions() {
     setLoadingEx(true);
-    const res = await fetch(`/digitalbakery/api/bestellingen/exceptions?recurringOrderId=${order.id}`, { headers:{"x-role":role ?? ""} });
+    const res = await fetch(`/api/bestellingen/exceptions?recurringOrderId=${order.id}`, { headers:{"x-role":role ?? ""} });
     const d = await res.json();
     setExceptions(d.exceptions??[]);
     setLoadingEx(false);
   }
 
   async function setException(date: string, active: boolean) {
-    await fetch("/digitalbakery/api/bestellingen/exceptions", {
+    await fetch("/api/bestellingen/exceptions", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ recurringOrderId:order.id, date, active }),
     });
@@ -566,7 +566,7 @@ export default function BestellingenPage() {
   function loadWpOrders(monday: string) {
     setWpLoading(true);
     const sunday = (()=>{ const d=new Date(monday+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+6); return d.toISOString().slice(0,10); })();
-    fetch(`/digitalbakery/api/bestellingen?from=${monday}&to=${sunday}`,{headers:{"x-role":role ?? ""}})
+    fetch(`/api/bestellingen?from=${monday}&to=${sunday}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setWpOrders(d.orders??[]); if(d.breadTypes?.length) setBreadTypes(d.breadTypes); })
       .finally(()=>setWpLoading(false));
   }
@@ -586,16 +586,16 @@ export default function BestellingenPage() {
     const lines = Object.entries(wpEditQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
     const existing = wpOrders.find(o=>o.customerId===customerId && o.deliveryDate.slice(0,10)===date);
     if (lines.length===0 && existing) {
-      await fetch(`/digitalbakery/api/bestellingen?id=${existing.id}`,{method:"DELETE",headers:{"x-role":role??""}});
+      await fetch(`/api/bestellingen?id=${existing.id}`,{method:"DELETE",headers:{"x-role":role??""}});
     } else if (lines.length>0 && existing) {
-      await fetch("/digitalbakery/api/bestellingen/lines",{method:"PUT",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({orderId:existing.id,lines})});
+      await fetch("/api/bestellingen/lines",{method:"PUT",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({orderId:existing.id,lines})});
     } else if (lines.length>0) {
-      await fetch("/digitalbakery/api/bestellingen",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({customerId,deliveryDate:date,lines})});
+      await fetch("/api/bestellingen",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""},body:JSON.stringify({customerId,deliveryDate:date,lines})});
     }
     setWpEditKey(null); setWpSaving(false); loadWpOrders(wpMonday);
   }
   async function wpDeleteOverride(orderId: string) {
-    await fetch(`/digitalbakery/api/bestellingen?id=${orderId}`,{method:"DELETE",headers:{"x-role":role??""}});
+    await fetch(`/api/bestellingen?id=${orderId}`,{method:"DELETE",headers:{"x-role":role??""}});
     loadWpOrders(wpMonday);
   }
 
@@ -607,20 +607,20 @@ export default function BestellingenPage() {
   const [weekEditMsg, setWeekEditMsg] = useState<{ok:boolean;text:string}|null>(null);
 
   function loadOneOff() {
-    fetch(`/digitalbakery/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
+    fetch(`/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
         if (d.customers?.length) setCustomers(d.customers);
       });
   }
   function loadRecurring() {
-    fetch("/digitalbakery/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
+    fetch("/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{
         setRecurring(d.orders??[]);
         if (d.customers?.length) setCustomers(d.customers);
       });
   }
   function loadSettings() {
-    fetch("/digitalbakery/api/settings",{headers:{"x-role":role ?? ""}})
+    fetch("/api/settings",{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{
         if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays);
       });
@@ -629,7 +629,7 @@ export default function BestellingenPage() {
     setLoadingHistory(true);
     const params = new URLSearchParams({ from: logboekFrom, to: logboekTo });
     if (historyCustomerId) params.set("customerId", historyCustomerId);
-    fetch(`/digitalbakery/api/logboek?${params}`,{headers:{"x-role":role ?? ""}})
+    fetch(`/api/logboek?${params}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setLogboekEntries(d.entries??[]); setLogboekBreadTypes(d.breadTypes??[]); setLoadingHistory(false); })
       .catch(()=>setLoadingHistory(false));
   }
@@ -638,7 +638,7 @@ export default function BestellingenPage() {
 
   async function saveClosedWeekdays(days: number[]) {
     setSavingSettings(true);
-    await fetch("/digitalbakery/api/settings",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""}, body:JSON.stringify({closedWeekdays:days})});
+    await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""}, body:JSON.stringify({closedWeekdays:days})});
     setSavingSettings(false);
     setClosedWeekdays(days);
   }
@@ -649,7 +649,7 @@ export default function BestellingenPage() {
   }
 
   async function deleteOrder(id: string) {
-    await fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}});
+    await fetch(`/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}});
     setPendingDeleteId(null);
     loadOneOff();
     loadHistory();
@@ -667,7 +667,7 @@ export default function BestellingenPage() {
     if (selectedOrders.size === 0) return;
     setBulkDeleting(true);
     await Promise.all([...selectedOrders].map(id =>
-      fetch(`/digitalbakery/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}})
+      fetch(`/api/bestellingen?id=${id}`,{method:"DELETE",headers:{"x-role":role ?? ""}})
     ));
     setBulkDeleting(false);
     setSelectedOrders(new Set());
@@ -682,7 +682,7 @@ export default function BestellingenPage() {
 
   async function saveOrderEdit(orderId: string) {
     setSavingEdit(true);
-    await fetch("/digitalbakery/api/bestellingen/lines",{
+    await fetch("/api/bestellingen/lines",{
       method:"PUT", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body:JSON.stringify({ orderId, lines:Object.entries(editOrderQty).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
@@ -716,11 +716,11 @@ export default function BestellingenPage() {
           .map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
         const existingOrder = recurring.find(o => o.customerId === weekEditCustomerId && o.weekday === weekday);
         return Promise.all([
-          fetch("/digitalbakery/api/bestellingen/recurring", {
+          fetch("/api/bestellingen/recurring", {
             method:"POST", headers:{"Content-Type":"application/json","x-role":role??""},
             body:JSON.stringify({ customerId:weekEditCustomerId, weekday, lines:linesPayload }),
           }),
-          existingOrder && edit.active !== existingOrder.active ? fetch("/digitalbakery/api/bestellingen/recurring", {
+          existingOrder && edit.active !== existingOrder.active ? fetch("/api/bestellingen/recurring", {
             method:"PATCH", headers:{"Content-Type":"application/json","x-role":role??""},
             body:JSON.stringify({ id:existingOrder.id, active:edit.active }),
           }) : Promise.resolve(),

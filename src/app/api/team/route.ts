@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     await prisma.inviteToken.create({ data: { tenantId: tid, customerId: user.id, token, expiresAt } });
 
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000/digitalbakery";
+    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     const inviteUrl = `${baseUrl}/uitnodiging?token=${token}&type=worker`;
 
     return Response.json({ inviteUrl, email: input.email }, { status: 201 });

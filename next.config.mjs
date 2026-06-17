@@ -1,5 +1,3 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  basePath: "/digitalbakery",
-};
+const nextConfig = {};
 export default nextConfig;
