@@ -10,6 +10,8 @@ export type BreadLine = {
   name: string;
   category: string;
   sortOrder: number;
+  basketType: string | null;
+  basketStyle: string | null;
   winkelQty: number;
   winkelDelftQty: number;
   winkelDHQty: number;
@@ -19,7 +21,7 @@ export type BreadLine = {
   flourWeightTotal: number;
   toppingWeightPerLoaf: number;
   toppings: Topping[];
-  isBoerenMixPart: boolean; // true for morning buns etc that share boerenmix
+  isBoerenMixPart: boolean;
 };
 
 export type RecipeInfo = {
@@ -202,6 +204,8 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       name: bt.name,
       category: bt.category,
       sortOrder: bt.sortOrder,
+      basketType: bt.basketType ?? null,
+      basketStyle: bt.basketStyle ?? null,
       winkelQty,
       winkelDelftQty: winkelDelftMap[bt.id] ?? 0,
       winkelDHQty: winkelDHMap[bt.id] ?? 0,

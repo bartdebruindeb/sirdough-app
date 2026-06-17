@@ -181,30 +181,24 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
             <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
           ))}
         </select>
-        {category === "mand" ? (
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandformaat</label>
+        <select value={basketType} onChange={e => setBasketType(e.target.value)}
+          style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
+          <option value="">— geen mand —</option>
+          <option value="750 gram">750 gram</option>
+          <option value="rond">Rond</option>
+          <option value="1 kg">1 kg</option>
+          <option value="1,5 kg">1,5 kg</option>
+        </select>
+        {basketType && (
           <>
-            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Formaat</label>
-            <select value={basketType} onChange={e => setBasketType(e.target.value)}
-              style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
-              <option value="">— kies formaat —</option>
-              <option value="750 gram">750 gram</option>
-              <option value="rond">Rond</option>
-              <option value="1 kg">1 kg</option>
-              <option value="1,5 kg">1,5 kg</option>
-            </select>
-            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stijl</label>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandstijl</label>
             <select value={basketStyle} onChange={e => setBasketStyle(e.target.value)}
               style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
               <option value="">— kies stijl —</option>
               <option value="gebloemd">Gebloemd</option>
               <option value="ongebloemd">Ongebloemd</option>
             </select>
-          </>
-        ) : (
-          <>
-            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mandtype</label>
-            <input value={basketType} onChange={e => setBasketType(e.target.value)}
-              style={{ ...inputStyle, width: "100%", marginBottom: 10 }} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
           </>
         )}
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notities</label>
@@ -297,31 +291,24 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
           <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
         </div>
-        {category === "mand" ? (
-          <>
-            <div>
-              <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Formaat</label>
-              <select value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp}>
-                <option value="">— kies formaat —</option>
-                <option value="750 gram">750 gram</option>
-                <option value="rond">Rond</option>
-                <option value="1 kg">1 kg</option>
-                <option value="1,5 kg">1,5 kg</option>
-              </select>
-            </div>
-            <div>
-              <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Stijl</label>
-              <select value={basketStyle} onChange={e=>setBasketStyle(e.target.value)} style={inp}>
-                <option value="">— kies stijl —</option>
-                <option value="gebloemd">Gebloemd</option>
-                <option value="ongebloemd">Ongebloemd</option>
-              </select>
-            </div>
-          </>
-        ) : (
+        <div>
+          <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandformaat</label>
+          <select value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp}>
+            <option value="">— geen mand —</option>
+            <option value="750 gram">750 gram</option>
+            <option value="rond">Rond</option>
+            <option value="1 kg">1 kg</option>
+            <option value="1,5 kg">1,5 kg</option>
+          </select>
+        </div>
+        {basketType && (
           <div>
-            <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandtype</label>
-            <input value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
+            <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandstijl</label>
+            <select value={basketStyle} onChange={e=>setBasketStyle(e.target.value)} style={inp}>
+              <option value="">— kies stijl —</option>
+              <option value="gebloemd">Gebloemd</option>
+              <option value="ongebloemd">Ongebloemd</option>
+            </select>
           </div>
         )}
         <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",fontSize:13,padding:"10px 12px",borderRadius:8,border:"1px solid var(--border)",background:showInProduction?"var(--surface)":"#fef3c7"}}>

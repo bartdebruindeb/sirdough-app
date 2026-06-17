@@ -10,6 +10,7 @@ type FlourLine = { name: string; percentage: number };
 type RecipeInfo = { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; flourLines: FlourLine[] };
 type BreadLine = {
   breadTypeId: string; slug: string; name: string; category: string;
+  basketType?: string | null; basketStyle?: string | null;
   winkelQty: number; winkelDelftQty?: number; winkelDHQty?: number;
   horecaQty: number; totalQty: number;
   doughWeightTotal: number; flourWeightTotal: number;
@@ -346,18 +347,31 @@ function DesemTotaal({ groups, deliveryDate }: { groups: MixerGroup[]; deliveryD
 
 // ─── MandenTotaal ─────────────────────────────────────────────────────────────
 function MandenTotaal({ lines }: { lines: BreadLine[] }) {
-  const get = (slug: string) => lines.find(l => l.slug === slug)?.totalQty ?? 0;
-  const kleineMand       = get("boeren-kl");
-  const ruitjesOngebl    = ["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn"].reduce((s, sl) => s + get(sl), 0);
-  const ruitjesBloemd    = ["boeren-gr","boeren-15kg","volkoren","volkoren-15kg"].reduce((s, sl) => s + get(sl), 0);
-  const mand15kg         = ["boeren-15kg","sesam-15kg","zaden-15kg"].reduce((s, sl) => s + get(sl), 0);
-  const rondeMand        = ["olijf","rozijn","morning-buns"].reduce((s, sl) => s + get(sl), 0);
-  const rows = [
-    { label: "Kleine mand",   count: kleineMand,                      note: "Boeren KL" },
-    { label: "Ruitjes mand",  count: ruitjesOngebl + ruitjesBloemd,   note: `waarvan ${ruitjesOngebl} ongebloemd` },
-    { label: "1,5 kg mand",   count: mand15kg,                        note: "Boeren, Sesam, Zaden 1,5 kg" },
-    { label: "Ronde mand",    count: rondeMand,                       note: "Olijf, Rozijn, Morning buns" },
-  ];
+  // Group basket lines by basketType + basketStyle using DB fields
+  const basketLines = lines.filter(l => l.category === "mand" && l.totalQty > 0);
+
+  // Build rows: group by basketType, sub-group by basketStyle
+  const byType = new Map<string, { gebloemd: number; ongebloemd: number; other: number; names: string[] }>();
+  for (const l of basketLines) {
+    const type = l.basketType ?? "Overig";
+    if (!byType.has(type)) byType.set(type, { gebloemd: 0, ongebloemd: 0, other: 0, names: [] });
+    const entry = byType.get(type)!;
+    const style = l.basketStyle?.toLowerCase() ?? "";
+    if (style === "gebloemd") entry.gebloemd += l.totalQty;
+    else if (style === "ongebloemd") entry.ongebloemd += l.totalQty;
+    else entry.other += l.totalQty;
+    entry.names.push(l.name);
+  }
+
+  // Sort by canonical order
+  const ORDER = ["750 gram", "rond", "1 kg", "1,5 kg"];
+  const rows = [...byType.entries()].sort((a, b) => {
+    const ai = ORDER.indexOf(a[0]); const bi = ORDER.indexOf(b[0]);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  if (rows.length === 0) return null;
+
   return (
     <div className="card" style={{ overflow: "hidden" }}>
       <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
@@ -365,13 +379,19 @@ function MandenTotaal({ lines }: { lines: BreadLine[] }) {
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={r.label} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-              <td style={{ padding: "10px 20px" }}>{r.label}</td>
-              <td style={{ padding: "10px 16px", textAlign: "right" }}><span className="badge badge-amber">{r.count}</span></td>
-              <td style={{ padding: "10px 20px", color: "var(--text-subtle)", fontSize: 12 }}>{r.note}</td>
-            </tr>
-          ))}
+          {rows.map(([type, entry], i) => {
+            const total = entry.gebloemd + entry.ongebloemd + entry.other;
+            const note = entry.gebloemd > 0 || entry.ongebloemd > 0
+              ? [entry.gebloemd > 0 && `${entry.gebloemd} gebloemd`, entry.ongebloemd > 0 && `${entry.ongebloemd} ongebloemd`].filter(Boolean).join(" · ")
+              : entry.names.join(", ");
+            return (
+              <tr key={type} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                <td style={{ padding: "10px 20px", fontWeight: 500 }}>{type}</td>
+                <td style={{ padding: "10px 16px", textAlign: "right" }}><span className="badge badge-amber">{total}</span></td>
+                <td style={{ padding: "10px 20px", color: "var(--text-subtle)", fontSize: 12 }}>{note}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
