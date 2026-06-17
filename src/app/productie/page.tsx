@@ -348,19 +348,22 @@ function DesemTotaal({ groups, deliveryDate }: { groups: MixerGroup[]; deliveryD
 // ─── MandenTotaal ─────────────────────────────────────────────────────────────
 function MandenTotaal({ lines }: { lines: BreadLine[] }) {
   // Group basket lines by basketType + basketStyle using DB fields
-  const basketLines = lines.filter(l => l.category === "mand" && l.totalQty > 0);
+  // Only include lines that have a basketType assigned
+  const basketLines = lines.filter(l => l.basketType && l.totalQty > 0);
 
   // Build rows: group by basketType, sub-group by basketStyle
   const byType = new Map<string, { gebloemd: number; ongebloemd: number; other: number; names: string[] }>();
   for (const l of basketLines) {
-    const type = l.basketType ?? "Overig";
+    const type = l.basketType!;
+    // Morning buns: 1 basket per 4 units
+    const basketQty = l.slug === "morning-buns" ? Math.ceil(l.totalQty / 4) : l.totalQty;
     if (!byType.has(type)) byType.set(type, { gebloemd: 0, ongebloemd: 0, other: 0, names: [] });
     const entry = byType.get(type)!;
     const style = l.basketStyle?.toLowerCase() ?? "";
-    if (style === "gebloemd") entry.gebloemd += l.totalQty;
-    else if (style === "ongebloemd") entry.ongebloemd += l.totalQty;
-    else entry.other += l.totalQty;
-    entry.names.push(l.name);
+    if (style === "gebloemd") entry.gebloemd += basketQty;
+    else if (style === "ongebloemd") entry.ongebloemd += basketQty;
+    else entry.other += basketQty;
+    if (!entry.names.includes(l.name)) entry.names.push(l.name);
   }
 
   // Sort by canonical order
