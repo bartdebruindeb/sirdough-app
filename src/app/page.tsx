@@ -222,10 +222,18 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
   const [loaded, setLoaded]       = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [mapReady, setMapReady]   = useState(false);
+  const [bakeryCoords, setBakeryCoords] = useState<{ address: string; lat: number; lng: number }>({
+    address: bakeryConfig.bakeryAddress, lat: bakeryConfig.bakeryLat, lng: bakeryConfig.bakeryLng,
+  });
 
   // Phase 1: load data
   useEffect(() => {
     let cancelled = false;
+    fetch(`/digitalbakery/api/settings`, { headers: { "x-role": role ?? "" } })
+      .then(r => r.json()).then(d => {
+        if (!cancelled && d.bakeryLat && d.bakeryLng)
+          setBakeryCoords({ address: d.bakeryAddress ?? bakeryConfig.bakeryAddress, lat: d.bakeryLat, lng: d.bakeryLng });
+      }).catch(() => {});
     Promise.all([
       fetch(`/digitalbakery/api/bezorgen?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
       fetch(`/digitalbakery/api/delivery-status?date=${today}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({})),
@@ -301,14 +309,14 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
 
       const bounds: [number, number][] = [];
 
-      const BAKERY: [number, number] = [bakeryConfig.bakeryLat, bakeryConfig.bakeryLng];
+      const BAKERY: [number, number] = [bakeryCoords.lat, bakeryCoords.lng];
       bounds.push(BAKERY);
       const bakeryIcon = L.divIcon({
         html: `<div style="width:34px;height:34px;border-radius:50%;background:#92400e;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
         className: "", iconSize: [34, 34], iconAnchor: [17, 17],
       });
       L.marker(BAKERY, { icon: bakeryIcon }).addTo(map)
-        .bindPopup(`<strong>Bakkerij</strong><br/><small>${bakeryConfig.bakeryAddress}</small>`);
+        .bindPopup(`<strong>Bakkerij</strong><br/><small>${bakeryCoords.address}</small>`);
 
       // Draw OSRM roads between: bakery → in-bus stops (in inBusAt order) → delivered stops
       const inBusOrdered = geocoded
@@ -370,7 +378,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
 
     return () => { cancelled = true; leafletRef.current?.remove(); leafletRef.current = null; setMapReady(false); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, stops.length]);
+  }, [loaded, stops.length, bakeryCoords.lat, bakeryCoords.lng]);
 
   const total     = loaded ? stops.length : 0;
   const delivered = stops.filter(s => s.deliveredAt).length;

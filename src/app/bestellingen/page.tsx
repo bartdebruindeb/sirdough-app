@@ -1,6 +1,7 @@
 "use client";
 import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
+import { useUndoStack } from "@/hooks/useUndoStack";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -523,7 +524,7 @@ export default function BestellingenPage() {
   const toDefault = new Date(today); toDefault.setDate(toDefault.getDate()+7);
   const [toDate, setToDate] = useState(toDefault.toISOString().slice(0,10));
   const [editingOrderId, setEditingOrderId] = useState<string|null>(null);
-  const [editOrderQty, setEditOrderQty] = useState<Record<string,number>>({});
+  const [editOrderQty, setEditOrderQty, undoEditOrderQty, canUndoEditOrderQty] = useUndoStack<Record<string,number>>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [showVastManage, setShowVastManage] = useState(false);
@@ -536,6 +537,10 @@ export default function BestellingenPage() {
   const [recurringCityFilter, setRecurringCityFilter] = useState("");
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([1,7]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [bakeryAddress, setBakeryAddress] = useState("");
+  const [bakeryAddressInput, setBakeryAddressInput] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState("");
   const [historyCustomerId, setHistoryCustomerId] = useState("");
   const [logboekEntries, setLogboekEntries] = useState<LogboekEntry[]>([]);
   const [logboekBreadTypes, setLogboekBreadTypes] = useState<{id:string;name:string;slug:string}[]>([]);
@@ -618,7 +623,10 @@ export default function BestellingenPage() {
   }
   function loadSettings() {
     fetch("/digitalbakery/api/settings",{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays); });
+      .then(r=>r.json()).then(d=>{
+        if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays);
+        if (d.bakeryAddress) { setBakeryAddress(d.bakeryAddress); setBakeryAddressInput(d.bakeryAddress); }
+      });
   }
   function loadHistory() {
     setLoadingHistory(true);
@@ -637,6 +645,18 @@ export default function BestellingenPage() {
     await fetch("/digitalbakery/api/settings",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""}, body:JSON.stringify({closedWeekdays:days})});
     setSavingSettings(false);
     setClosedWeekdays(days);
+  }
+
+  async function geocodeAndSaveAddress() {
+    if (!bakeryAddressInput.trim()) return;
+    setGeocoding(true); setGeocodeError("");
+    const res = await fetch(`/digitalbakery/api/geocode?q=${encodeURIComponent(bakeryAddressInput)}`,{headers:{"x-role":role??""}});
+    const data = await res.json();
+    if (!res.ok || data.error) { setGeocodeError(data.error ?? "Niet gevonden"); setGeocoding(false); return; }
+    await fetch("/digitalbakery/api/settings",{method:"POST",headers:{"Content-Type":"application/json","x-role":role??""}, body:JSON.stringify({bakeryAddress:data.address, bakeryLat:data.lat, bakeryLng:data.lng})});
+    setBakeryAddress(data.address);
+    setBakeryAddressInput(data.address);
+    setGeocoding(false);
   }
 
   function isFutureOrder(deliveryDate: string) {
@@ -826,6 +846,22 @@ export default function BestellingenPage() {
                     </div>
                     <p style={{ fontSize:11, color:"var(--text-subtle)", margin:0 }}>Rood = gesloten dag (geen bestellingen/productie mogelijk).</p>
                   </div>
+                  <div className="card" style={{ padding:"1.25rem 1.5rem", marginBottom:0 }}>
+                    <h3 style={{ fontSize:14, marginBottom:"0.75rem" }}>Bakkerij adres (bezorgkaart)</h3>
+                    {bakeryAddress && <p style={{ fontSize:12, color:"var(--text-subtle)", marginBottom:8 }}>Huidig: <b>{bakeryAddress}</b></p>}
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                      <input value={bakeryAddressInput} onChange={e=>setBakeryAddressInput(e.target.value)}
+                        placeholder="Bijv. Weegbreestraat 23a Rotterdam"
+                        style={{ flex:"1 1 220px", border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:12, background:"var(--surface)" }}
+                        onKeyDown={e=>{ if(e.key==="Enter") geocodeAndSaveAddress(); }}
+                      />
+                      <button onClick={geocodeAndSaveAddress} disabled={geocoding} className="btn-primary" style={{ fontSize:12 }}>
+                        {geocoding ? "Zoeken…" : "Opslaan"}
+                      </button>
+                    </div>
+                    {geocodeError && <p style={{ fontSize:11, color:"var(--danger)", marginTop:6, marginBottom:0 }}>{geocodeError}</p>}
+                    <p style={{ fontSize:11, color:"var(--text-subtle)", marginTop:6, marginBottom:0 }}>Wordt gebruikt als startpunt op de bezorgkaart.</p>
+                  </div>
                 </>
               )}
               <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} />
@@ -930,6 +966,9 @@ export default function BestellingenPage() {
                                     style={{ fontSize:11, padding:"4px 10px", borderRadius:6, border:"none", background:"var(--accent)", color:"white", cursor:"pointer" }}>
                                     {savingEdit?"…":"✓ Opslaan"}
                                   </button>
+                                  <button onClick={undoEditOrderQty} disabled={!canUndoEditOrderQty}
+                                    title="Ongedaan maken"
+                                    style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer" }}>↩</button>
                                   <button onClick={()=>setEditingOrderId(null)}
                                     style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", background:"none", cursor:"pointer" }}>✕</button>
                                 </>

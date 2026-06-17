@@ -2,6 +2,7 @@
 import { useRole } from "@/lib/role-context";
 import { bakeryConfig, SHOP_NAMES } from "@/config/bakery.config";
 import React, { useEffect, useState, useCallback } from "react";
+import { useUndoStack } from "@/hooks/useUndoStack";
 
 const SHOPS = SHOP_NAMES;
 const WEEKDAYS_SHORT = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
@@ -131,7 +132,7 @@ export default function WinkelPage() {
   const [loading, setLoading]           = useState(true);
 
   // editQtys: date → slug → quantity
-  const [editQtys, setEditQtys]     = useState<Record<string, Record<string, number>>>({});
+  const [editQtys, setEditQtys, undoEditQtys, canUndoEditQtys] = useUndoStack<Record<string, Record<string, number>>>({});
   const [saving, setSaving]         = useState<string | null>(null); // date being saved
   const [savedDates, setSavedDates] = useState<string[]>([]);
   const [savingAll, setSavingAll]   = useState(false);
@@ -375,9 +376,13 @@ export default function WinkelPage() {
           </div>
 
           {/* ── Single save button ── */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <button onClick={saveAll} disabled={savingAll} className="btn-primary" style={{ fontSize: 13, padding: "9px 24px" }}>
               {savingAll ? "Opslaan…" : "Alles opslaan"}
+            </button>
+            <button onClick={undoEditQtys} disabled={!canUndoEditQtys} className="btn-secondary" style={{ fontSize: 13, padding: "9px 16px" }}
+              title="Ongedaan maken (max 5 stappen)">
+              ↩ Ongedaan
             </button>
             {savedDates.length > 0 && !savingAll && (
               <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
