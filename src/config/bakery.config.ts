@@ -60,8 +60,8 @@ export const bakeryConfig = {
 
   /** Bakery address shown on the map and used as route start point */
   bakeryAddress: "De Weegbreestraat 23a, Rotterdam",
-  bakeryLat: 51.9097,
-  bakeryLng: 4.4328,
+  bakeryLat: 51.966196,
+  bakeryLng: 4.463144,
 } as const;
 
 /** Convenience: shop names only, for places that need a simple list */

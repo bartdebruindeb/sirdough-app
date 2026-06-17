@@ -126,6 +126,7 @@ export async function GET(req: Request) {
       where: {
         tenantId: tid,
         date: { gte: new Date(from + "T00:00:00Z"), lte: new Date(to + "T23:59:59Z") },
+        ...(filterCustomerId && { customerId: filterCustomerId }),
       },
     });
     for (const dn of deliveryNotes) {

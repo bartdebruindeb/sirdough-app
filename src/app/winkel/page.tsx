@@ -134,6 +134,14 @@ export default function WinkelPage() {
   const [editQtys, setEditQtys]     = useState<Record<string, Record<string, number>>>({});
   const [saving, setSaving]         = useState<string | null>(null); // date being saved
   const [savedDates, setSavedDates] = useState<string[]>([]);
+  const [savingAll, setSavingAll]   = useState(false);
+
+  // BreadTypeManager visibility toggle
+  const [showBreadMgr, setShowBreadMgr] = useState(false);
+
+  // History filter
+  const [histFrom, setHistFrom] = useState("");
+  const [histTo, setHistTo]     = useState("");
 
   // Weather per date
   const [weathers, setWeathers] = useState<Record<string, { temp: number; icon: string } | null>>({});
@@ -207,6 +215,14 @@ export default function WinkelPage() {
     load();
   }
 
+  async function saveAll() {
+    setSavingAll(true);
+    for (const date of weekDays) {
+      await saveDay(date);
+    }
+    setSavingAll(false);
+  }
+
   // ── Active bread types ────────────────────────────────────────────────────
   const allBreadTypes = shopData?.breadTypes ?? [];
   const activeBreadTypes = allBreadTypes.filter(bt =>
@@ -215,8 +231,10 @@ export default function WinkelPage() {
     (shopData?.logs ?? []).some(l => ((l.quantities as any)[bt.slug] ?? 0) > 0)
   );
 
-  // ── History: logs sorted oldest-first, grouped to show context ───────────
-  const historyLogs = [...(shopData?.logs ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  // ── History: logs sorted, filtered by time range ─────────────────────────
+  const historyLogs = [...(shopData?.logs ?? [])]
+    .filter(l => (!histFrom || l.date >= histFrom) && (!histTo || l.date <= histTo))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   if (SHOPS.length === 0) {
     return (
@@ -253,7 +271,12 @@ export default function WinkelPage() {
         <>
           {/* ── Beheer broodtypen ── */}
           {role === "OWNER" && allBreadTypes.length > 0 && (
-            <BreadTypeManager breadTypes={allBreadTypes} onChanged={load} />
+            <>
+              <button onClick={() => setShowBreadMgr(v => !v)} className="btn-secondary" style={{ fontSize: 12, alignSelf: "flex-start" }}>
+                {showBreadMgr ? "▲ Verberg broodsoorten" : "▼ Beheer broodsoorten"}
+              </button>
+              {showBreadMgr && <BreadTypeManager breadTypes={allBreadTypes} onChanged={load} />}
+            </>
           )}
 
           {/* ── Week navigator ── */}
@@ -262,8 +285,11 @@ export default function WinkelPage() {
             <button onClick={() => setWeekOffset(0)} className="btn-secondary" style={{ fontSize: 13 }}>
               {weekOffset === 0 ? "▸ Deze week" : "Terug naar deze week"}
             </button>
-            {weekOffset < 0 && (
+            {weekOffset <= 0 && (
               <button onClick={() => setWeekOffset(w => w + 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>Volgende week →</button>
+            )}
+            {weekOffset > 0 && (
+              <button onClick={() => setWeekOffset(w => w - 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>← Vorige week</button>
             )}
             <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
               {formatDay(weekDays[0])} – {formatDay(weekDays[4])}
@@ -344,39 +370,43 @@ export default function WinkelPage() {
                     );
                   })}
                 </tr>
-                {/* Save buttons row */}
-                <tr style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "8px 14px" }} />
-                  {weekDays.map(date => (
-                    <td key={date} style={{ padding: "6px 6px", borderLeft: "1px solid var(--border)", textAlign: "center" }}>
-                      {savedDates.includes(date) ? (
-                        <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
-                      ) : (
-                        <button
-                          onClick={() => saveDay(date)}
-                          disabled={saving === date}
-                          className="btn-primary"
-                          style={{ fontSize: 11, padding: "5px 12px" }}
-                        >
-                          {saving === date ? "…" : "Opslaan"}
-                        </button>
-                      )}
-                    </td>
-                  ))}
-                </tr>
               </tbody>
             </table>
           </div>
 
+          {/* ── Single save button ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={saveAll} disabled={savingAll} className="btn-primary" style={{ fontSize: 13, padding: "9px 24px" }}>
+              {savingAll ? "Opslaan…" : "Alles opslaan"}
+            </button>
+            {savedDates.length > 0 && !savingAll && (
+              <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
+            )}
+          </div>
+
           {/* ── History ── */}
           <div>
-            <h2 style={{ fontSize: 17, marginBottom: "1rem" }}>Geschiedenis ({selectedShop})</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: "1rem", flexWrap: "wrap" }}>
+              <h2 style={{ fontSize: 17, margin: 0 }}>Geschiedenis ({selectedShop})</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <input type="date" value={histFrom} onChange={e => setHistFrom(e.target.value)}
+                  style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 12, background: "var(--surface)" }} />
+                <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
+                <input type="date" value={histTo} onChange={e => setHistTo(e.target.value)}
+                  style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 12, background: "var(--surface)" }} />
+                {(histFrom || histTo) && (
+                  <button onClick={() => { setHistFrom(""); setHistTo(""); }} className="btn-secondary" style={{ fontSize: 11, padding: "4px 8px" }}>✕</button>
+                )}
+              </div>
+            </div>
+            <style>{`@media(max-width:700px){.winkel-hist-table{display:none!important;}.winkel-hist-cards{display:flex!important;}}`}</style>
             {historyLogs.length === 0 ? (
               <div className="card" style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>
                 Nog geen producties opgeslagen.
               </div>
             ) : (
-              <div className="card" style={{ overflow: "auto" }}>
+              <>
+              <div className="winkel-hist-table card" style={{ overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
                   <thead>
                     <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
@@ -425,6 +455,36 @@ export default function WinkelPage() {
                   </tbody>
                 </table>
               </div>
+              <div className="winkel-hist-cards" style={{ display: "none", flexDirection: "column", gap: 8 }}>
+                {[...historyLogs].reverse().map((log) => {
+                  const d = new Date(log.date + "T12:00:00Z");
+                  const label = d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "short" });
+                  const total = activeBreadTypes.reduce((s, bt) => s + ((log.quantities as any)[bt.slug] ?? 0), 0);
+                  const nonZero = activeBreadTypes.filter(bt => ((log.quantities as any)[bt.slug] ?? 0) > 0);
+                  return (
+                    <div key={log.id} className="card" style={{ padding: "10px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{label}</span>
+                        <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: 14 }}>{total} stuks</span>
+                      </div>
+                      {log.weatherIcon?.icon && (
+                        <div style={{ fontSize: 12, color: "var(--text-subtle)", marginBottom: 4 }}>
+                          {log.weatherIcon.icon} {log.weatherTemp != null && `${Math.round(log.weatherTemp)}°C`}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {nonZero.map(bt => (
+                          <span key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>
+                            {shortName(bt.name)}: <b>{(log.quantities as any)[bt.slug]}</b>
+                          </span>
+                        ))}
+                        {nonZero.length === 0 && <span style={{ color: "var(--text-subtle)", fontSize: 12 }}>Leeg</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              </>
             )}
           </div>
         </>

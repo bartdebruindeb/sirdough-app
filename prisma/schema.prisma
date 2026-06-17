@@ -124,6 +124,8 @@ model BreadType {
   basketType String? @default("")
   /// "gebloemd" | "ongebloemd" | null — only relevant for mand category
   basketStyle String?
+  /// false = appears in orders/delivery but NOT in production sheet or mixer planning
+  showInProduction Boolean @default(true)
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])

@@ -10,7 +10,7 @@ type Recipe = {
   doughWeightPerLoaf: number; mixerGroup: string; notes?: string;
   flourLines: RecipeFlour[]; toppings: RecipeTopping[];
 };
-type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; basketStyle?: string | null; recipe: Recipe | null };
+type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; basketStyle?: string | null; showInProduction?: boolean; recipe: Recipe | null };
 
 function kg(g: number) { return g >= 1000 ? `${(g/1000).toFixed(2).replace(/\.?0+$/,"")} kg` : `${Math.round(g)} g`; }
 
@@ -82,6 +82,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
   const [basketType, setBasketType] = useState(bt.basketType ?? "");
   const [basketStyle, setBasketStyle] = useState(bt.basketStyle ?? "");
   const [category, setCategory] = useState(bt.category ?? "");
+  const [showInProduction, setShowInProduction] = useState(bt.showInProduction ?? true);
   const [notes,     setNotes]  = useState(r?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
@@ -93,11 +94,11 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
 
   async function save() {
     setSaving(true);
-    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "")) {
+    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true)) {
       await fetch("/digitalbakery/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category }),
+        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category, showInProduction }),
       });
     }
     await fetch("/digitalbakery/api/recipes", {
@@ -208,6 +209,11 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notities</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer", fontSize: 13 }}>
+          <input type="checkbox" checked={showInProduction} onChange={e => setShowInProduction(e.target.checked)} style={{ width: 16, height: 16 }} />
+          Toon in productieplanning
+          <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>(uitschakelen = verschijnt alleen in bestellingen en bezorging)</span>
+        </label>
       </div>
 
       <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
@@ -440,6 +446,7 @@ export default function ReceptenPage() {
                         <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{bt.name}</span>
                         {bt.basketType && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 8 }}>🧺 {bt.basketType}</span>}
                         {bt.basketStyle && <span style={{ fontSize: 11, color: "#7c3aed", background: "#ede9fe", padding: "2px 7px", borderRadius: 8 }}>{bt.basketStyle}</span>}
+                        {bt.showInProduction === false && <span style={{ fontSize: 11, color: "#b45309", background: "#fef3c7", padding: "2px 7px", borderRadius: 8 }}>niet in productie</span>}
                         <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
                       </button>
                       {isOwner && isOpen && (

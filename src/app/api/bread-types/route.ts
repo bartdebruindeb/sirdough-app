@@ -70,6 +70,7 @@ const PatchBreadTypeSchema = z.object({
   basketType: z.string().optional(),
   basketStyle: z.string().optional().nullable(),
   weightGrams: z.number().optional(),
+  showInProduction: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request) {

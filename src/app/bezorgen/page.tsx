@@ -222,7 +222,8 @@ export default function BezorgenPage() {
 
 
   return (
-    <div style={{ padding: "1.25rem 1.5rem", maxWidth: 1400 }}>
+    <div style={{ padding: "1.25rem 1rem", maxWidth: 1400 }}>
+      <style>{`@media (max-width: 700px) { .bez-cols { flex-direction: column !important; } .bez-col-bus { flex: 1 1 100% !important; } }`}</style>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", flexWrap: "wrap", gap: 10 }}>
         <div>
@@ -264,10 +265,10 @@ export default function BezorgenPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* ── TWO-COLUMN: BUS | PENDING+DELIVERED ── */}
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div className="bez-cols" style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
 
             {/* Left: In de bus */}
-            <div style={{ flex: "0 0 52%", minWidth: 0 }}>
+            <div className="bez-col-bus" style={{ flex: "0 0 52%", minWidth: 0 }}>
               <h2 style={{ fontSize: 15, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
                 🚐 In de bus
                 {busRows.length > 0 && (

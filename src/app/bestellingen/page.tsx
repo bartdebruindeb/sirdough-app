@@ -526,6 +526,8 @@ export default function BestellingenPage() {
   const [editOrderQty, setEditOrderQty] = useState<Record<string,number>>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [showManage, setShowManage] = useState(false);
+  const [showVastManage, setShowVastManage] = useState(false);
+  const [eenmaligCustomerFilter, setEenmaligCustomerFilter] = useState("");
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -842,6 +844,16 @@ export default function BestellingenPage() {
                 </button>
               ))}
             </div>
+            <select value={eenmaligCustomerFilter} onChange={e=>setEenmaligCustomerFilter(e.target.value)}
+              style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
+              <option value="">Alle klanten</option>
+              {[...customers].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
+                <option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>
+              ))}
+            </select>
+            {eenmaligCustomerFilter && (
+              <button onClick={()=>setEenmaligCustomerFilter("")} className="btn-secondary" style={{ fontSize:12, padding:"5px 8px" }}>✕</button>
+            )}
           </div>
 
           {canWrite && (() => {
@@ -873,7 +885,8 @@ export default function BestellingenPage() {
           )}
 
           {[...allDates].sort().map(date=>{
-            const dayOrders=ordersByDate.get(date)??[];
+            const dayOrders=(ordersByDate.get(date)??[])
+              .filter(o=>!eenmaligCustomerFilter || o.customerId===eenmaligCustomerFilter);
             if (dayOrders.length===0) return null;
             const d=new Date(date+"T12:00:00Z");
             const dateLabel=d.toLocaleDateString("nl-NL",{weekday:"long",day:"numeric",month:"long"});
@@ -964,7 +977,12 @@ export default function BestellingenPage() {
       {tab==="vast"&&(
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
           {isOwner && breadTypes.length > 0 && (
-            <BreadTypeManager breadTypes={breadTypes} onChanged={loadOneOff} />
+            <>
+              <button onClick={() => setShowVastManage(v => !v)} className="btn-secondary" style={{ fontSize: 12, alignSelf: "flex-start" }}>
+                {showVastManage ? "▲ Verberg broodsoorten" : "▼ Beheer broodsoorten"}
+              </button>
+              {showVastManage && <BreadTypeManager breadTypes={breadTypes} onChanged={loadOneOff} />}
+            </>
           )}
           {canWriteRecurring && (
             <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
@@ -1161,6 +1179,7 @@ export default function BestellingenPage() {
             )}
           </div>
 
+          <style>{`@media(max-width:700px){.logboek-table{display:none!important;}.logboek-cards{display:flex!important;}}`}</style>
           {loadingHistory ? (
             <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p>
           ) : logboekEntries.length === 0 ? (
@@ -1188,7 +1207,8 @@ export default function BestellingenPage() {
                     <span style={{ color:"#059669", fontWeight:600 }}>W</span> = winkel
                   </span>
                 </div>
-                <div style={{ overflowX:"auto" }}>
+                {/* Desktop table */}
+                <div className="logboek-table" style={{ overflowX:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                     <thead>
                       <tr>
@@ -1226,6 +1246,33 @@ export default function BestellingenPage() {
                       })}
                     </tbody>
                   </table>
+                </div>
+                {/* Mobile card list */}
+                <div className="logboek-cards" style={{ display:"none", flexDirection:"column", gap:8 }}>
+                  {sorted.map((entry,idx)=>{
+                    const d = new Date(entry.date+"T12:00:00Z");
+                    const dateLabel = d.toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"});
+                    const isPast = entry.date < today;
+                    const total = entry.lines.reduce((s,l)=>s+l.quantity,0);
+                    return (
+                      <div key={idx} style={{ border:"1px solid var(--border)", borderRadius:8, padding:"10px 14px", background: isPast ? "var(--surface)" : "var(--accent-light)" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:TYPE_COLOR[entry.type], background:"var(--surface-2)", padding:"2px 6px", borderRadius:5 }}>{TYPE_LABEL[entry.type]}</span>
+                          <span style={{ fontSize:12, fontWeight:600, color: isPast?"var(--text-subtle)":"var(--text)" }}>{dateLabel}</span>
+                          <span style={{ fontSize:13, fontWeight:500, flex:1 }}>{entry.customerName}{entry.city&&<span style={{ fontSize:11, color:"var(--text-subtle)", marginLeft:4 }}>({entry.city})</span>}</span>
+                          <span style={{ fontSize:13, fontWeight:700, color:"var(--accent)" }}>{total}</span>
+                        </div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                          {entry.lines.filter(l=>l.quantity>0).map(l=>(
+                            <span key={l.breadTypeId} style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:8 }}>
+                              {colName(l.breadTypeName)} ×{l.quantity}
+                            </span>
+                          ))}
+                        </div>
+                        {entry.notes&&<div style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic", marginTop:4 }}>{entry.notes}</div>}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

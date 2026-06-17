@@ -34,6 +34,8 @@ type Batch = {
 };
 
 const ADDITIVE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn","morning-buns","kaneel-buns","kardemom-buns","baguette-kaas"]);
+// Only these get distributed across mixers; morning/kaneel/kardemom buns go in bulk
+const DISTRIBUTE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function g(v: number) { return `${Math.round(v)} g`; }
@@ -224,8 +226,8 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 }
 
 // ─── MixerGroupCard ───────────────────────────────────────────────────────────
-function MixerGroupCard({ mg }: { mg: MixerGroup }) {
-  const [mixers, setMixers] = useState(mg.group === "boeren" ? 3 : 1);
+function MixerGroupCard({ mg, mixerCount }: { mg: MixerGroup; mixerCount?: number }) {
+  const mixers = mixerCount ?? (mg.group === "boeren" ? 3 : 1);
   const [showDetails, setShowDetails] = useState(false);
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
@@ -267,11 +269,9 @@ function MixerGroupCard({ mg }: { mg: MixerGroup }) {
           </tbody>
         </table>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
-        <button onClick={() => setMixers(Math.max(1, mixers - 1))} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 15 }}>−</button>
-        <span style={{ fontSize: 15, fontWeight: 600, minWidth: 16, textAlign: "center" }}>{mixers}</span>
-        <button onClick={() => setMixers(Math.min(8, mixers + 1))} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 15 }}>+</button>
+        <span style={{ fontSize: 15, fontWeight: 700, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 10px", borderRadius: 8 }}>{mixers}×</span>
         <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>→ {g((mg.totalDoughNoFillingsKg * 1000) / mixers)} per mixer</span>
       </div>
       <MixerIngredients mg={mg} mixers={mixers} />
@@ -696,7 +696,7 @@ export default function ProductiePage() {
                   const count         = Math.max(1, mixerCounts[mg.group] ?? 1);
                   const perMixer      = Math.ceil(mg.totalLoaves / count);
                   const doughPerMixer = mg.totalDoughNoFillingsKg / count;
-                  const additiveLinesInGroup = mg.lines.filter(l => ADDITIVE_SLUGS.has(l.slug) && l.totalQty > 0);
+                  const additiveLinesInGroup = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug) && l.totalQty > 0);
                   const assignment = additiveAssignment[mg.group] ?? {};
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
@@ -846,39 +846,6 @@ export default function ProductiePage() {
             );
           })()}
 
-          {/* ── Aantallen ── */}
-          <section className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>Aantallen — {delivLabel}</span>
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
-                    <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {planLines.filter(l => l.totalQty > 0).map((line, i) => (
-                    <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                      <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
-                      <td style={{ padding: "8px 20px", textAlign: "right" }}>
-                        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
           {!hasAny && (
             <div className="card" style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)" }}>
               <p style={{ fontSize: 15, margin: "0 0 4px" }}>Geen bestellingen voor {delivLabel}</p>
@@ -891,7 +858,7 @@ export default function ProductiePage() {
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} />)}
+                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} mixerCount={(batchGroups[mg.group] ?? []).length || undefined} />)}
               </div>
             </section>
           )}
@@ -901,6 +868,41 @@ export default function ProductiePage() {
             <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
             {hasAny && <MandenTotaal lines={planLines} />}
           </section>
+
+          {/* ── Aantallen ── */}
+          {hasAny && (
+            <section className="card" style={{ overflow: "hidden" }}>
+              <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Aantallen — {delivLabel}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                      <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
+                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
+                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
+                      <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {planLines.filter(l => l.totalQty > 0).map((line, i) => (
+                      <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                        <td style={{ padding: "8px 20px" }}>{line.name}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
+                        <td style={{ padding: "8px 20px", textAlign: "right" }}>
+                          <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
         </div>
       )}

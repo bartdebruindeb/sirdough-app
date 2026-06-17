@@ -1,0 +1,1 @@
+ALTER TABLE "BreadType" ADD COLUMN "showInProduction" BOOLEAN NOT NULL DEFAULT true;

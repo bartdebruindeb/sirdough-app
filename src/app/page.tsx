@@ -85,13 +85,14 @@ function ProductionWidget({ role }: { role: string | null }) {
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+      <style>{`@media (max-width: 700px) { .dash-prod-grid { grid-template-columns: 1fr !important; } .dash-prod-left { border-right: none !important; border-bottom: 1px solid var(--border); } }`}</style>
       <div style={{ padding: "0.75rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>Productie</h3>
         <Link href="/productie" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Productie</Link>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 0 }}>
+      <div className="dash-prod-grid" style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 0 }}>
         {/* Left: totals table */}
-        <div style={{ borderRight: "1px solid var(--border)" }}>
+        <div className="dash-prod-left" style={{ borderRight: "1px solid var(--border)" }}>
           <div style={{ padding: "0.75rem 1.5rem", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: 28, fontWeight: 800, color: "var(--accent)" }}>{todayTotal}</span>
             <span style={{ fontSize: 13, color: "var(--text-subtle)", marginLeft: 8 }}>stuks vandaag</span>
@@ -384,7 +385,14 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
 
   return (
     <div style={{ background: allDone ? "#f0fdf4" : "var(--surface)", border: `1px solid ${allDone ? "#4ade80" : "var(--border)"}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
-      <style>{`@import url("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css");`}</style>
+      <style>{`
+        @import url("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css");
+        @media (max-width: 700px) {
+          .dash-delivery-grid { grid-template-columns: 1fr !important; }
+          .dash-delivery-map { border-right: none !important; border-bottom: 1px solid var(--border); }
+          .dash-delivery-list { max-height: none !important; }
+        }
+      `}</style>
       <div style={{ padding: "0.75rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: allDone ? "#16a34a" : "var(--text-subtle)", margin: 0 }}>
           Bezorging vandaag
@@ -398,9 +406,9 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           <Link href="/bezorgen" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>→ Bezorgen</Link>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", minHeight: 300 }}>
+      <div className="dash-delivery-grid" style={{ display: "grid", gridTemplateColumns: "3fr 2fr", minHeight: 300 }}>
         {/* Left: map — always rendered so mapRef is available for Leaflet */}
-        <div style={{ position: "relative", borderRight: "1px solid var(--border)" }}>
+        <div className="dash-delivery-map" style={{ position: "relative", borderRight: "1px solid var(--border)" }}>
           {!loaded && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1, fontSize: 12, color: "var(--text-subtle)" }}>
               Laden…
@@ -414,7 +422,7 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
           <div ref={mapRef} style={{ height: 320, width: "100%" }} />
         </div>
         {/* Right: delivery list */}
-        <div style={{ overflowY: "auto", maxHeight: 320 }}>
+        <div className="dash-delivery-list" style={{ overflowY: "auto", maxHeight: 320 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--surface-2)", position: "sticky", top: 0 }}>
@@ -479,7 +487,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div style={{ padding: "2.5rem 3rem", maxWidth: 1200 }}>
+    <div style={{ padding: "1.5rem 1rem", maxWidth: 1200 }} className="home-page">
       <p style={{ color: "var(--text-subtle)", fontSize: 13, margin: "0 0 6px" }}>{today}</p>
       <h1 style={{ fontSize: 34, marginBottom: "0.25rem" }}>{greeting}</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Wat gaan we vandaag bakken?</p>

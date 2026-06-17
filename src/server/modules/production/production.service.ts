@@ -63,7 +63,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
   const deliveryWeekday = getWeekday(deliveryDate);
 
   const breadTypes = await prisma.breadType.findMany({
-    where: { tenantId, active: true },
+    where: { tenantId, active: true, showInProduction: true },
     include: {
       doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } } } },
       recipe: {
