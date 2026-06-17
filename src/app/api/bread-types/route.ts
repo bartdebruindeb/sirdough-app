@@ -31,6 +31,7 @@ const CreateBreadTypeSchema = z.object({
   weightGrams: z.number().positive().default(1000),
   basketType: z.string().optional(),
   basketStyle: z.string().optional().nullable(),
+  showInProduction: z.boolean().optional().default(true),
   sortOrder: z.number().int().default(99),
 });
 

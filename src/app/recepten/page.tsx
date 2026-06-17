@@ -187,9 +187,10 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
             <select value={basketType} onChange={e => setBasketType(e.target.value)}
               style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
               <option value="">— kies formaat —</option>
-              <option value="rond 750gr">Rond 750 gram</option>
-              <option value="rond 1kg">Rond 1 kg</option>
-              <option value="rond 1.5kg">Rond 1,5 kg</option>
+              <option value="750 gram">750 gram</option>
+              <option value="rond">Rond</option>
+              <option value="1 kg">1 kg</option>
+              <option value="1,5 kg">1,5 kg</option>
             </select>
             <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stijl</label>
             <select value={basketStyle} onChange={e => setBasketStyle(e.target.value)}
@@ -234,6 +235,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
   const [weightGrams, setWeightGrams] = useState(1010);
   const [basketType, setBasketType] = useState("");
   const [basketStyle, setBasketStyle] = useState("");
+  const [showInProduction, setShowInProduction] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -249,7 +251,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
     setSaving(true); setError("");
     const res = await fetch("/digitalbakery/api/bread-types", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":"OWNER"},
-      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType, basketStyle: basketStyle || null }),
+      body:JSON.stringify({ name:name.trim(), slug:toSlug(name.trim()), category, weightGrams, basketType, basketStyle: basketStyle || null, showInProduction }),
     });
     setSaving(false);
     if (res.ok) onSaved();
@@ -301,9 +303,10 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
               <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Formaat</label>
               <select value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp}>
                 <option value="">— kies formaat —</option>
-                <option value="rond 750gr">Rond 750 gram</option>
-                <option value="rond 1kg">Rond 1 kg</option>
-                <option value="rond 1.5kg">Rond 1,5 kg</option>
+                <option value="750 gram">750 gram</option>
+                <option value="rond">Rond</option>
+                <option value="1 kg">1 kg</option>
+                <option value="1,5 kg">1,5 kg</option>
               </select>
             </div>
             <div>
@@ -321,6 +324,15 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
             <input value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp} placeholder="bijv. rond 1kg, lang 750gr, baguette" />
           </div>
         )}
+        <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",fontSize:13,padding:"10px 12px",borderRadius:8,border:"1px solid var(--border)",background:showInProduction?"var(--surface)":"#fef3c7"}}>
+          <input type="checkbox" checked={!showInProduction} onChange={e=>setShowInProduction(!e.target.checked)} style={{width:16,height:16,marginTop:1,flexShrink:0}} />
+          <div>
+            <span style={{fontWeight:500}}>Geen productie</span>
+            <p style={{fontSize:11,color:"var(--text-subtle)",margin:"2px 0 0"}}>
+              Verschijnt in bestellingen en bezorging, maar niet op het productievel. Recept invullen is niet verplicht.
+            </p>
+          </div>
+        </label>
         {error&&<p style={{color:"var(--danger)",background:"var(--danger-bg)",padding:"8px 12px",borderRadius:8,fontSize:13,margin:0}}>{error}</p>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button onClick={onClose} className="btn-secondary">Annuleren</button>
