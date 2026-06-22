@@ -72,7 +72,7 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
   );
 }
 
-function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSaved: () => void; allCategories: string[] }) {
+function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes }: { bt: BreadType; onSaved: () => void; allCategories: string[]; allBreadTypes: BreadType[] }) {
   const r = bt.recipe;
   const [waterPct,  setWater]  = useState(r?.waterPct  ?? 71.5);
   const [desemPct,  setDesem]  = useState(r?.desemPct  ?? 15);
@@ -211,10 +211,14 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
           <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>(uitschakelen = verschijnt alleen in bestellingen en bezorging)</span>
         </label>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4, marginTop: 10 }}>Samenvoegen in mixer met</label>
-        <input value={mixerGroup} onChange={e => setMixerGroup(e.target.value)}
-          placeholder="bijv. sesam (leeglaten = eigen groep)"
-          style={{ ...inputStyle, width: "100%" }} />
-        <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Vul de naam in van het broodtype waarmee dit deeg in de mixer wordt samengevoegd. Manden blijven apart geteld.</span>
+        <select value={mixerGroup} onChange={e => setMixerGroup(e.target.value)} style={{ ...inputStyle, width: "100%" }}>
+          <option value="">— eigen mixergroep —</option>
+          {allBreadTypes
+            .filter(b => b.category === bt.category && b.id !== bt.id)
+            .map(b => <option key={b.id} value={b.slug}>{b.name}</option>)
+          }
+        </select>
+        <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Manden blijven apart geteld.</span>
       </div>
 
       <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
@@ -475,7 +479,7 @@ export default function ReceptenPage() {
                     {isOpen && (
                       <div style={{ borderTop: "1px solid var(--border)", padding: "1rem 1.25rem", background: "var(--surface-2)" }}>
                         {isOwner && isEditing
-                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
+                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} allBreadTypes={breadTypes} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
                           : <RecipeWorkerView bt={bt} qty={qty} />
                         }
                       </div>
