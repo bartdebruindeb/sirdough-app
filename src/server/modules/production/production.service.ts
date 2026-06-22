@@ -236,8 +236,18 @@ export async function getProductionPlan(tenantId: string, productionDate: string
     const bt = breadTypes.find(b => b.id === line.breadTypeId);
     // Skip buns — not in deeg calculator
     if (BUNS_SLUGS.has(line.slug)) continue;
-    // mixerGroup field overrides everything — lets e.g. "sesam-1.5kg" merge into "sesam" group
-    const group = (bt as any)?.mixerGroup ?? bt?.doughType?.slug ?? bt?.recipe?.mixerGroup ?? line.category;
+    // Resolve mixer group: if mixerGroup references another bread type's slug,
+    // use that bread type's natural group (so "sesam" → boeren group, not a new group)
+    let group: string;
+    const mgOverride = (bt as any)?.mixerGroup as string | null | undefined;
+    if (mgOverride) {
+      const referencedBt = breadTypes.find(b => b.slug === mgOverride);
+      group = referencedBt
+        ? (referencedBt.doughType?.slug ?? (referencedBt as any).recipe?.mixerGroup ?? referencedBt.category)
+        : (bt?.doughType?.slug ?? bt?.recipe?.mixerGroup ?? line.category);
+    } else {
+      group = bt?.doughType?.slug ?? bt?.recipe?.mixerGroup ?? line.category;
+    }
     if (!groupMap.has(group)) {
       // Build RecipeInfo: prefer doughType, fallback to recipe
       const dt = bt?.doughType;

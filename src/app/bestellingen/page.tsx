@@ -837,11 +837,13 @@ export default function BestellingenPage() {
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
           {canWrite && (
             <>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <button onClick={()=>setShowManage(!showManage)} className="btn-secondary" style={{ fontSize:12 }}>
-                  {showManage?"▲ Verberg":"▼ Beheer broodsoorten"}
-                </button>
-              </div>
+              {isOwner && (
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <button onClick={()=>setShowManage(!showManage)} className="btn-secondary" style={{ fontSize:12 }}>
+                    {showManage?"▲ Verberg":"▼ Beheer broodsoorten"}
+                  </button>
+                </div>
+              )}
               {showManage && isOwner && (
                 <>
                   <BreadTypeManager breadTypes={breadTypes} onChanged={()=>{ loadOneOff(); }} />
