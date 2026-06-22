@@ -3,69 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SirDough — Bakkerijbeheer Software op maat</title>
-  <meta name="description" content="SirDough is bakkerijbeheer software op maat. Van recepten en productieoverzichten tot bestellingen, bezorging en facturatie — gebouwd specifiek voor jouw bakkerij." />
-  <meta name="keywords" content="bakkerij software, bakkerijbeheer, recepten bakkerij, productie bakkerij, bestellingen bakkerij, bezorging bakkerij, facturatie bakkerij, ambachtelijke bakkerij, op maat software" />
+  <title>SirDough — Bakkerijbeheer Software</title>
+  <meta name="description" content="Van recepten en productieoverzichten tot bestellingen, bezorging en facturatie. Software die precies past bij hoe jij werkt." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://sirdough.com/" />
-
-  <!-- Open Graph (voor delen via WhatsApp, Facebook, LinkedIn) -->
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://sirdough.com/" />
-  <meta property="og:title" content="SirDough — Bakkerijbeheer Software op maat" />
-  <meta property="og:description" content="Van recepten en productieoverzichten tot bestellingen, bezorging en facturatie. Software gebouwd specifiek voor jouw bakkerij." />
-  <meta property="og:site_name" content="SirDough" />
-
-  <!-- Structured data (Google rich results) -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "SirDough",
-    "applicationCategory": "BusinessApplication",
-    "operatingSystem": "Web",
-    "description": "Bakkerijbeheer software op maat. Van recepten en productieoverzichten tot bestellingen, bezorging en facturatie.",
-    "url": "https://sirdough.com",
-    "offers": {
-      "@type": "Offer",
-      "availability": "https://schema.org/InStock",
-      "priceSpecification": {
-        "@type": "UnitPriceSpecification",
-        "billingDuration": "P1M",
-        "billingIncrement": 1
-      }
-    },
-    "contactPoint": {
-      "@type": "ContactPoint",
-      "email": "bdb785@gmail.com",
-      "contactType": "sales"
-    }
-  }
-  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
       --amber: #BA7517;
       --amber-light: #FAEEDA;
       --amber-dark: #633806;
-      --teal: #0F6E56;
-      --teal-light: #E1F5EE;
-      --teal-dark: #04342C;
       --gray: #5F5E5A;
-      --gray-light: #F1EFE8;
       --text: #2C2C2A;
       --text-muted: #888780;
       --border: rgba(0,0,0,0.1);
       --white: #ffffff;
-      --radius: 12px;
     }
-
-    html { scroll-behavior: smooth; }
-
     body {
       font-family: 'Inter', sans-serif;
       color: var(--text);
@@ -73,16 +29,11 @@
       font-size: 16px;
       line-height: 1.7;
     }
-
-    /* NAV */
     nav {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(255,255,255,0.95);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--border);
       padding: 0 2rem;
       display: flex; align-items: center; justify-content: space-between;
       height: 64px;
+      border-bottom: 1px solid var(--border);
     }
     .nav-logo {
       font-family: 'Playfair Display', serif;
@@ -90,9 +41,7 @@
       color: var(--amber-dark);
       text-decoration: none;
     }
-    .nav-lang {
-      display: flex; gap: 8px;
-    }
+    .nav-lang { display: flex; gap: 8px; }
     .nav-lang button {
       background: none; border: 1px solid var(--border);
       border-radius: 6px; padding: 4px 10px;
@@ -105,264 +54,36 @@
       color: var(--amber-dark);
       font-weight: 500;
     }
-
-    /* HERO */
     .hero {
-      max-width: 900px; margin: 0 auto;
-      padding: 5rem 2rem 4rem;
+      max-width: 700px; margin: 0 auto;
+      padding: 8rem 2rem 6rem;
       text-align: center;
-    }
-    .hero-tag {
-      display: inline-block;
-      background: var(--amber-light);
-      color: var(--amber-dark);
-      font-size: 13px; font-weight: 500;
-      padding: 4px 14px; border-radius: 20px;
-      margin-bottom: 1.5rem;
     }
     .hero h1 {
       font-family: 'Playfair Display', serif;
-      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
       line-height: 1.2;
-      color: var(--text);
       margin-bottom: 1.25rem;
     }
     .hero h1 span { color: var(--amber); }
     .hero p {
       font-size: 1.15rem;
       color: var(--gray);
-      max-width: 600px;
-      margin: 0 auto 2rem;
+      max-width: 520px;
+      margin: 0 auto;
     }
-    .hero-en { display: none; }
-    .hero-cta {
-      display: inline-block;
-      background: var(--amber);
-      color: var(--white);
-      text-decoration: none;
-      font-weight: 500;
-      padding: 14px 32px;
-      border-radius: var(--radius);
-      font-size: 1rem;
-      transition: background 0.15s;
-    }
-    .hero-cta:hover { background: var(--amber-dark); }
-
-    /* MOCKUP STRIP */
-    .mockup-strip {
-      background: var(--gray-light);
-      padding: 3rem 2rem;
-      overflow: hidden;
-    }
-    .mockup-inner {
-      max-width: 1100px; margin: 0 auto;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.5rem;
-    }
-    .mockup-card {
-      background: var(--white);
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      overflow: hidden;
-    }
-    .mockup-header {
-      background: var(--amber-light);
-      padding: 10px 14px;
-      display: flex; align-items: center; gap: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .mockup-header-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--amber);
-    }
-    .mockup-header span {
-      font-size: 12px; font-weight: 500;
-      color: var(--amber-dark);
-    }
-    .mockup-body { padding: 14px; }
-    .mockup-row {
-      display: flex; align-items: center;
-      justify-content: space-between;
-      padding: 6px 0;
-      border-bottom: 1px solid rgba(0,0,0,0.05);
-      font-size: 13px;
-    }
-    .mockup-row:last-child { border-bottom: none; }
-    .mockup-label { color: var(--gray); }
-    .mockup-val { font-weight: 500; color: var(--text); }
-    .mockup-badge {
-      font-size: 11px; padding: 2px 8px;
-      border-radius: 10px; font-weight: 500;
-    }
-    .badge-green { background: #EAF3DE; color: #3B6D11; }
-    .badge-amber { background: var(--amber-light); color: var(--amber-dark); }
-    .badge-teal { background: var(--teal-light); color: var(--teal-dark); }
-
-    .mockup-chart {
-      display: flex; align-items: flex-end; gap: 6px;
-      height: 60px; padding: 8px 0;
-    }
-    .mockup-bar {
-      flex: 1; border-radius: 4px 4px 0 0;
-      background: var(--amber-light);
-      position: relative;
-      min-height: 8px;
-    }
-    .mockup-bar.active { background: var(--amber); }
-
-    .mockup-route {
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .mockup-stop {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 12px;
-    }
-    .stop-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--teal-light);
-      border: 2px solid var(--teal);
-      flex-shrink: 0;
-    }
-    .stop-dot.done { background: var(--teal); }
-    .mockup-line {
-      width: 2px; height: 12px;
-      background: var(--border);
-      margin-left: 4px;
-    }
-
-    /* FEATURES */
-    .features {
-      max-width: 1100px; margin: 0 auto;
-      padding: 5rem 2rem;
-    }
-    .section-title {
-      text-align: center;
-      font-family: 'Playfair Display', serif;
-      font-size: clamp(1.6rem, 3vw, 2.2rem);
-      margin-bottom: 0.5rem;
-    }
-    .section-sub {
-      text-align: center;
-      color: var(--gray);
-      margin-bottom: 3rem;
-      font-size: 1.05rem;
-    }
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-    }
-    .feature-card {
-      background: var(--gray-light);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      border: 1px solid transparent;
-      transition: border-color 0.15s;
-    }
-    .feature-card:hover { border-color: var(--amber); }
-    .feature-icon {
-      width: 44px; height: 44px;
-      border-radius: 10px;
-      background: var(--amber-light);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 1rem;
-    }
-    .feature-icon svg { width: 22px; height: 22px; stroke: var(--amber); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .feature-card h3 {
-      font-size: 1rem; font-weight: 600;
-      margin-bottom: 0.4rem;
-    }
-    .feature-card p {
-      font-size: 0.9rem; color: var(--gray);
-      line-height: 1.6;
-    }
-    .feature-en { display: none; }
-
-    /* CONTACT */
-    .contact-section {
-      background: var(--gray-light);
-      padding: 5rem 2rem;
-    }
-    .contact-inner {
-      max-width: 620px; margin: 0 auto;
-    }
-    .contact-section .section-title { margin-bottom: 0.5rem; }
-    .contact-section .section-sub { margin-bottom: 2rem; }
-
-    form { display: flex; flex-direction: column; gap: 1rem; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 520px) { .form-row { grid-template-columns: 1fr; } }
-
-    label {
-      display: block;
-      font-size: 13px; font-weight: 500;
-      margin-bottom: 5px;
-      color: var(--text);
-    }
-    input, textarea, select {
-      width: 100%;
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-family: 'Inter', sans-serif;
-      font-size: 15px;
-      color: var(--text);
-      background: var(--white);
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    input:focus, textarea:focus { border-color: var(--amber); }
-    textarea { resize: vertical; min-height: 120px; }
-
-    .honeypot { display: none !important; }
-
-    .form-submit {
-      background: var(--amber);
-      color: var(--white);
-      border: none;
-      border-radius: var(--radius);
-      padding: 13px 28px;
-      font-size: 1rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.15s;
-      align-self: flex-start;
-    }
-    .form-submit:hover { background: var(--amber-dark); }
-    .form-submit:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .form-success {
-      display: none;
-      background: var(--teal-light);
-      color: var(--teal-dark);
-      border-radius: var(--radius);
-      padding: 1rem 1.25rem;
-      font-size: 0.95rem;
-    }
-    .form-error {
-      display: none;
-      background: #FCEBEB;
-      color: #501313;
-      border-radius: var(--radius);
-      padding: 1rem 1.25rem;
-      font-size: 0.95rem;
-    }
-
-    /* FOOTER */
     footer {
       text-align: center;
       padding: 2rem;
       font-size: 13px;
       color: var(--text-muted);
       border-top: 1px solid var(--border);
+      position: fixed; bottom: 0; width: 100%;
+      background: var(--white);
     }
-
     .lang-en { display: none; }
-
     @media (max-width: 600px) {
-      .hero { padding: 3rem 1.5rem 2.5rem; }
-      .features, .contact-section { padding: 3rem 1.5rem; }
+      .hero { padding: 5rem 1.5rem 4rem; }
     }
   </style>
 </head>
@@ -376,210 +97,18 @@
   </div>
 </nav>
 
-<!-- HERO -->
 <section class="hero">
-  <div class="hero-tag lang-nl">Op maat gemaakt voor jouw bakkerij</div>
-  <div class="hero-tag lang-en">Custom-built for your bakery</div>
-
   <h1 class="lang-nl">Jouw bakkerij,<br><span>slim georganiseerd</span></h1>
   <h1 class="lang-en">Your bakery,<br><span>smartly organised</span></h1>
-
   <p class="lang-nl">Van recepten en productieoverzichten tot bestellingen, bezorging en facturatie. Software die precies past bij hoe jij werkt.</p>
   <p class="lang-en">From recipes and production overviews to orders, delivery and invoicing. Software built around the way you work.</p>
-
-  <a href="mailto:bdb785@gmail.com" class="hero-cta lang-nl">Neem contact op</a>
-  <a href="mailto:bdb785@gmail.com" class="hero-cta lang-en">Get in touch</a>
-</section>
-
-<!-- MOCKUP STRIP -->
-
-<!-- OP MAAT -->
-<section style="background:var(--teal-light);">
-<div style="max-width:900px;margin:0 auto;padding:5rem 2rem;display:flex;gap:3rem;align-items:center;flex-wrap:wrap;">
-  <div style="flex:1;min-width:260px;">
-    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(1.5rem,3vw,2rem);line-height:1.25;margin-bottom:1rem;" class="lang-nl">Software die past bij<br><em style="color:var(--teal);font-style:normal;">jouw</em> werkwijze</h2>
-    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(1.5rem,3vw,2rem);line-height:1.25;margin-bottom:1rem;" class="lang-en">Software built around<br><em style="color:var(--teal);font-style:normal;">your</em> workflow</h2>
-    <p style="color:var(--teal-dark);margin-bottom:1rem;" class="lang-nl">SirDough ontwikkelt software volledig op maat voor jouw bakkerij. Jouw recepten, jouw productieplanning, jouw klanten, jouw bezorgroutes.</p>
-    <p style="color:var(--teal-dark);margin-bottom:1rem;" class="lang-en">SirDough builds software entirely around your bakery. Your recipes, your production planning, your customers, your delivery routes.</p>
-    <p style="color:var(--teal-dark);" class="lang-nl">We nemen de tijd om te begrijpen hoe jij werkt, en bouwen een systeem dat daar naadloos op aansluit.</p>
-    <p style="color:var(--teal-dark);" class="lang-en">We take the time to understand how you work, then build a system that fits seamlessly.</p>
-  </div>
-  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:1rem;">
-    <div style="background:var(--white);border-radius:var(--radius);padding:1.25rem;display:flex;gap:1rem;align-items:flex-start;">
-      <div style="width:38px;height:38px;border-radius:8px;background:var(--teal-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-nl">Jouw recepten & productie</p>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-en">Your recipes & production</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-nl">Alle soorten, gewichten en categorieën precies zoals jij ze kent.</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-en">Every type, weight and category exactly as you know them.</p>
-      </div>
-    </div>
-    <div style="background:var(--white);border-radius:var(--radius);padding:1.25rem;display:flex;gap:1rem;align-items:flex-start;">
-      <div style="width:38px;height:38px;border-radius:8px;background:var(--teal-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-nl">Jouw klanten & bestellingen</p>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-en">Your customers & orders</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-nl">Vaste bestellingen en leveringsschema's ingebouwd.</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-en">Standing orders and delivery schedules built in.</p>
-      </div>
-    </div>
-    <div style="background:var(--white);border-radius:var(--radius);padding:1.25rem;display:flex;gap:1rem;align-items:flex-start;">
-      <div style="width:38px;height:38px;border-radius:8px;background:var(--teal-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-nl">Persoonlijk contact</p>
-        <p style="font-weight:500;font-size:0.95rem;margin-bottom:2px;" class="lang-en">Personal contact</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-nl">Van opzet tot dagelijks gebruik.</p>
-        <p style="font-size:0.85rem;color:var(--gray);" class="lang-en">From setup to daily use.</p>
-      </div>
-    </div>
-  </div>
-</div>
-</section>
-
-<!-- FEATURES -->
-<section class="features">
-  <h2 class="section-title lang-nl">Alles wat je nodig hebt</h2>
-  <h2 class="section-title lang-en">Everything you need</h2>
-  <p class="section-sub lang-nl">Gebouwd voor ambachtelijke bakkerijen die professioneel willen werken.</p>
-  <p class="section-sub lang-en">Built for artisan bakeries that want to work professionally.</p>
-
-  <div class="features-grid">
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
-      </div>
-      <h3 class="lang-nl">Receptenbeheer</h3>
-      <h3 class="lang-en">Recipe management</h3>
-      <p class="lang-nl">Pas je recepten aan on the go. Van meelsoorten tot hydratatie en rijstijd. Automatisch schaalbaar naar de dagproductie.</p>
-      <p class="lang-en">Edit your recipes on the go. From flour types to hydration and proofing time. Automatically scales to daily production.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-      </div>
-      <h3 class="lang-nl">Productieoverzicht</h3>
-      <h3 class="lang-en">Production overview</h3>
-      <p class="lang-nl">Per dag een helder overzicht van alle deegsoorten, aantallen per broodtype en benodigde manden. Inclusief deeggewichten per mixer.</p>
-      <p class="lang-en">A clear daily overview of all dough types, quantities per bread type and required baskets. Includes dough weights per mixer.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><line x1="16" y1="11" x2="22" y2="11"/><line x1="19" y1="8" x2="19" y2="14"/></svg>
-      </div>
-      <h3 class="lang-nl">Bestellingen</h3>
-      <h3 class="lang-en">Orders</h3>
-      <p class="lang-nl">Vaste bestellingen per weekdag en eenmalige orders. Klanten hebben een eigen login waar ze hun bestellingen en facturen zelf kunnen beheren.</p>
-      <p class="lang-en">Standing orders per weekday and one-off orders. Customers get their own login to manage their orders and invoices.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-      </div>
-      <h3 class="lang-nl">Bezorgplanning</h3>
-      <h3 class="lang-en">Delivery planning</h3>
-      <p class="lang-nl">Zelf je bezorgroute bepalen. Alles in één oogopslag voor de bezorger.</p>
-      <p class="lang-en">Plan your own delivery route. Everything at a glance for the delivery driver.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-      </div>
-      <h3 class="lang-nl">Facturatie</h3>
-      <h3 class="lang-en">Invoicing</h3>
-      <p class="lang-nl">Automatisch facturen genereren op basis van geleverde orders en exporteren als PDF.</p>
-      <p class="lang-en">Automatically generate invoices based on delivered orders and export as PDF.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      </div>
-      <h3 class="lang-nl">Eigen beveiligde omgeving</h3>
-      <h3 class="lang-en">Your own secure environment</h3>
-      <p class="lang-nl">Jouw bakkerij krijgt een eigen beveiligde omgeving. Teams beheren met rollen en rechten voor iedere medewerker.</p>
-      <p class="lang-en">Your bakery gets its own secure environment. Manage teams with roles and permissions for every employee.</p>
-    </div>
-
-  </div>
-</section>
-
-<!-- CONTACT -->
-<section class="contact-section" id="contact">
-  <div class="contact-inner" style="text-align:center;">
-    <h2 class="section-title lang-nl">Interesse?</h2>
-    <h2 class="section-title lang-en">Interested?</h2>
-    <p class="section-sub lang-nl">Neem direct contact op via e-mail.</p>
-    <p class="section-sub lang-en">Get in touch directly via email.</p>
-    <a href="mailto:bdb785@gmail.com" style="display:inline-block;background:var(--amber);color:#fff;text-decoration:none;font-weight:500;padding:14px 32px;border-radius:12px;font-size:1rem;">bdb785@gmail.com</a>
-  </div>
 </section>
 
 <footer>
-  <p>© 2026 SirDough — Bakkerijbeheer Software &nbsp;·&nbsp; <a href="mailto:bdb785@gmail.com" style="color:var(--amber)">bdb785@gmail.com</a></p>
+  <p>© 2026 SirDough</p>
 </footer>
 
 <script>
-  var FORM_START = 0;
-  var FORMSPREE_ID = "YOUR_FORMSPREE_ID";
-
-  document.getElementById("contact-form").addEventListener("focusin", function() {
-    if (!FORM_START) FORM_START = Date.now();
-  }, { once: true });
-
-  document.getElementById("contact-form").addEventListener("submit", async function(e) {
-    e.preventDefault();
-    var form = e.target;
-    var honeypot = form.querySelector("input[name='_gotcha']");
-    var elapsed = Date.now() - FORM_START;
-
-    // Bot checks: honeypot filled or submitted in under 3 seconds
-    if (honeypot && honeypot.value) return;
-    if (elapsed < 3000) return;
-
-    var btn = form.querySelector(".form-submit");
-    btn.disabled = true;
-
-    var data = {
-      name: form.name.value.trim(),
-      email: form.email.value.trim(),
-      bakery: form.bakery.value.trim(),
-      message: form.message.value.trim(),
-    };
-
-    if (!data.name || !data.email || !data.message) {
-      btn.disabled = false;
-      return;
-    }
-
-    try {
-      var res = await fetch("https://formspree.io/f/" + FORMSPREE_ID, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (res.ok) {
-        form.style.display = "none";
-        document.getElementById("form-success").style.display = "block";
-      } else {
-        throw new Error("fail");
-      }
-    } catch (_) {
-      document.getElementById("form-error").style.display = "block";
-      btn.disabled = false;
-    }
-  });
-
   function setLang(lang) {
     document.querySelectorAll(".lang-nl").forEach(function(el) {
       el.style.display = lang === "nl" ? "" : "none";
