@@ -72,7 +72,7 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
   );
 }
 
-function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes }: { bt: BreadType; onSaved: () => void; allCategories: string[]; allBreadTypes: BreadType[] }) {
+function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketTypeOptions }: { bt: BreadType; onSaved: () => void; allCategories: string[]; allBreadTypes: BreadType[]; basketTypeOptions: string[] }) {
   const r = bt.recipe;
   const [waterPct,  setWater]  = useState(r?.waterPct  ?? 71.5);
   const [desemPct,  setDesem]  = useState(r?.desemPct  ?? 15);
@@ -186,10 +186,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes }: { bt: Br
         <select value={basketType} onChange={e => setBasketType(e.target.value)}
           style={{ ...inputStyle, width: "100%", marginBottom: 10 }}>
           <option value="">— geen mand —</option>
-          <option value="750 gram">750 gram</option>
-          <option value="rond">Rond</option>
-          <option value="1 kg">1 kg</option>
-          <option value="1,5 kg">1,5 kg</option>
+          {basketTypeOptions.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
         {basketType && (
           <>
@@ -228,8 +225,8 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes }: { bt: Br
   );
 }
 
-function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
-  onClose: () => void; onSaved: () => void; existingCategories: string[];
+function NewBreadTypeModal({ onClose, onSaved, existingCategories, basketTypeOptions }: {
+  onClose: () => void; onSaved: () => void; existingCategories: string[]; basketTypeOptions: string[];
 }) {
   const allCats = [...new Set(["boeren","mand","baguette","spelt","volkoren","rogge","zoet",...existingCategories])];
   const [name, setName] = useState("");
@@ -305,10 +302,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories }: {
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandformaat</label>
           <select value={basketType} onChange={e=>setBasketType(e.target.value)} style={inp}>
             <option value="">— geen mand —</option>
-            <option value="750 gram">750 gram</option>
-            <option value="rond">Rond</option>
-            <option value="1 kg">1 kg</option>
-            <option value="1,5 kg">1,5 kg</option>
+            {basketTypeOptions.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
         {basketType && (
@@ -350,6 +344,9 @@ export default function ReceptenPage() {
   const [editMode, setEditMode] = useState<Record<string, boolean>>({});
   const [showNewBread, setShowNewBread] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
+  const [showBasketManager, setShowBasketManager] = useState(false);
+  const [basketTypes, setBasketTypes] = useState<string[]>(["750 gram","rond","1 kg","1,5 kg"]);
+  const [newBasketName, setNewBasketName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<BreadType | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -360,7 +357,18 @@ export default function ReceptenPage() {
       .then(d => { setBreadTypes(d.breadTypes ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   }
-  useEffect(() => { load(); }, []);
+
+  async function loadSettings() {
+    const d = await fetch("/api/settings", { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({}));
+    if (d.basketTypes?.length) setBasketTypes(d.basketTypes);
+  }
+
+  async function saveBasketTypes(types: string[]) {
+    setBasketTypes(types);
+    await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" }, body: JSON.stringify({ basketTypes: types }) });
+  }
+
+  useEffect(() => { load(); loadSettings(); }, []);
 
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
 
@@ -396,6 +404,9 @@ export default function ReceptenPage() {
               <button onClick={() => setShowCatManager(!showCatManager)} className="btn-secondary" style={{ fontSize: 13 }}>
                 {showCatManager ? "Sluit categorieën" : "Categorieën beheren"}
               </button>
+              <button onClick={() => setShowBasketManager(!showBasketManager)} className="btn-secondary" style={{ fontSize: 13 }}>
+                {showBasketManager ? "Sluit manden" : "Manden beheren"}
+              </button>
               <button className="btn-primary" onClick={() => setShowNewBread(true)} style={{ fontSize: 13, padding: "8px 16px" }}>
                 + Nieuw broodsoort
               </button>
@@ -429,6 +440,33 @@ export default function ReceptenPage() {
           <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
             Categorieën verdwijnen automatisch als alle broodsoorten erin verwijderd zijn.
           </p>
+        </div>
+      )}
+
+      {/* Basket type manager */}
+      {showBasketManager && isOwner && (
+        <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Mandformaten</h3>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {basketTypes.map(bt => (
+              <div key={bt} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px" }}>
+                <span style={{ fontSize: 13 }}>{bt}</span>
+                <button onClick={() => saveBasketTypes(basketTypes.filter(b => b !== bt))}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={newBasketName} onChange={e => setNewBasketName(e.target.value)}
+              placeholder="Nieuw mandformaat…"
+              style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px", fontSize: 13, flex: 1 }}
+              onKeyDown={e => { if (e.key === "Enter" && newBasketName.trim()) { saveBasketTypes([...basketTypes, newBasketName.trim()]); setNewBasketName(""); } }}
+            />
+            <button className="btn-primary" style={{ fontSize: 13 }}
+              onClick={() => { if (newBasketName.trim()) { saveBasketTypes([...basketTypes, newBasketName.trim()]); setNewBasketName(""); } }}>
+              Toevoegen
+            </button>
+          </div>
         </div>
       )}
 
@@ -479,7 +517,7 @@ export default function ReceptenPage() {
                     {isOpen && (
                       <div style={{ borderTop: "1px solid var(--border)", padding: "1rem 1.25rem", background: "var(--surface-2)" }}>
                         {isOwner && isEditing
-                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} allBreadTypes={breadTypes} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
+                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} allBreadTypes={breadTypes} basketTypeOptions={basketTypes} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
                           : <RecipeWorkerView bt={bt} qty={qty} />
                         }
                       </div>
@@ -494,7 +532,7 @@ export default function ReceptenPage() {
 
       {/* New bread type modal */}
       {showNewBread && (
-        <NewBreadTypeModal onClose={() => setShowNewBread(false)} onSaved={() => { setShowNewBread(false); load(); }} existingCategories={categories} />
+        <NewBreadTypeModal onClose={() => setShowNewBread(false)} onSaved={() => { setShowNewBread(false); load(); }} existingCategories={categories} basketTypeOptions={basketTypes} />
       )}
 
       {/* Delete confirmation modal */}

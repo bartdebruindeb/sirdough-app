@@ -101,8 +101,13 @@ export async function GET(req: Request) {
     if (invite.usedAt) return Response.json({ valid: false, message: "Deze link is al gebruikt." });
     if (invite.expiresAt < new Date()) return Response.json({ valid: false, message: "Link verlopen." });
 
+    // customerId may be a userId (worker invite) or a customerId (customer invite)
+    const workerUser = await prisma.user.findFirst({ where: { id: invite.customerId } });
+    if (workerUser) {
+      return Response.json({ valid: true, email: workerUser.email, name: workerUser.name, type: "worker" });
+    }
     const customer = await prisma.customer.findFirst({ where: { id: invite.customerId } });
-    return Response.json({ valid: true, email: customer?.email, name: customer?.name });
+    return Response.json({ valid: true, email: customer?.email, name: customer?.name, type: "customer" });
   } catch (e) {
     return toResponse(e);
   }

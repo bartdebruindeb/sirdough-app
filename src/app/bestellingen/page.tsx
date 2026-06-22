@@ -83,10 +83,19 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const hasLines = Object.values(qty).some(v => v > 0);
+  const [deadlineWarning, setDeadlineWarning] = useState(false);
 
   function getDateWeekday(d: string) { const dt = new Date(d+"T12:00:00Z"); const j=dt.getUTCDay(); return j===0?7:j; }
 
-  async function save() {
+  function isPastDeadline(deliveryDate: string) {
+    const now = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0,10);
+    return deliveryDate === tomorrowStr && now.getHours() >= 4;
+  }
+
+  async function save(bypassWarning = false) {
     if (!customerId) { setError("Selecteer eerst een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
     if (closedWeekdays.includes(getDateWeekday(date))) {
@@ -94,6 +103,15 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
       setError(`${dayName} is een gesloten dag — geen levering mogelijk.`);
       return;
     }
+    if (!bypassWarning && isPastDeadline(date)) {
+      if (!role) {
+        setError("De besteldeadline (04:00) is verstreken. Neem contact op met de bakkerij.");
+        return;
+      }
+      setDeadlineWarning(true);
+      return;
+    }
+    setDeadlineWarning(false);
     setSaving(true); setError(""); setSuccess("");
     const customerName = customers.find(c=>c.id===customerId)?.name ?? "";
     const res = await fetch("/api/bestellingen", {
@@ -144,11 +162,23 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
           </div>
         ))}
       </div>
+      {deadlineWarning && (
+        <div style={{ background:"#fff3cd", border:"1px solid #ffc107", borderRadius:8, padding:"12px 14px", marginBottom:10 }}>
+          <p style={{ fontSize:13, fontWeight:600, margin:"0 0 6px", color:"#856404" }}>⚠️ Besteldeadline verstreken</p>
+          <p style={{ fontSize:13, color:"#856404", margin:"0 0 10px" }}>De deadline voor morgen (04:00) is verstreken. Weet je zeker dat je deze bestelling toch wilt plaatsen?</p>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => save(true)} className="btn-primary" style={{ fontSize:13 }}>Ja, toch opslaan</button>
+            <button onClick={() => setDeadlineWarning(false)} className="btn-secondary" style={{ fontSize:13 }}>Annuleren</button>
+          </div>
+        </div>
+      )}
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
       {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
-      <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
-        {saving?"Opslaan…":"Bestelling toevoegen"}
-      </button>
+      {!deadlineWarning && (
+        <button onClick={() => save()} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
+          {saving?"Opslaan…":"Bestelling toevoegen"}
+        </button>
+      )}
     </div>
   );
 }

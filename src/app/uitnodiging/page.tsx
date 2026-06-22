@@ -38,6 +38,10 @@ function UitnodigingContent() {
           setStatus("invalid");
           setMessage(d.message ?? "Ongeldige link.");
         }
+      })
+      .catch(() => {
+        setStatus("invalid");
+        setMessage("Kon de uitnodiging niet laden. Controleer je verbinding en probeer opnieuw.");
       });
   }, [token]);
 
@@ -56,9 +60,8 @@ function UitnodigingContent() {
 
     if (res.ok) {
       setStatus("done");
-      // Auto-login
-      await signIn("credentials", { email: data.email, password, redirect: false });
-      setTimeout(() => router.push("/bestellingen"), 1500);
+      const result = await signIn("credentials", { email: data.email, password, redirect: false });
+      setTimeout(() => router.push(result?.ok ? "/" : "/login"), 1500);
     } else {
       setError(data.message ?? "Er is iets misgegaan.");
     }
