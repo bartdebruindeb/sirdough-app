@@ -562,7 +562,7 @@ export default function BestellingenPage() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const [tab, setTab] = useState<"eenmalig"|"vast"|"klant">("eenmalig");
+  const [tab, setTab] = useState<"eenmalig"|"vast"|"klant">(role === "BAKKER" ? "klant" : "eenmalig");
   const [pendingDeleteId, setPendingDeleteId] = useState<string|null>(null);
   const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
   const [recurringCityFilter, setRecurringCityFilter] = useState("");
@@ -818,7 +818,10 @@ export default function BestellingenPage() {
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:"1.5rem", flexWrap:"wrap", gap:10 }}>
         <h1 style={{ fontSize:28 }}>Bestellingen</h1>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {([["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Logboek"]] as const).map(([t,label])=>(
+          {(role === "BAKKER"
+            ? [["klant","Logboek"]] as const
+            : [["eenmalig","Eenmalig"],["vast","Vaste bestellingen"],["klant","Logboek"]] as const
+          ).map(([t,label])=>(
             <button key={t} onClick={()=>setTab(t as any)} style={{
               padding:"7px 14px", borderRadius:8, border:"1px solid var(--border)",
               background:tab===t?"var(--accent)":"var(--surface)",

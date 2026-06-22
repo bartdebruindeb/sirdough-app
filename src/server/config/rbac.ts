@@ -4,7 +4,7 @@ const PERMISSIONS = {
   "recipes:read":     ["OWNER","ORDER_TABLET","BAKKER"],
   "recipes:write":    ["OWNER"],
   "production:read":  ["OWNER","ORDER_TABLET","BAKKER"],
-  "production:write": ["OWNER","ORDER_TABLET"],
+  "production:write": ["OWNER","ORDER_TABLET","BAKKER"],
   "orders:read":            ["OWNER","ORDER_TABLET","BAKKER"],
   "orders:write":           ["OWNER","ORDER_TABLET"],
   "orders:write_recurring": ["OWNER","ORDER_TABLET"],
