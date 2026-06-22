@@ -6,7 +6,6 @@ import { AppShell } from "@/components/AppShell";
 import { bakeryConfig } from "@/config/bakery.config";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/server/config/db";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +15,15 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // If TENANT_SLUG is set, we're in single-tenant mode — no subdomain check needed
-  if (!process.env.TENANT_SLUG) {
-    const host = headers().get("host") ?? "";
-    const parts = host.split(".");
-    // Only check subdomains (e.g. kangaroo.sirdough.com → parts = ["kangaroo","sirdough","com"])
-    if (parts.length >= 3) {
-      const slug = parts[0];
-      const tenant = await prisma.tenant.findUnique({ where: { slug } });
-      if (!tenant) {
-        redirect("https://sirdough.com");
-      }
+  // Reject unknown subdomains: compare incoming host to the subdomain in NEXTAUTH_URL.
+  // e.g. NEXTAUTH_URL=https://meneerleffers.sirdough.com → only that subdomain is valid.
+  const nextAuthUrl = process.env.NEXTAUTH_URL;
+  if (nextAuthUrl) {
+    const validHost = new URL(nextAuthUrl).hostname; // "meneerleffers.sirdough.com"
+    const incomingHost = (headers().get("host") ?? "").split(":")[0]; // strip port if any
+    const isSubdomain = incomingHost.split(".").length >= 3;
+    if (isSubdomain && incomingHost !== validHost) {
+      redirect("https://sirdough.com");
     }
   }
 
