@@ -89,10 +89,11 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
 
   function isPastDeadline(deliveryDate: string) {
     const now = new Date();
+    const todayStr = now.toISOString().slice(0,10);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().slice(0,10);
-    return deliveryDate === tomorrowStr && now.getHours() >= 4;
+    return (deliveryDate === todayStr || deliveryDate === tomorrowStr) && now.getHours() >= 4;
   }
 
   async function save(bypassWarning = false) {
