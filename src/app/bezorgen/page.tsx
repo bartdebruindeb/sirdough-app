@@ -269,12 +269,21 @@ export default function BezorgenPage() {
 
             {/* Left: In de bus */}
             <div className="bez-col-bus" style={{ flex: "0 0 52%", minWidth: 0 }}>
-              <h2 style={{ fontSize: 15, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
+              <h2 style={{ fontSize: 15, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 🚐 In de bus
                 {busRows.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-subtle)", fontFamily: "var(--font-body)", fontWeight: 400 }}>
                     {busRows.length} stops
                   </span>
+                )}
+                {mapsUrl && (
+                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5,
+                      fontSize: 12, padding: "4px 10px", borderRadius: 7,
+                      background: "#1a73e8", color: "white", textDecoration: "none", fontWeight: 500,
+                      fontFamily: "var(--font-body)" }}>
+                    🗺️ Open route
+                  </a>
                 )}
               </h2>
               {busRows.length === 0 ? (
