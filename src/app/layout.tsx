@@ -4,12 +4,10 @@ import { RoleProvider } from "@/lib/role-context";
 import { AuthProvider } from "@/components/AuthProvider";
 import { AppShell } from "@/components/AppShell";
 import { bakeryConfig } from "@/config/bakery.config";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { prisma } from "@/server/config/db";
 
-// This is an authenticated, per-user application — never statically cache
-// pages. Without this, Next.js prerenders pages like "/" at build time and
-// serves the SAME cached HTML (with a 1-year Cache-Control) to every
-// visitor regardless of login state, which is both a security issue and
-// breaks the login redirect.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -17,7 +15,21 @@ export const metadata: Metadata = {
   description: "Bakkerij beheer — productie, recepten, bestellingen",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // If TENANT_SLUG is set, we're in single-tenant mode — no subdomain check needed
+  if (!process.env.TENANT_SLUG) {
+    const host = headers().get("host") ?? "";
+    const parts = host.split(".");
+    // Only check subdomains (e.g. kangaroo.sirdough.com → parts = ["kangaroo","sirdough","com"])
+    if (parts.length >= 3) {
+      const slug = parts[0];
+      const tenant = await prisma.tenant.findUnique({ where: { slug } });
+      if (!tenant) {
+        redirect("https://sirdough.com");
+      }
+    }
+  }
+
   return (
     <html lang="nl">
       <body>

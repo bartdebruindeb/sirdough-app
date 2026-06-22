@@ -10,7 +10,7 @@ type FlourLine = { name: string; percentage: number };
 type RecipeInfo = { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; flourLines: FlourLine[] };
 type BreadLine = {
   breadTypeId: string; slug: string; name: string; category: string;
-  basketType?: string | null; basketStyle?: string | null;
+  mixerGroup?: string | null; basketType?: string | null; basketStyle?: string | null;
   winkelQty: number; winkelDelftQty?: number; winkelDHQty?: number;
   horecaQty: number; totalQty: number;
   doughWeightTotal: number; flourWeightTotal: number;
