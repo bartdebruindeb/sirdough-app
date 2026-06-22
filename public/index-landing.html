@@ -111,10 +111,10 @@
 <script>
   function setLang(lang) {
     document.querySelectorAll(".lang-nl").forEach(function(el) {
-      el.style.display = lang === "nl" ? "" : "none";
+      el.style.display = lang === "nl" ? "block" : "none";
     });
     document.querySelectorAll(".lang-en").forEach(function(el) {
-      el.style.display = lang === "en" ? "" : "none";
+      el.style.display = lang === "en" ? "block" : "none";
     });
     document.getElementById("btn-nl").classList.toggle("active", lang === "nl");
     document.getElementById("btn-en").classList.toggle("active", lang === "en");
