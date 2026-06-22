@@ -19,7 +19,7 @@ export const ROLE_ICONS: Record<AppRole, string> = {
 // Pages each role can access
 export const ROLE_PAGES: Record<AppRole, string[]> = {
   OWNER:        ["/", "/productie", "/recepten", "/winkel", "/bestellingen", "/logboek", "/bezorgen", "/klanten", "/team", "/facturatie"],
-  ORDER_TABLET: ["/", "/productie", "/bestellingen", "/logboek", "/bezorgen"],
+  ORDER_TABLET: ["/productie", "/bestellingen", "/bezorgen"],
   BAKKER:       ["/", "/productie", "/bestellingen", "/logboek", "/bezorgen"],
 };
 

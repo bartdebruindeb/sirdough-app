@@ -480,10 +480,11 @@ export default function HomePage() {
   const [greeting, setGreeting] = useState("Goedemorgen");
 
   useEffect(() => {
+    if (role === "ORDER_TABLET") { window.location.replace("/bestellingen"); return; }
     const now = new Date();
     setToday(now.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
     setGreeting(getGreeting(now.getHours()));
-  }, []);
+  }, [role]);
 
   return (
     <div style={{ padding: "1.5rem 1rem", maxWidth: 1200 }} className="home-page">
