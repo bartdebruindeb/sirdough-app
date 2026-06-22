@@ -83,6 +83,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
   const [basketStyle, setBasketStyle] = useState(bt.basketStyle ?? "");
   const [category, setCategory] = useState(bt.category ?? "");
   const [showInProduction, setShowInProduction] = useState(bt.showInProduction ?? true);
+  const [mixerGroup, setMixerGroup] = useState((bt as any).mixerGroup ?? "");
   const [notes,     setNotes]  = useState(r?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
@@ -94,11 +95,11 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
 
   async function save() {
     setSaving(true);
-    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true)) {
+    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true) || mixerGroup !== ((bt as any).mixerGroup ?? "")) {
       await fetch("/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category, showInProduction }),
+        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category, showInProduction, mixerGroup: mixerGroup || null }),
       });
     }
     await fetch("/api/recipes", {
@@ -209,6 +210,11 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories }: { bt: BreadType; onSave
           Toon in productieplanning
           <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>(uitschakelen = verschijnt alleen in bestellingen en bezorging)</span>
         </label>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4, marginTop: 10 }}>Samenvoegen in mixer met</label>
+        <input value={mixerGroup} onChange={e => setMixerGroup(e.target.value)}
+          placeholder="bijv. sesam (leeglaten = eigen groep)"
+          style={{ ...inputStyle, width: "100%" }} />
+        <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Vul de naam in van het broodtype waarmee dit deeg in de mixer wordt samengevoegd. Manden blijven apart geteld.</span>
       </div>
 
       <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>

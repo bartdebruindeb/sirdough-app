@@ -129,6 +129,8 @@ model BreadType {
   basketStyle String?
   /// false = appears in orders/delivery but NOT in production sheet or mixer planning
   showInProduction Boolean @default(true)
+  /// override which mixer group this bread counts towards (e.g. "sesam" merges sesam-1.5kg into sesam group)
+  mixerGroup String?
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])

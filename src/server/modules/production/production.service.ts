@@ -12,6 +12,7 @@ export type BreadLine = {
   sortOrder: number;
   basketType: string | null;
   basketStyle: string | null;
+  mixerGroup: string | null;
   winkelQty: number;
   winkelDelftQty: number;
   winkelDHQty: number;
@@ -206,6 +207,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       sortOrder: bt.sortOrder,
       basketType: bt.basketType ?? null,
       basketStyle: bt.basketStyle ?? null,
+      mixerGroup: (bt as any).mixerGroup ?? null,
       winkelQty,
       winkelDelftQty: winkelDelftMap[bt.id] ?? 0,
       winkelDHQty: winkelDHMap[bt.id] ?? 0,
@@ -234,8 +236,8 @@ export async function getProductionPlan(tenantId: string, productionDate: string
     const bt = breadTypes.find(b => b.id === line.breadTypeId);
     // Skip buns — not in deeg calculator
     if (BUNS_SLUGS.has(line.slug)) continue;
-    // Use doughType slug as group if linked, else recipe mixerGroup
-    const group = bt?.doughType?.slug ?? bt?.recipe?.mixerGroup ?? line.category;
+    // mixerGroup field overrides everything — lets e.g. "sesam-1.5kg" merge into "sesam" group
+    const group = (bt as any)?.mixerGroup ?? bt?.doughType?.slug ?? bt?.recipe?.mixerGroup ?? line.category;
     if (!groupMap.has(group)) {
       // Build RecipeInfo: prefer doughType, fallback to recipe
       const dt = bt?.doughType;
