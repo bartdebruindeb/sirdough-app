@@ -737,6 +737,18 @@ export default function ProductiePage() {
                   const perMixer      = Math.ceil(mg.totalLoaves / count);
                   const doughPerMixer = mg.totalDoughNoFillingsKg / count;
                   const additiveLinesInGroup = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug) && l.totalQty > 0);
+                  // Merge lines where mixerGroup references another slug (e.g. sesam-15kg → sesam)
+                  const additiveLinesDisplay = (() => {
+                    const merged = new Map<string, { line: typeof additiveLinesInGroup[0]; qty: number }>();
+                    for (const l of additiveLinesInGroup) {
+                      const targetSlug = l.mixerGroup && additiveLinesInGroup.some(x => x.slug === l.mixerGroup) ? l.mixerGroup : l.slug;
+                      const targetLine = additiveLinesInGroup.find(x => x.slug === targetSlug) ?? l;
+                      const key = targetLine.breadTypeId;
+                      if (!merged.has(key)) merged.set(key, { line: targetLine, qty: 0 });
+                      merged.get(key)!.qty += l.totalQty;
+                    }
+                    return Array.from(merged.values()).map(({ line, qty }) => ({ ...line, totalQty: qty }));
+                  })();
                   const assignment = additiveAssignment[mg.group] ?? {};
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
@@ -764,10 +776,10 @@ export default function ProductiePage() {
                         </div>
                       </div>
                       {/* Additive chooser for groups with multiple mixers */}
-                      {count > 1 && additiveLinesInGroup.length > 0 && (
+                      {count > 1 && additiveLinesDisplay.length > 0 && (
                         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                           <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-subtle)", margin: "0 0 8px" }}>Verdeel vullingen</p>
-                          {additiveLinesInGroup.map(l => (
+                          {additiveLinesDisplay.map(l => (
                             <div key={l.breadTypeId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                               <span style={{ fontSize: 12 }}>{l.name} ×{l.totalQty}</span>
                               <div style={{ display: "flex", gap: 4 }}>
