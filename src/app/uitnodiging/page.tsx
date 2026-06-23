@@ -61,7 +61,7 @@ function UitnodigingContent() {
     if (res.ok) {
       setStatus("done");
       const result = await signIn("credentials", { email: data.email, password, redirect: false });
-      setTimeout(() => router.push(result?.ok ? "/" : "/login"), 1500);
+      setTimeout(() => router.push(result?.ok ? "/mijn-bestellingen" : "/login"), 1500);
     } else {
       setError(data.message ?? "Er is iets misgegaan.");
     }
