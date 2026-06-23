@@ -1,7 +1,11 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = "Digital Bakery <noreply@sirdough.com>";
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
+}
 
 export async function sendOrderConfirmation({
   to, customerName, deliveryDate, lines, action,
@@ -32,6 +36,8 @@ export async function sendOrderConfirmation({
       <p style="font-size:12px;color:#999">U kunt uw bestellingen wijzigen tot 4:00 uur de ochtend vóór bezorging.</p>
     </div>`;
 
+  const resend = getResend();
+  if (!resend) return;
   await resend.emails.send({ from: FROM, to, subject, html });
 }
 
@@ -61,5 +67,7 @@ export async function sendRecurringOrderConfirmation({
       <p style="font-size:12px;color:#999">U kunt uw bestellingen wijzigen tot 4:00 uur de ochtend vóór bezorging.</p>
     </div>`;
 
+  const resend = getResend();
+  if (!resend) return;
   await resend.emails.send({ from: FROM, to, subject, html });
 }
