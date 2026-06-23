@@ -24,15 +24,7 @@ export default withAuth(
       signIn: "/login",
     },
     callbacks: {
-      authorized: ({ token, req }) => {
-        if (!token) return false;
-        // Customer portal paths are accessible to CUSTOMER role
-        const path = req.nextUrl.pathname;
-        if (token.role === "CUSTOMER") {
-          return path.startsWith("/mijn-");
-        }
-        return true;
-      },
+      authorized: ({ token }) => !!token,
     },
   }
 );

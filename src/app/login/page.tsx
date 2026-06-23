@@ -20,9 +20,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("E-mailadres of wachtwoord onjuist.");
     } else {
-      const session = await fetch("/api/auth/session").then(r => r.json());
-      const role = session?.user?.role;
-      router.push(role === "CUSTOMER" ? "/mijn-bestellingen" : "/");
+      router.push("/");
       router.refresh();
     }
   }
