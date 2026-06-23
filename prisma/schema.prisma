@@ -22,6 +22,7 @@ model Tenant {
   slug      String   @unique
   plan            String   @default("starter")
   closedWeekdays  String   @default("1,7")
+  basketTypes     String   @default("750 gram,rond,1 kg,1,5 kg")
   bakeryAddress   String?
   bakeryLat       Float?
   bakeryLng       Float?
@@ -236,8 +237,23 @@ model Customer {
   oneOffOrders     OneOffOrder[]
   deliveryNotes    DeliveryNote[]
   deliveryStatuses DeliveryStatus[]
+  deliveryAddresses CustomerAddress[]
 
   @@index([tenantId])
+}
+
+model CustomerAddress {
+  id         String  @id @default(cuid())
+  customerId String
+  label      String  @default("Hoofdlocatie")
+  street     String
+  postalCode String
+  city       String
+  isDefault  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
 }
 
 // ─── Recurring orders (vaste bestellingen) ───────────────────────────────────

@@ -4,9 +4,18 @@ import { NextResponse } from "next/server";
 export default withAuth(
   function middleware(req) {
     const { token } = req.nextauth;
-    // Redirect ORDER_TABLET away from the dashboard to bestellingen
-    if (token?.role === "ORDER_TABLET" && req.nextUrl.pathname === "/") {
+    const path = req.nextUrl.pathname;
+    // Redirect ORDER_TABLET away from the dashboard
+    if (token?.role === "ORDER_TABLET" && path === "/") {
       return NextResponse.redirect(new URL("/bestellingen", req.url));
+    }
+    // Redirect customers to their portal
+    if (token?.role === "CUSTOMER" && !path.startsWith("/mijn-")) {
+      return NextResponse.redirect(new URL("/mijn-bestellingen", req.url));
+    }
+    // Redirect staff away from customer portal paths
+    if (token?.role && token.role !== "CUSTOMER" && path.startsWith("/mijn-")) {
+      return NextResponse.redirect(new URL("/", req.url));
     }
     return NextResponse.next();
   },
@@ -15,8 +24,14 @@ export default withAuth(
       signIn: "/login",
     },
     callbacks: {
-      authorized: ({ token }) => {
-        return !!token && token.role !== "CUSTOMER";
+      authorized: ({ token, req }) => {
+        if (!token) return false;
+        // Customer portal paths are accessible to CUSTOMER role
+        const path = req.nextUrl.pathname;
+        if (token.role === "CUSTOMER") {
+          return path.startsWith("/mijn-");
+        }
+        return true;
       },
     },
   }

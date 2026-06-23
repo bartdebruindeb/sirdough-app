@@ -1,14 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 
-// ⚠️ PHASE 2 / NOT YET ACTIVE: this customer portal prototype calls the staff
-// /api/bestellingen endpoints with a mock role. With real login now enforced
-// (see src/middleware.ts), a CUSTOMER session gets 403 from those endpoints
-// (correctly — they're tenant-wide, not scoped to one customer). Before this
-// page goes live, it needs its own customer-scoped API routes that resolve
-// customerId from the session and only return/modify that customer's orders.
-const MOCK_CUSTOMER_ID = ""; // filled from session
-const MOCK_ROLE = "CUSTOMER";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -63,15 +55,12 @@ export default function MijnBestellingenPage() {
   const [savingNew, setSavingNew] = useState(false);
 
   function load() {
-    Promise.all([
-      fetch("/api/bestellingen/recurring", { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
-      fetch(`/api/bestellingen?from=${new Date().toISOString().slice(0,10)}`, { headers: { "x-role": MOCK_ROLE } }).then(r => r.json()),
-    ]).then(([rec, oo]) => {
-      setRecurring(rec.orders ?? []);
-      setUpcoming(oo.orders ?? []);
-      setBreadTypes(oo.breadTypes ?? []);
-      setLoading(false);
-    });
+    fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
+      .then(oo => {
+        setUpcoming(oo.orders ?? []);
+        setBreadTypes(oo.breadTypes ?? []);
+        setLoading(false);
+      });
   }
   useEffect(() => { load(); }, []);
 
@@ -82,33 +71,19 @@ export default function MijnBestellingenPage() {
     setEditingDay(order.weekday);
   }
 
-  async function saveRecurring(order: RecurringOrder) {
-    setSaving(true);
-    await fetch("/api/bestellingen/recurring", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-role": MOCK_ROLE },
-      body: JSON.stringify({
-        customerId: order.lines[0]?.breadTypeId ? "" : "", // will be resolved server-side from session
-        weekday: order.weekday,
-        lines: Object.entries(editQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })),
-      }),
-    });
+  async function saveRecurring(_order: RecurringOrder) {
+    // Recurring orders via customer portal — coming in Phase 2
     setSaving(false);
-    setSaved(order.weekday);
-    setEditingDay(null);
-    setTimeout(() => setSaved(null), 2000);
-    load();
   }
 
   async function placeOneOff() {
     if (!newDate || Object.values(newQty).every(v => v === 0)) return;
     if (!isEditable(newDate)) return;
     setSavingNew(true);
-    await fetch("/api/bestellingen", {
+    await fetch("/api/mijn/bestellingen", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-role": MOCK_ROLE },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        customerId: "", // resolved from session server-side
         deliveryDate: newDate,
         notes: newNotes || undefined,
         lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })),
@@ -123,7 +98,7 @@ export default function MijnBestellingenPage() {
 
   async function deleteOneOff(id: string) {
     if (!confirm("Bestelling annuleren?")) return;
-    await fetch(`/api/bestellingen?id=${id}`, { method: "DELETE", headers: { "x-role": MOCK_ROLE } });
+    await fetch(`/api/mijn/bestellingen?id=${id}`, { method: "DELETE" });
     load();
   }
 
