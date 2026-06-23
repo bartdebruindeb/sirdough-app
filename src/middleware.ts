@@ -9,8 +9,8 @@ export default withAuth(
     if (token?.role === "ORDER_TABLET" && path === "/") {
       return NextResponse.redirect(new URL("/bestellingen", req.url));
     }
-    // Redirect customers to their portal
-    if (token?.role === "CUSTOMER" && !path.startsWith("/mijn-")) {
+    // Redirect customers to their portal (skip API routes)
+    if (token?.role === "CUSTOMER" && !path.startsWith("/mijn-") && !path.startsWith("/api/")) {
       return NextResponse.redirect(new URL("/mijn-bestellingen", req.url));
     }
     // Redirect staff away from customer portal paths
