@@ -206,8 +206,7 @@ async function sendInvoiceEmail(opts: {
 }) {
   const key = process.env.RESEND_API_KEY;
   if (!key) { console.warn("RESEND_API_KEY not set — invoice email skipped"); return; }
-  const from = process.env.RESEND_FROM;
-  if (!from) { console.warn("RESEND_FROM not set — invoice email skipped (onboarding@resend.dev only works to Resend account owner)"); return; }
+  const from = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
 
   const html = buildInvoiceHtml(opts);
   const resend = new Resend(key);
