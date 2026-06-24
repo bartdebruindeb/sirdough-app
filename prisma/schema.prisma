@@ -42,6 +42,8 @@ model Tenant {
   deliveryStatuses   DeliveryStatus[]
   announcements      Announcement[]
   productionBatches  ProductionBatch[]
+  invoices           Invoice[]
+  exactToken         ExactToken?
 }
 
 // ─── Owner announcements (dashboard message to staff) ──────────────────────────
@@ -243,6 +245,7 @@ model Customer {
   deliveryNotes    DeliveryNote[]
   deliveryStatuses DeliveryStatus[]
   deliveryAddresses CustomerAddress[]
+  invoices          Invoice[]
 
   @@index([tenantId])
 }
@@ -441,6 +444,48 @@ model DeliveryStatus {
 
   @@unique([tenantId, date, customerId])
   @@index([tenantId, date])
+}
+
+// ─── Invoicing ────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id             String    @id @default(cuid())
+  tenantId       String
+  customerId     String
+  invoiceNumber  String?   // assigned by Exact Online
+  exactGuid      String?   // Exact Online invoice GUID
+  periodStart    DateTime  // start of billed period (Monday)
+  periodEnd      DateTime  // end of billed period (Sunday)
+  totalAmountExcl Decimal  // excl. BTW
+  vatPercent     Int       @default(9)
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  customer Customer         @relation(fields: [customerId], references: [id])
+  orders   InvoiceOrder[]
+
+  @@index([tenantId, periodStart])
+}
+
+model InvoiceOrder {
+  id        String @id @default(cuid())
+  invoiceId String
+  orderId   String
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+// Stores Exact Online OAuth2 tokens per tenant
+model ExactToken {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  division     Int?     // Exact Online division number
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 }
 
 model CityRoute {
