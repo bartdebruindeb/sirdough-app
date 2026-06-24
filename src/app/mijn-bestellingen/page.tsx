@@ -166,7 +166,7 @@ export default function MijnBestellingenPage() {
     if (!dateStr) return "";
     const d = new Date(dateStr + "T12:00:00Z");
     const isoDay = jsWeekdayToISO(d);
-    if (closedWeekdays.includes(isoDay)) return `De bakkerij bezorgt niet op ${WEEKDAYS[isoDay]}.`;
+    if (closedWeekdays.includes(isoDay)) return "De bakkerij is op deze dag gesloten.";
     if (!isEditable(dateStr)) return "De besteldeadline is verstreken (4:00u de dag voor bezorging).";
     return "";
   }
