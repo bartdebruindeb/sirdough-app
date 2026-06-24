@@ -34,13 +34,16 @@ export default function FacturatiePage() {
 
   // Billing entities
   const [entities, setEntities] = useState<BillingEntity[]>([]);
-  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [showEntities, setShowEntities] = useState(false);
   const [editingEntity, setEditingEntity] = useState<Partial<BillingEntity> | null>(null);
   const [savingEntity, setSavingEntity] = useState(false);
 
+  // BV picker — shown before generating
+  const [pickingCustomer, setPickingCustomer] = useState<CustomerRow | null>(null);
+
   // Preview modal
   const [previewCustomer, setPreviewCustomer] = useState<CustomerRow | null>(null);
+  const [previewEntityId, setPreviewEntityId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -58,8 +61,6 @@ export default function FacturatiePage() {
   const loadEntities = useCallback(() => {
     fetch("/api/billing-entities").then(r => r.json()).then(d => {
       setEntities(d.entities ?? []);
-      const def = (d.entities ?? []).find((e: BillingEntity) => e.isDefault) ?? d.entities?.[0];
-      if (def) setSelectedEntityId(def.id);
     }).catch(() => {});
   }, []);
 
@@ -69,18 +70,26 @@ export default function FacturatiePage() {
     fetch("/api/exact/status").then(r => r.json()).then(d => setExactConnected(d.connected)).catch(() => setExactConnected(false));
   }, [loadEntities]);
 
-  async function generate(c: CustomerRow) {
+  function requestGenerate(c: CustomerRow) {
+    if (entities.length > 1) { setPickingCustomer(c); return; }
+    // 0 or 1 entity — skip picker
+    generate(c, entities[0]?.id ?? null);
+  }
+
+  async function generate(c: CustomerRow, entityId: string | null) {
+    setPickingCustomer(null);
     setGenerating(c.customerId);
     const res = await fetch("/api/facturen/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerId: c.customerId, orderIds: c.orderIds, week, billingEntityId: selectedEntityId || null }),
+      body: JSON.stringify({ customerId: c.customerId, orderIds: c.orderIds, week, billingEntityId: entityId }),
     });
     if (!res.ok) { setGenerating(null); alert("Genereren mislukt."); return; }
     const blob = await res.blob();
     previewBlobRef.current = blob;
     setPreviewUrl(URL.createObjectURL(blob));
     setPreviewCustomer(c);
+    setPreviewEntityId(entityId);
     setGenerating(null);
   }
 
@@ -90,7 +99,7 @@ export default function FacturatiePage() {
     const res = await fetch("/api/facturen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerId: previewCustomer.customerId, orderIds: previewCustomer.orderIds, week, billingEntityId: selectedEntityId || null }),
+      body: JSON.stringify({ customerId: previewCustomer.customerId, orderIds: previewCustomer.orderIds, week, billingEntityId: previewEntityId }),
     }).then(r => r.json()).catch(() => null);
     setSending(false);
     closeModal();
@@ -100,7 +109,7 @@ export default function FacturatiePage() {
 
   function closeModal() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null); setPreviewCustomer(null); previewBlobRef.current = null;
+    setPreviewUrl(null); setPreviewCustomer(null); setPreviewEntityId(null); previewBlobRef.current = null;
   }
 
   function downloadPreview() {
@@ -131,7 +140,6 @@ export default function FacturatiePage() {
     loadEntities();
   }
 
-  const selectedEntity = entities.find(e => e.id === selectedEntityId);
   const [y, wn] = week.split("-W");
   const weekLabel = `Week ${wn}, ${y}`;
 
@@ -218,24 +226,11 @@ export default function FacturatiePage() {
       )}
 
       {/* ── Week + entity selector ─────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem" }}>
         <button onClick={() => setWeek(prevWeek(week))} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>‹ Vorige</button>
         <span style={{ fontWeight: 600, fontSize: 15 }}>{weekLabel}</span>
         <button onClick={() => setWeek(nextWeek(week))} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>Volgende ›</button>
-
-        {entities.length > 0 && (
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Factureren van:</span>
-            <select value={selectedEntityId} onChange={e => setSelectedEntityId(e.target.value)}
-              style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "5px 10px", cursor: "pointer" }}>
-              {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-          </div>
-        )}
-
-        {entities.length === 0 && (
-          <span style={{ marginLeft: "auto", fontSize: 12, color: "#f97316" }}>⚠ Voeg eerst een entiteit toe via "BV's beheren"</span>
-        )}
+        {entities.length === 0 && <span style={{ marginLeft: "auto", fontSize: 12, color: "#f97316" }}>⚠ Voeg eerst een BV toe via "BV's beheren"</span>}
       </div>
 
       {loading && <p style={{ color: "var(--text-subtle)", fontSize: 13 }}>Laden…</p>}
@@ -262,7 +257,7 @@ export default function FacturatiePage() {
                   </div>
                   <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.orderIds.length} bestelling{c.orderIds.length !== 1 ? "en" : ""} · € {c.total.toFixed(2)} excl. BTW</span>
                 </button>
-                <button onClick={() => generate(c)} disabled={generating === c.customerId} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px", marginLeft: 12, flexShrink: 0 }}>
+                <button onClick={() => requestGenerate(c)} disabled={generating === c.customerId} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px", marginLeft: 12, flexShrink: 0 }}>
                   {generating === c.customerId ? "Genereren…" : "Genereer factuur"}
                 </button>
               </div>
@@ -306,6 +301,33 @@ export default function FacturatiePage() {
         </div>
       )}
 
+      {/* ── BV picker modal ───────────────────────── */}
+      {pickingCustomer && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div className="card" style={{ width: "100%", maxWidth: 420, padding: "1.5rem" }}>
+            <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 6 }}>Factuur voor {pickingCustomer.customerName}</h2>
+            <p style={{ fontSize: 13, color: "var(--text-subtle)", marginBottom: 16 }}>Van welke entiteit wil je factureren?</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {entities.map(e => (
+                <button key={e.id} onClick={() => generate(pickingCustomer, e.id)}
+                  disabled={generating === pickingCustomer.customerId}
+                  style={{ textAlign: "left", padding: "12px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", opacity: generating ? 0.6 : 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{e.name}</div>
+                  {(e.companyCity || e.kvk) && (
+                    <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2 }}>
+                      {[e.companyCity, e.kvk ? `KvK ${e.kvk}` : null].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setPickingCustomer(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Preview modal ──────────────────────────── */}
       {previewUrl && previewCustomer && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", flexDirection: "column", padding: 24 }}>
@@ -313,7 +335,7 @@ export default function FacturatiePage() {
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
               <div>
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{previewCustomer.customerName}</span>
-                {selectedEntity && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>van {selectedEntity.name}</span>}
+                {previewEntityId && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>van {entities.find(e => e.id === previewEntityId)?.name}</span>}
                 {!previewCustomer.customerEmail && <span style={{ fontSize: 12, color: "#f97316", marginLeft: 10 }}>⚠ geen e-mail</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
