@@ -460,21 +460,25 @@ export default function MijnBestellingenPage() {
                 </div>
                 {/* Pickup / delivery toggle */}
                 <div>
-                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[{ id: "", label: "Bezorgen" }, ...PICKUP_LOCATIONS].map(loc => (
-                      <button key={loc.id} type="button"
-                        onClick={() => setNewPickup(loc.id)}
-                        style={{
-                          fontSize: 12, padding: "5px 12px", borderRadius: 7, cursor: "pointer",
-                          border: `1px solid ${newPickup === loc.id ? "var(--accent)" : "var(--border)"}`,
-                          background: newPickup === loc.id ? "var(--accent-light)" : "var(--surface)",
-                          color: newPickup === loc.id ? "var(--accent)" : "var(--text)",
-                          fontWeight: newPickup === loc.id ? 600 : 400,
-                        }}>
-                        {loc.id === "" ? "🚚 Bezorgen" : `🏪 ${loc.label}`}
-                      </button>
-                    ))}
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Bezorging of afhalen?</label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[{ id: "", label: "Bezorgen", icon: "🚚", sub: "Thuisbezorgd" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪", sub: "Gratis afhalen" }))].map(loc => {
+                      const active = newPickup === loc.id;
+                      return (
+                        <button key={loc.id} type="button" onClick={() => setNewPickup(loc.id)}
+                          style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                            padding: "10px 14px", borderRadius: 10, cursor: "pointer", minWidth: 80,
+                            border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                            background: active ? "var(--accent-light)" : "var(--surface-2)",
+                            color: active ? "var(--accent)" : "var(--text)",
+                          }}>
+                          <span style={{ fontSize: 22 }}>{loc.icon}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{loc.label}</span>
+                          <span style={{ fontSize: 10, color: active ? "var(--accent)" : "var(--text-subtle)" }}>{loc.sub}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

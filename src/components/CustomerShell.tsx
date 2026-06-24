@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 
 const NAV = [
   { href: "/mijn-bestellingen", label: "Bestellingen",  icon: "◧" },
@@ -14,6 +15,11 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const name = (session?.user as any)?.name ?? session?.user?.email ?? "";
+  const [banner, setBanner] = useState("");
+
+  useEffect(() => {
+    fetch("/api/announcement").then(r => r.json()).then(d => { if (d.message) setBanner(d.message); }).catch(() => {});
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -60,6 +66,17 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
+
+      {banner && (
+        <div style={{
+          background: "var(--accent-light)", borderBottom: "1px solid var(--accent)",
+          padding: "10px 1.5rem", fontSize: 13, color: "var(--accent)",
+          display: "flex", alignItems: "flex-start", gap: 10,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>📢</span>
+          <span style={{ whiteSpace: "pre-wrap" }}>{banner}</span>
+        </div>
+      )}
 
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1.5rem" }}>
         {children}
