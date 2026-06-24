@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
     const [breadTypes, tenant] = await Promise.all([
       (prisma as any).breadType.findMany({
-        where: { tenantId: tid, customerOrderable: true },
+        where: { tenantId: tid, active: true },
         select: { id: true, name: true, sortOrder: true, price: true },
         orderBy: { sortOrder: "asc" },
       }),
