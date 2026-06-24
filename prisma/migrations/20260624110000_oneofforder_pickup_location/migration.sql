@@ -1,0 +1,1 @@
+ALTER TABLE "OneOffOrder" ADD COLUMN "pickupLocation" TEXT;

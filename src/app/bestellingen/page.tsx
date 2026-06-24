@@ -72,12 +72,19 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
+const SHOP_PICKUP = [
+  { id: "Winkel Rotterdam", label: "Rotterdam" },
+  { id: "Winkel Delft",     label: "Delft" },
+  { id: "Winkel Den Haag",  label: "Den Haag" },
+];
+
 function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
   const { role } = useRole();
   const today = new Date().toISOString().slice(0,10);
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
   const [qty, setQty] = useState<Record<string,number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -118,11 +125,12 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
     const res = await fetch("/api/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, deliveryDate: date, notes: notes||undefined,
+        pickupLocation: pickupLocation || undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
     setSaving(false);
     if (res.ok) {
-      setQty({}); setNotes(""); onSaved();
+      setQty({}); setNotes(""); setPickupLocation(""); onSaved();
       setSuccess(`✓ Bestelling voor ${customerName} toegevoegd.`);
       setTimeout(() => setSuccess(""), 4000);
     }
@@ -151,8 +159,22 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Opmerkingen</label>
-          <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="bijv. voor 9:00, pakbon mee…" style={inp} />
+          <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inp} />
         </div>
+      </div>
+      {/* Pickup / delivery toggle */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+        <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", flexShrink:0 }}>Bezorging:</label>
+        <button type="button" onClick={()=>setPickupLocation("")}
+          style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===""?"var(--accent)":"var(--border)"}`, background:pickupLocation===""?"var(--accent-light)":"var(--surface)", color:pickupLocation===""?"var(--accent)":"var(--text)", fontFamily:"var(--font-body)" }}>
+          🚚 Bezorgen
+        </button>
+        {SHOP_PICKUP.map(s=>(
+          <button key={s.id} type="button" onClick={()=>setPickupLocation(s.id)}
+            style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===s.id?"#d97706":"var(--border)"}`, background:pickupLocation===s.id?"#fef3c7":"var(--surface)", color:pickupLocation===s.id?"#92400e":"var(--text)", fontFamily:"var(--font-body)" }}>
+            🏪 Afhalen {s.label}
+          </button>
+        ))}
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
         {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>(

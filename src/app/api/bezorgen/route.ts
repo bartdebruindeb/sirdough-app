@@ -46,20 +46,27 @@ export async function GET(req: Request) {
       include: { customer: true, lines: { include: { breadType: true } } },
     });
 
+    // Pre-load shop customers for pickup address resolution
+    const shopCustomers = new Map<string, { city: string; address: string; lat: number | null; lng: number | null }>();
+    for (const shopCfg of bakeryConfig.shops) {
+      const sc = await prisma.customer.findFirst({ where: { tenantId: tid, name: shopCfg.name } });
+      if (sc) shopCustomers.set(shopCfg.name, { city: sc.city ?? shopCfg.name, address: sc.address ?? shopCfg.name, lat: sc.lat, lng: sc.lng });
+    }
+
     // Merge into per-customer delivery rows
+    // Key = customerId for normal orders, customerId+"@"+pickupLocation for pickup orders (separate row per shop)
     const deliveryMap = new Map<string, {
       customerId: string; name: string; city: string; address: string; cityOrder: number;
       notes: string; isShop: boolean; lat: number | null; lng: number | null;
-      quantities: Record<string, number>;
+      quantities: Record<string, number>; pickupLocation: string | null;
     }>();
 
-    const addOrder = (customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean, lines: { breadTypeId: string; quantity: number }[], lat?: number | null, lng?: number | null) => {
-      const key = customerId;
+    const addOrder = (key: string, customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean, lines: { breadTypeId: string; quantity: number }[], pickupLocation: string | null, lat?: number | null, lng?: number | null) => {
       if (!deliveryMap.has(key)) {
         deliveryMap.set(key, {
           customerId, name, city, address,
           cityOrder: cityOrder[city] ?? 99,
-          notes, isShop,
+          notes, isShop, pickupLocation,
           lat: lat ?? null, lng: lng ?? null,
           quantities: {},
         });
@@ -72,19 +79,39 @@ export async function GET(req: Request) {
 
     for (const ro of recurring) {
       addOrder(
+        ro.customerId,
         ro.customerId, ro.customer.name, ro.customer.city ?? "",
         ro.customer.address ?? "", ro.notes ?? "", false,
         ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+        null,
         ro.customer.lat, ro.customer.lng,
       );
     }
     for (const oo of oneOff) {
-      addOrder(
-        oo.customerId, oo.customer.name, oo.customer.city ?? "",
-        oo.customer.address ?? "", oo.notes ?? "", false,
-        oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
-        oo.customer.lat, oo.customer.lng,
-      );
+      const pickup = (oo as any).pickupLocation as string | null;
+      if (pickup) {
+        // Pickup order: delivery destination is the shop, show with customer name + pickup badge
+        const shop = shopCustomers.get(pickup);
+        const shopCity = shop?.city ?? pickup;
+        const key = oo.customerId + "@" + pickup;
+        addOrder(
+          key,
+          oo.customerId, oo.customer.name, shopCity,
+          shop?.address ?? pickup, oo.notes ?? "", false,
+          oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+          pickup,
+          shop?.lat, shop?.lng,
+        );
+      } else {
+        addOrder(
+          oo.customerId,
+          oo.customerId, oo.customer.name, oo.customer.city ?? "",
+          oo.customer.address ?? "", oo.notes ?? "", false,
+          oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+          null,
+          oo.customer.lat, oo.customer.lng,
+        );
+      }
     }
 
     // Add winkel shops from per-shop winkel templates (driven by bakery.config.ts)
@@ -99,8 +126,8 @@ export async function GET(req: Request) {
       const lines = winkelRows.map(r => ({ breadTypeId: r.breadTypeId, quantity: r.quantity }))
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
-        addOrder(shopCustomer.id, shopCfg.name, shopCustomer.city ?? shopCfg.name,
-          shopCustomer.address ?? shopCfg.name, "", true, lines, shopCustomer.lat, shopCustomer.lng);
+        addOrder(shopCustomer.id, shopCustomer.id, shopCfg.name, shopCustomer.city ?? shopCfg.name,
+          shopCustomer.address ?? shopCfg.name, "", true, lines, null, shopCustomer.lat, shopCustomer.lng);
       }
     }
 

@@ -104,6 +104,7 @@ const PlaceOrderSchema = z.object({
   deliveryDate: z.string(),
   notes: z.string().optional(),
   deliveryAddressId: z.string().optional(),
+  pickupLocation: z.string().optional(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().positive() })),
 });
 
@@ -125,6 +126,7 @@ export async function POST(req: Request) {
         deliveryDate,
         notes: input.notes ?? null,
         deliveryAddressId: input.deliveryAddressId ?? null,
+        pickupLocation: input.pickupLocation ?? null,
         lines: { create: input.lines },
       },
       include: { lines: { include: { breadType: true } } },

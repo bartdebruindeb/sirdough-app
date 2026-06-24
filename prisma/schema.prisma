@@ -299,6 +299,7 @@ model OneOffOrder {
   deliveryDate      DateTime
   notes             String?
   deliveryAddressId String?
+  pickupLocation    String?  // shop name if customer picks up (e.g. "Winkel Rotterdam")
   createdAt         DateTime @default(now())
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id])

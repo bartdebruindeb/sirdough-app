@@ -10,6 +10,7 @@ type DeliveryRow = {
   cityOrder: number; notes: string; isShop: boolean;
   lat: number | null; lng: number | null;
   quantities: Record<string, number>;
+  pickupLocation: string | null;
 };
 type DeliveryData = {
   date: string; breadTypes: BreadType[];
@@ -308,7 +309,13 @@ export default function BezorgenPage() {
                       <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#6366f1", color: "white", fontSize: 11, fontWeight: 700, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 13, fontWeight: 500 }}>{row.name}</span>
-                        <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                        {row.pickupLocation ? (
+                          <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: 8, padding: "1px 7px", marginLeft: 6, fontWeight: 600, whiteSpace: "nowrap" }}>
+                            🏪 Afhalen {row.pickupLocation.replace("Winkel ", "")}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                        )}
                         {row.notes && <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>{row.notes}</div>}
                         {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
                           <div key={ni} style={{ fontSize: 11, color: "var(--warn)" }}>📝 {n}</div>
@@ -355,7 +362,13 @@ export default function BezorgenPage() {
                           title="Voeg toe aan bus">+</button>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ fontSize: 13, fontWeight: row.isShop ? 600 : 500 }}>{row.name}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                          {row.pickupLocation ? (
+                            <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: 8, padding: "1px 7px", marginLeft: 6, fontWeight: 600, whiteSpace: "nowrap" }}>
+                              🏪 Afhalen {row.pickupLocation.replace("Winkel ", "")}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
+                          )}
                           {row.notes && <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>{row.notes}</div>}
                           {(deliveryNotes[row.customerId] ?? []).map((n, ni) => (
                             <div key={ni} style={{ fontSize: 11, color: "var(--warn)" }}>📝 {n}</div>

@@ -5,9 +5,9 @@ const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zater
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
 const PICKUP_LOCATIONS = [
-  { id: "rotterdam", label: "Rotterdam" },
-  { id: "delft",     label: "Delft" },
-  { id: "den-haag",  label: "Den Haag" },
+  { id: "Winkel Rotterdam", label: "Rotterdam" },
+  { id: "Winkel Delft",     label: "Delft" },
+  { id: "Winkel Den Haag",  label: "Den Haag" },
 ];
 
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null };
@@ -229,12 +229,14 @@ export default function MijnBestellingenPage() {
     const total = calcBasketTotal(newQty, breadTypes, discountPercent);
     if (!isPickup && minDeliveryAmount !== null && total < minDeliveryAmount) return;
     setSavingNew(true);
-    const notesWithPickup = newPickup
-      ? `Afhalen: ${PICKUP_LOCATIONS.find(l => l.id === newPickup)?.label}${newNotes ? " — " + newNotes : ""}`
-      : (newNotes || undefined);
     await fetch("/api/mijn/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deliveryDate: newDate, notes: notesWithPickup, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity: quantity as number })) }),
+      body: JSON.stringify({
+        deliveryDate: newDate,
+        notes: newNotes || undefined,
+        pickupLocation: newPickup || undefined,
+        lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity: quantity as number })),
+      }),
     });
     setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
   }

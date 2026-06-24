@@ -57,6 +57,7 @@ const CreateOrderSchema = z.object({
   customerId: z.string(),
   deliveryDate: z.string(),
   notes: z.string().optional(),
+  pickupLocation: z.string().optional(),
   lines: z.array(z.object({
     breadTypeId: z.string(),
     quantity: z.number().int().positive(),
@@ -71,12 +72,13 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, CreateOrderSchema);
-    const order = await prisma.oneOffOrder.create({
+    const order = await (prisma as any).oneOffOrder.create({
       data: {
         tenantId: tid,
         customerId: input.customerId,
         deliveryDate: new Date(input.deliveryDate + "T12:00:00Z"),
-        notes: input.notes,
+        notes: input.notes ?? null,
+        pickupLocation: input.pickupLocation ?? null,
         lines: {
           create: input.lines.map(l => ({
             breadTypeId: l.breadTypeId,
