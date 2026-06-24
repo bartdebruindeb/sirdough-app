@@ -2,6 +2,7 @@
 import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
+import { bakeryConfig } from "@/config/bakery.config";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -16,14 +17,6 @@ type Exception = { id: string; date: string; active: boolean };
 
 function getWeekday(date: string) { const d = new Date(date+"T12:00:00Z"); const j=d.getUTCDay(); return j===0?7:j; }
 
-const SLUG_ORDER = [
-  "boeren-kl","boeren-gr","boeren-15kg",
-  "sesam","sesam-15kg","zaden","zaden-15kg",
-  "olijf","rozijn",
-  "baguette","baguette-kaas",
-  "spelt","volkoren","gekiemde-rogge",
-  "kaneel-buns","kardemom-buns",
-];
 
 function colName(name: string) {
   return name.replace("Boeren ","B. ").replace(" KG","kg")
@@ -131,11 +124,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
-const SHOP_PICKUP = [
-  { id: "Winkel Rotterdam", label: "Rotterdam" },
-  { id: "Winkel Delft",     label: "Delft" },
-  { id: "Winkel Den Haag",  label: "Den Haag" },
-];
+const SHOP_PICKUP = bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") }));
 
 function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
   const { role } = useRole();
@@ -894,10 +883,7 @@ export default function BestellingenPage() {
     .filter(bt => bt.customerOrderable ||
       orders.some(o => o.lines.some(l => l.breadTypeId === bt.id)) ||
       recurring.some(r => r.lines.some(l => l.breadTypeId === bt.id)))
-    .sort((a, b) => {
-      const ai = SLUG_ORDER.indexOf(a.slug); const bi = SLUG_ORDER.indexOf(b.slug);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
+    .sort((a, b) => a.sortOrder - b.sortOrder);
   const recurringByDay=new Map<number,RecurringOrder[]>();
   const filteredRecurring = recurring
     .filter(r => !recurringCustomerFilter || r.customerId === recurringCustomerFilter)
@@ -1220,11 +1206,7 @@ export default function BestellingenPage() {
             </div>
           ) : (()=>{
             const sorted = [...logboekEntries].sort((a,b)=>b.date.localeCompare(a.date));
-            // Use breadTypes from logboek API, sorted by SLUG_ORDER
-            const logBTs = [...logboekBreadTypes].sort((a,b)=>{
-              const ai=SLUG_ORDER.indexOf(a.slug??""); const bi=SLUG_ORDER.indexOf(b.slug??"");
-              return (ai===-1?99:ai)-(bi===-1?99:bi);
-            });
+            const logBTs = [...logboekBreadTypes].sort((a,b)=>a.name.localeCompare(b.name));
             const thS: React.CSSProperties = { fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", padding:"5px 8px", textAlign:"right", borderBottom:"2px solid var(--border)", whiteSpace:"nowrap" };
             const tdS: React.CSSProperties = { fontSize:13, padding:"5px 8px", textAlign:"right", borderBottom:"1px solid var(--border)" };
             const TYPE_LABEL: Record<string,string> = { eenmalig:"E", vast:"V", winkel:"W" };
@@ -1320,7 +1302,7 @@ export default function BestellingenPage() {
         const openWeekdays = [2,3,4,5,6].filter(wd=>!closedWeekdays.includes(wd));
         const vastBTs = breadTypes
           .filter(bt=>bt.customerOrderable||customerOrders.some(o=>o.lines.some(l=>l.breadTypeId===bt.id)))
-          .sort((a,b)=>{ const ai=SLUG_ORDER.indexOf(a.slug); const bi=SLUG_ORDER.indexOf(b.slug); return (ai===-1?99:ai)-(bi===-1?99:bi); });
+          .sort((a,b)=>a.sortOrder-b.sortOrder);
         const thS: React.CSSProperties = { fontSize:11, fontWeight:600, textTransform:"uppercase", color:"var(--text-subtle)", padding:"6px 10px", borderBottom:"2px solid var(--border)", textAlign:"center", whiteSpace:"nowrap" };
         const tdS: React.CSSProperties = { padding:"5px 6px", borderBottom:"1px solid var(--border)", textAlign:"center", verticalAlign:"middle" };
         return (

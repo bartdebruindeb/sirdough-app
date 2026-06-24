@@ -20,38 +20,27 @@ export async function GET(req: Request) {
     const startOfDay = new Date(date + "T00:00:00Z");
     const endOfDay   = new Date(date + "T23:59:59Z");
 
-    // City route order
-    const cityRoutes = await prisma.cityRoute.findMany({
-      where: { tenantId: tid },
-      orderBy: { sortOrder: "asc" },
-    });
+    const [cityRoutes, breadTypes, recurring, oneOff] = await Promise.all([
+      prisma.cityRoute.findMany({ where: { tenantId: tid }, orderBy: { sortOrder: "asc" } }),
+      prisma.breadType.findMany({ where: { tenantId: tid, active: true }, orderBy: { sortOrder: "asc" } }),
+      prisma.recurringOrder.findMany({
+        where: { tenantId: tid, weekday, active: true },
+        include: { customer: true, lines: { include: { breadType: true } } },
+      }),
+      prisma.oneOffOrder.findMany({
+        where: { tenantId: tid, deliveryDate: { gte: startOfDay, lte: endOfDay } },
+        include: { customer: true, lines: { include: { breadType: true } } },
+      }),
+    ]);
     const cityOrder: Record<string, number> = {};
     for (const c of cityRoutes) cityOrder[c.city] = c.sortOrder;
 
-    // Bread types for column headers
-    const breadTypes = await prisma.breadType.findMany({
-      where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
-    });
-
-    // Recurring orders for this weekday
-    const recurring = await prisma.recurringOrder.findMany({
-      where: { tenantId: tid, weekday, active: true },
-      include: { customer: true, lines: { include: { breadType: true } } },
-    });
-
-    // One-off orders for this date
-    const oneOff = await prisma.oneOffOrder.findMany({
-      where: { tenantId: tid, deliveryDate: { gte: startOfDay, lte: endOfDay } },
-      include: { customer: true, lines: { include: { breadType: true } } },
-    });
-
     // Pre-load shop customers for pickup address resolution
-    const shopCustomers = new Map<string, { city: string; address: string; lat: number | null; lng: number | null }>();
-    for (const shopCfg of bakeryConfig.shops) {
-      const sc = await prisma.customer.findFirst({ where: { tenantId: tid, name: shopCfg.name } });
-      if (sc) shopCustomers.set(shopCfg.name, { city: sc.city ?? shopCfg.name, address: sc.address ?? shopCfg.name, lat: sc.lat, lng: sc.lng });
-    }
+    const shopNames = bakeryConfig.shops.map(s => s.name);
+    const shopCustomerRows = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
+    const shopCustomers = new Map(shopCustomerRows.map(sc => [
+      sc.name, { city: sc.city ?? sc.name, address: sc.address ?? sc.name, lat: sc.lat, lng: sc.lng, id: sc.id },
+    ]));
 
     // Merge into per-customer delivery rows
     // Key = customerId for normal orders, customerId+"@"+pickupLocation for pickup orders (separate row per shop)
@@ -115,19 +104,26 @@ export async function GET(req: Request) {
     }
 
     // Add winkel shops from per-shop winkel templates (driven by bakery.config.ts)
-    for (const shopCfg of bakeryConfig.shops) {
-      const shopCustomer = await prisma.customer.findFirst({ where: { tenantId: tid, name: shopCfg.name } });
-      if (!shopCustomer) continue;
-
-      const winkelRows = await prisma.winkelTemplate.findMany({
-        where: { tenantId: tid, shopName: shopCfg.name, weekday },
+    const [allWinkelRows] = await Promise.all([
+      prisma.winkelTemplate.findMany({
+        where: { tenantId: tid, shopName: { in: shopNames }, weekday },
         include: { breadType: true },
-      });
-      const lines = winkelRows.map(r => ({ breadTypeId: r.breadTypeId, quantity: r.quantity }))
+      }),
+    ]);
+    const winkelByShop = new Map<string, typeof allWinkelRows>();
+    for (const r of allWinkelRows) {
+      if (!winkelByShop.has(r.shopName)) winkelByShop.set(r.shopName, []);
+      winkelByShop.get(r.shopName)!.push(r);
+    }
+    for (const shopCfg of bakeryConfig.shops) {
+      const shopCustomer = shopCustomers.get(shopCfg.name);
+      if (!shopCustomer) continue;
+      const lines = (winkelByShop.get(shopCfg.name) ?? [])
+        .map(r => ({ breadTypeId: r.breadTypeId, quantity: r.quantity }))
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
-        addOrder(shopCustomer.id, shopCustomer.id, shopCfg.name, shopCustomer.city ?? shopCfg.name,
-          shopCustomer.address ?? shopCfg.name, "", true, lines, null, shopCustomer.lat, shopCustomer.lng);
+        addOrder(shopCustomer.id, shopCustomer.id, shopCfg.name, shopCustomer.city,
+          shopCustomer.address, "", true, lines, null, shopCustomer.lat, shopCustomer.lng);
       }
     }
 

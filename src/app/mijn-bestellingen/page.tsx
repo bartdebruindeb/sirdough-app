@@ -1,14 +1,11 @@
 ﻿"use client";
 import { useEffect, useRef, useState } from "react";
+import { bakeryConfig } from "@/config/bakery.config";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
-const PICKUP_LOCATIONS = [
-  { id: "Winkel Rotterdam", label: "Rotterdam" },
-  { id: "Winkel Delft",     label: "Delft" },
-  { id: "Winkel Den Haag",  label: "Den Haag" },
-];
+const PICKUP_LOCATIONS = bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") }));
 
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null };
 type RecurringException = { date: string; active: boolean };
@@ -27,9 +24,9 @@ function calcBasketTotal(qty: Record<string,number>, breadTypes: BreadType[], di
   }, 0);
 }
 
-// Cutoff = 4am UTC on the day BEFORE delivery
+// Cutoff = orderCutoffHour UTC on the day BEFORE delivery
 function cutoffDate(deliveryDateStr: string): Date {
-  const d = new Date(deliveryDateStr + "T04:00:00Z");
+  const d = new Date(deliveryDateStr + `T${String(bakeryConfig.orderCutoffHour).padStart(2,"0")}:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d;
 }
@@ -491,6 +488,7 @@ export default function MijnBestellingenPage() {
                   const isPickup = !!newPickup;
                   const belowMin = !isPickup && minDeliveryAmount !== null && total < minDeliveryAmount && total > 0;
                   const hasPrices = breadTypes.some(b => b.price != null);
+                  // ponytail: belowMin used here AND in disabled prop below — keep in sync
                   return hasPrices ? (
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>

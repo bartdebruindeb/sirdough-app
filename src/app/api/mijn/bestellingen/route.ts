@@ -4,6 +4,7 @@ import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
 import { sendOrderConfirmation, sendRecurringOrderConfirmation } from "@/server/lib/email";
+import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
@@ -25,7 +26,7 @@ function toDateStr(d: Date): string {
 function isCutoffPassed(deliveryDate: Date): boolean {
   const cutoff = new Date(deliveryDate);
   cutoff.setUTCDate(cutoff.getUTCDate() - 1);
-  cutoff.setUTCHours(4, 0, 0, 0);
+  cutoff.setUTCHours(bakeryConfig.orderCutoffHour, 0, 0, 0);
   return new Date() >= cutoff;
 }
 
