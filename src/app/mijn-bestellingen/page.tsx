@@ -2,53 +2,48 @@
 import { useEffect, useRef, useState } from "react";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
+const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
 type BreadType = { id: string; name: string; sortOrder: number };
-type Address = { id: string; label: string; street: string; postalCode: string; city: string; isDefault: boolean };
+type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
-type RecurringOrder = { id: string; weekday: number; lines: RecurringLine[] };
+type RecurringOrder = { id: string; weekday: number; active: boolean; lines: RecurringLine[]; exceptions: RecurringException[] };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null;
-  deliveryAddressId: string | null; deliveryAddress: Address | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
 
-const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
-
-function isEditable(deliveryDateStr: string): boolean {
-  return new Date() < new Date(deliveryDateStr + "T04:00:00Z");
+// Cutoff = 4am UTC on the day BEFORE delivery
+function cutoffDate(deliveryDateStr: string): Date {
+  const d = new Date(deliveryDateStr + "T04:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d;
 }
-
+function isEditable(deliveryDateStr: string): boolean {
+  return new Date() < cutoffDate(deliveryDateStr);
+}
 function timeUntilCutoff(deliveryDateStr: string): string {
-  const diff = new Date(deliveryDateStr + "T04:00:00Z").getTime() - Date.now();
+  const diff = cutoffDate(deliveryDateStr).getTime() - Date.now();
   if (diff <= 0) return "";
   const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-  if (h > 24) return `nog ${Math.floor(h/24)} dag${Math.floor(h/24) !== 1 ? "en" : ""}`;
+  if (h > 24) return `nog ${Math.floor(h / 24)}d`;
   if (h > 0) return `nog ${h}u ${m}m`;
   return `nog ${m} min`;
 }
-
-function isRecurringEditable(weekday: number): boolean {
-  const now = new Date();
-  const diff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
-  const next = new Date(now); next.setDate(now.getDate() + diff);
-  return isEditable(next.toISOString().slice(0, 10));
-}
-
-function nextDateStr(weekday: number): string {
+function nextOccurrence(weekday: number): string {
   const now = new Date();
   const diff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
   const d = new Date(now); d.setDate(now.getDate() + diff);
   return d.toISOString().slice(0, 10);
 }
-
 function formatDate(s: string) {
   return new Date(s + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
 }
-
 function shortName(n: string) {
   return n.replace("Boeren ", "B. ").replace("Morning buns", "Buns").replace(" KG", "kg");
 }
+// weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
+function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
 
 const inputStyle: React.CSSProperties = {
   border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px",
@@ -70,25 +65,13 @@ function QtyGrid({ qty, onChange, breadTypes }: { qty: Record<string,number>; on
   );
 }
 
-function AddressSelect({ value, onChange, addresses }: { value: string; onChange: (v: string) => void; addresses: Address[] }) {
-  if (addresses.length === 0) return null;
-  return (
-    <div>
-      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
-      <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
-        <option value="">-- Geen adres --</option>
-        {addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}</option>)}
-      </select>
-    </div>
-  );
-}
-
 export default function MijnBestellingenPage() {
-  const [recurring, setRecurring]   = useState<RecurringOrder[]>([]);
-  const [upcoming, setUpcoming]     = useState<OneOffOrder[]>([]);
-  const [breadTypes, setBreadTypes] = useState<BreadType[]>([]);
-  const [addresses, setAddresses]   = useState<Address[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [recurring, setRecurring]     = useState<RecurringOrder[]>([]);
+  const [upcoming, setUpcoming]       = useState<OneOffOrder[]>([]);
+  const [pastOrders, setPastOrders]   = useState<OneOffOrder[]>([]);
+  const [breadTypes, setBreadTypes]   = useState<BreadType[]>([]);
+  const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
+  const [loading, setLoading]         = useState(true);
 
   // Email debounce
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +88,6 @@ export default function MijnBestellingenPage() {
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [editRecQty, setEditRecQty]     = useState<Record<string,number>>({});
   const [savingRec, setSavingRec]       = useState(false);
-  const [savedRecId, setSavedRecId]     = useState<string | null>(null);
 
   // New recurring
   const [showNewRec, setShowNewRec]     = useState(false);
@@ -117,7 +99,6 @@ export default function MijnBestellingenPage() {
   const [editingOOId, setEditingOOId]   = useState<string | null>(null);
   const [editOOQty, setEditOOQty]       = useState<Record<string,number>>({});
   const [editOONotes, setEditOONotes]   = useState("");
-  const [editOOAddr, setEditOOAddr]     = useState("");
   const [savingOO, setSavingOO]         = useState(false);
 
   // New one-off
@@ -125,8 +106,11 @@ export default function MijnBestellingenPage() {
   const [newDate, setNewDate]           = useState("");
   const [newQty, setNewQty]             = useState<Record<string,number>>({});
   const [newNotes, setNewNotes]         = useState("");
-  const [newAddr, setNewAddr]           = useState("");
   const [savingNew, setSavingNew]       = useState(false);
+  const [dateError, setDateError]       = useState("");
+
+  // Past log
+  const [showLog, setShowLog]           = useState(false);
 
   function load() {
     fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
@@ -134,16 +118,23 @@ export default function MijnBestellingenPage() {
         setUpcoming(d.orders ?? []);
         setBreadTypes(d.breadTypes ?? []);
         setRecurring(d.recurring ?? []);
-        const addrs = d.addresses ?? [];
-        setAddresses(addrs);
-        const def = addrs.find((a: Address) => a.isDefault);
-        if (def && !newAddr) setNewAddr(def.id);
+        setPastOrders(d.pastOrders ?? []);
+        setClosedWeekdays(d.closedWeekdays ?? []);
         setLoading(false);
       });
   }
   useEffect(() => { load(); }, []);
 
-  // Recurring: edit existing
+  function validateDate(dateStr: string): string {
+    if (!dateStr) return "";
+    const d = new Date(dateStr + "T12:00:00Z");
+    const isoDay = jsWeekdayToISO(d);
+    if (closedWeekdays.includes(isoDay)) return `De bakkerij bezorgt niet op ${WEEKDAYS[isoDay]}.`;
+    if (!isEditable(dateStr)) return "De besteldeadline is verstreken (4:00u de dag voor bezorging).";
+    return "";
+  }
+
+  // Recurring
   function startEditRec(o: RecurringOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
@@ -151,74 +142,91 @@ export default function MijnBestellingenPage() {
   }
   async function saveRec(o: RecurringOrder) {
     setSavingRec(true);
-    const res = await fetch("/api/mijn/bestellingen", {
+    await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recurringOrderId: o.id, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecQty[bt.id] ?? 0 })) }),
     });
-    setSavingRec(false);
-    if (res.ok) { setSavedRecId(o.id); setTimeout(() => setSavedRecId(null), 3000); setEditingRecId(null); scheduleEmail(); load(); }
+    setSavingRec(false); setEditingRecId(null); scheduleEmail(); load();
+  }
+  async function toggleRecActive(o: RecurringOrder) {
+    await fetch("/api/mijn/bestellingen", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recurringOrderId: o.id, active: !o.active }),
+    });
+    load();
+  }
+  async function toggleSkip(recurringOrderId: string, dateStr: string, currentlySkipped: boolean) {
+    await fetch("/api/mijn/bestellingen", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recurringOrderId, skipDate: dateStr, unskip: currentlySkipped }),
+    });
+    load();
   }
   async function deleteRec(id: string) {
-    if (!confirm("Vaste bestelling verwijderen?")) return;
+    if (!confirm("Vaste bestelling definitief verwijderen?")) return;
     await fetch(`/api/mijn/bestellingen?id=${id}&type=recurring`, { method: "DELETE" });
     load();
   }
-
-  // Recurring: create new
   async function createRec() {
     setSavingNewRec(true);
-    const res = await fetch("/api/mijn/bestellingen", {
+    await fetch("/api/mijn/bestellingen", {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ weekday: newRecWeekday, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: newRecQty[bt.id] ?? 0 })) }),
     });
-    setSavingNewRec(false);
-    if (res.ok) { setShowNewRec(false); setNewRecQty({}); scheduleEmail(); load(); }
+    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); scheduleEmail(); load();
   }
 
-  // One-off: edit
+  // One-off
   function startEditOO(o: OneOffOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditOOQty(q); setEditOONotes(o.notes ?? "");
-    setEditOOAddr(o.deliveryAddressId ?? addresses.find(a => a.isDefault)?.id ?? "");
-    setEditingOOId(o.id);
+    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditingOOId(o.id);
   }
   async function saveOO(o: OneOffOrder) {
     setSavingOO(true);
-    const res = await fetch("/api/mijn/bestellingen", {
+    await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, deliveryAddressId: editOOAddr || null, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
+      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
     });
-    setSavingOO(false);
-    if (res.ok) { setEditingOOId(null); scheduleEmail(); load(); }
+    setSavingOO(false); setEditingOOId(null); scheduleEmail(); load();
   }
   async function deleteOO(id: string) {
     if (!confirm("Bestelling annuleren?")) return;
     await fetch(`/api/mijn/bestellingen?id=${id}`, { method: "DELETE" });
     load();
   }
-
-  // One-off: create
   async function createOO() {
-    if (!newDate || Object.values(newQty).every(v => v === 0) || !isEditable(newDate)) return;
+    const err = validateDate(newDate);
+    if (err || !newDate || Object.values(newQty).every(v => v === 0)) return;
     setSavingNew(true);
     await fetch("/api/mijn/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deliveryDate: newDate, notes: newNotes || undefined, deliveryAddressId: newAddr || undefined, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })) }),
+      body: JSON.stringify({ deliveryDate: newDate, notes: newNotes || undefined, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })) }),
     });
-    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes("");
-    scheduleEmail(); load();
+    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setDateError(""); scheduleEmail(); load();
   }
 
   const usedWeekdays = new Set(recurring.map(r => r.weekday));
-  const availableWeekdays = [1,2,3,4,5,6,7].filter(d => !usedWeekdays.has(d));
+  const validDeliveryWeekdays = [1,2,3,4,5,6,7].filter(d => !closedWeekdays.includes(d));
+  const availableWeekdays = validDeliveryWeekdays.filter(d => !usedWeekdays.has(d));
   const today = new Date().toISOString().slice(0,10);
+
+  // Next 2 weeks dates for skip planning
+  function getUpcomingDates(weekday: number): string[] {
+    const dates: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now); d.setDate(now.getDate() + i);
+      if (jsWeekdayToISO(d) === weekday) dates.push(d.toISOString().slice(0, 10));
+    }
+    return dates;
+  }
 
   return (
     <div style={{ padding: "1.5rem", maxWidth: 700 }}>
       <h1 style={{ fontSize: 26, marginBottom: "0.25rem" }}>Mijn bestellingen</h1>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: "2rem" }}>
-        Wijzigingen zijn mogelijk tot 4:00 uur de ochtend voor bezorging.
+        Wijzigingen mogelijk tot 4:00u de ochtend voor bezorging.
       </p>
 
       {loading && <p style={{ color: "var(--text-subtle)" }}>Laden...</p>}
@@ -244,32 +252,42 @@ export default function MijnBestellingenPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {recurring.map(order => {
+                const next = nextOccurrence(order.weekday);
+                const editable = isEditable(next);
                 const isEditing = editingRecId === order.id;
-                const editable = isRecurringEditable(order.weekday);
-                const timeLeft = timeUntilCutoff(nextDateStr(order.weekday));
+                const upcomingDates = getUpcomingDates(order.weekday);
+                const skippedDates = new Set(order.exceptions.filter(e => !e.active).map(e => e.date));
 
                 return (
-                  <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
-                      <div>
+                  <div key={order.id} className="card" style={{ padding: "1rem 1.25rem", opacity: order.active ? 1 : 0.65 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isEditing ? 12 : 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
-                        {editable && timeLeft && <span style={{ fontSize: 12, color: "var(--success)", marginLeft: 8 }}>Wijzigen mogelijk ({timeLeft})</span>}
-                        {!editable && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>Gesloten voor wijzigingen</span>}
+                        {!order.active && <span style={{ fontSize: 11, background: "var(--danger-bg)", color: "var(--danger)", padding: "2px 8px", borderRadius: 8 }}>Gepauzeerd</span>}
+                        {order.active && editable && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeUntilCutoff(next)}</span>}
+                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Gesloten</span>}
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {editable && !isEditing && <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>}
-                        {isEditing && <>
-                          <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                          <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
-                        </>}
-                        {!isEditing && <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>Verwijder</button>}
+                        {order.active && editable && !isEditing && (
+                          <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
+                        )}
+                        {isEditing && (
+                          <>
+                            <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
+                            <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
+                          </>
+                        )}
+                        <button onClick={() => toggleRecActive(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: order.active ? "var(--text-subtle)" : "var(--success)" }}>
+                          {order.active ? "Pauzeer" : "Hervatten"}
+                        </button>
+                        <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>
+                          Verwijder
+                        </button>
                       </div>
                     </div>
 
-                    {savedRecId === order.id && <p style={{ color: "var(--success)", fontSize: 12, marginTop: 4 }}>Opgeslagen</p>}
-
                     {!isEditing && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                         {order.lines.filter(l => l.quantity > 0).map(l => (
                           <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
                             {shortName(l.breadType.name)} x {l.quantity}
@@ -278,7 +296,36 @@ export default function MijnBestellingenPage() {
                         {order.lines.length === 0 && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Geen producten</span>}
                       </div>
                     )}
+
                     {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} />}
+
+                    {/* Upcoming 2 weeks skip planning */}
+                    {order.active && upcomingDates.length > 0 && !isEditing && (
+                      <div style={{ borderTop: "1px solid var(--border)", marginTop: 8, paddingTop: 8 }}>
+                        <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px" }}>Komende bezorgingen:</p>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {upcomingDates.map(date => {
+                            const skipped = skippedDates.has(date);
+                            const editable = isEditable(date);
+                            return (
+                              <button key={date} onClick={() => editable && toggleSkip(order.id, date, skipped)}
+                                disabled={!editable}
+                                style={{
+                                  fontSize: 11, padding: "3px 10px", borderRadius: 8, cursor: editable ? "pointer" : "default",
+                                  border: `1px solid ${skipped ? "var(--danger)" : "var(--border)"}`,
+                                  background: skipped ? "var(--danger-bg)" : "var(--surface-2)",
+                                  color: skipped ? "var(--danger)" : editable ? "var(--text)" : "var(--text-subtle)",
+                                  textDecoration: skipped ? "line-through" : "none",
+                                }}>
+                                {new Date(date + "T12:00:00Z").toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                                {skipped ? " (overgeslagen)" : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 4 }}>Klik op een datum om over te slaan of te hervatten.</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -286,7 +333,7 @@ export default function MijnBestellingenPage() {
               {showNewRec && (
                 <div className="card" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
-                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Dag</label>
+                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdag</label>
                     <select value={newRecWeekday} onChange={e => setNewRecWeekday(Number(e.target.value))} style={inputStyle}>
                       {availableWeekdays.map(d => <option key={d} value={d}>{WEEKDAYS[d]}</option>)}
                     </select>
@@ -302,7 +349,7 @@ export default function MijnBestellingenPage() {
           </section>
 
           {/* Eenmalige bestellingen */}
-          <section>
+          <section style={{ marginBottom: "2rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
               <button onClick={() => setShowNewOO(true)} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
@@ -313,21 +360,22 @@ export default function MijnBestellingenPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdatum</label>
-                    <input type="date" value={newDate} min={today} onChange={e => setNewDate(e.target.value)} style={inputStyle} />
+                    <input type="date" value={newDate} min={today}
+                      onChange={e => { setNewDate(e.target.value); setDateError(validateDate(e.target.value)); }}
+                      style={inputStyle} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
                     <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inputStyle} />
                   </div>
                 </div>
-                <AddressSelect value={newAddr} onChange={setNewAddr} addresses={addresses} />
-                {newDate && !isEditable(newDate) && (
-                  <p style={{ color: "var(--danger)", fontSize: 13 }}>Te laat - bestelling moet voor 4:00 uur worden geplaatst.</p>
-                )}
+                {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
                 <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setShowNewOO(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                  <button onClick={createOO} disabled={savingNew || !newDate || !isEditable(newDate)} className="btn-primary" style={{ fontSize: 13 }}>{savingNew ? "Plaatsen..." : "Bestelling plaatsen"}</button>
+                  <button onClick={() => { setShowNewOO(false); setDateError(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                  <button onClick={createOO} disabled={savingNew || !!dateError || !newDate || Object.values(newQty).every(v => v === 0)} className="btn-primary" style={{ fontSize: 13 }}>
+                    {savingNew ? "Plaatsen..." : "Bestelling plaatsen"}
+                  </button>
                 </div>
               </div>
             )}
@@ -346,11 +394,6 @@ export default function MijnBestellingenPage() {
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
                       <div>
                         <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{formatDate(order.deliveryDate)}</p>
-                        {order.deliveryAddress && (
-                          <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 4px" }}>
-                            {order.deliveryAddress.label} - {order.deliveryAddress.street}, {order.deliveryAddress.city}
-                          </p>
-                        )}
                         {order.notes && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 6px" }}>{order.notes}</p>}
                         {!isEditing && (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -362,26 +405,31 @@ export default function MijnBestellingenPage() {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0, marginLeft: 12 }}>
                         {editable && timeLeft && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeLeft}</span>}
-                        {editable && !isEditing && <button onClick={() => startEditOO(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>}
-                        {isEditing && <>
-                          <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                          <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 11 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
-                        </>}
-                        {editable && !isEditing && <button onClick={() => deleteOO(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>Annuleren</button>}
+                        {!editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Gesloten</span>}
+                        {editable && !isEditing && (
+                          <button onClick={() => startEditOO(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
+                        )}
+                        {isEditing && (
+                          <>
+                            <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
+                            <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 11 }}>{savingOO ? "..." : "Opslaan"}</button>
+                          </>
+                        )}
+                        {editable && !isEditing && (
+                          <button onClick={() => deleteOO(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>
+                            Annuleren
+                          </button>
+                        )}
                       </div>
                     </div>
-
                     {isEditing && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          <div>
-                            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                            <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
-                          </div>
+                        <div>
+                          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
+                          <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
                         </div>
-                        <AddressSelect value={editOOAddr} onChange={setEditOOAddr} addresses={addresses} />
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} />
                       </div>
                     )}
@@ -390,6 +438,31 @@ export default function MijnBestellingenPage() {
               })}
             </div>
           </section>
+
+          {/* Bestelhistorie */}
+          {pastOrders.length > 0 && (
+            <section>
+              <button onClick={() => setShowLog(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 500, color: "var(--text)", padding: 0, marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: 8 }}>
+                {showLog ? "▾" : "▸"} Bestelhistorie ({pastOrders.length})
+              </button>
+              {showLog && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {pastOrders.map(order => (
+                    <div key={order.id} className="card" style={{ padding: "0.75rem 1rem", opacity: 0.8 }}>
+                      <p style={{ fontWeight: 500, fontSize: 13, margin: "0 0 4px" }}>{formatDate(order.deliveryDate)}</p>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {order.lines.map(l => (
+                          <span key={l.breadTypeId} style={{ fontSize: 11, background: "var(--surface-2)", color: "var(--text-subtle)", padding: "2px 8px", borderRadius: 10 }}>
+                            {shortName(l.breadType.name)} x {l.quantity}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+﻿import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
@@ -8,12 +8,9 @@ import { z } from "zod";
 export const dynamic = "force-dynamic";
 
 async function getCustomer(session: any) {
-  const customerId = session?.user?.customerId as string | undefined;
+  const customerId = (session?.user as any)?.customerId as string | undefined;
   if (!customerId) throw new Error("UNAUTHORIZED");
-  const customer = await (prisma as any).customer.findUnique({
-    where: { id: customerId },
-    include: { deliveryAddresses: { orderBy: [{ isDefault: "desc" }, { id: "asc" }] } },
-  });
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer) throw new Error("UNAUTHORIZED");
   return customer;
 }
@@ -23,17 +20,22 @@ export async function GET() {
     const session = await getServerSession(authOptions);
     const customer = await getCustomer(session);
     return Response.json({
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      addresses: customer.deliveryAddresses,
+      name:       customer.name,
+      email:      customer.email,
+      phone:      customer.phone ?? "",
+      address:    customer.address ?? "",
+      postalCode: customer.postalCode ?? "",
+      city:       customer.city ?? "",
     });
   } catch (e) { return toResponse(e); }
 }
 
 const UpdateAccountSchema = z.object({
-  name:  z.string().min(1).optional(),
-  phone: z.string().optional(),
+  name:       z.string().min(1).optional(),
+  phone:      z.string().optional(),
+  address:    z.string().optional(),
+  postalCode: z.string().optional(),
+  city:       z.string().optional(),
 });
 
 export async function PATCH(req: Request) {

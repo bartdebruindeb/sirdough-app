@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const sortBy = url.searchParams.get("sort") ?? "name"; // "name" | "city"
 
-    const customers = await prisma.customer.findMany({
+    const customers = await (prisma as any).customer.findMany({
       where: { tenantId: tid },
       include: {
         user: { select: { id: true, email: true, active: true } },

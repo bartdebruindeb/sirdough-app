@@ -37,17 +37,16 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const from = url.searchParams.get("from") ?? new Date().toISOString().slice(0, 10);
 
-    const [orders, breadTypes, recurring, addresses] = await Promise.all([
+    const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    const [orders, breadTypes, recurring, pastOrders, tenant] = await Promise.all([
       prisma.oneOffOrder.findMany({
         where: {
           tenantId: customer.tenantId,
           customerId: customer.id,
           deliveryDate: { gte: new Date(from + "T00:00:00Z") },
         },
-        include: {
-          lines: { include: { breadType: true } },
-          deliveryAddress: true,
-        },
+        include: { lines: { include: { breadType: true } } },
         orderBy: { deliveryDate: "asc" },
       }),
       prisma.breadType.findMany({
@@ -55,23 +54,35 @@ export async function GET(req: Request) {
         orderBy: { sortOrder: "asc" },
       }),
       prisma.recurringOrder.findMany({
-        where: { tenantId: customer.tenantId, customerId: customer.id, active: true },
-        include: { lines: { include: { breadType: true } } },
+        where: { tenantId: customer.tenantId, customerId: customer.id },
+        include: {
+          lines: { include: { breadType: true } },
+          exceptions: { where: { date: { gte: new Date() } }, orderBy: { date: "asc" } },
+        },
         orderBy: { weekday: "asc" },
       }),
-      (prisma as any).customerAddress.findMany({
-        where: { customerId: customer.id },
-        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      prisma.oneOffOrder.findMany({
+        where: {
+          tenantId: customer.tenantId,
+          customerId: customer.id,
+          deliveryDate: { lt: new Date(from + "T00:00:00Z"), gte: sixtyDaysAgo },
+        },
+        include: { lines: { include: { breadType: true } } },
+        orderBy: { deliveryDate: "desc" },
       }),
+      prisma.tenant.findUnique({ where: { id: customer.tenantId }, select: { closedWeekdays: true } }),
     ]);
 
-    // Serialize dates as YYYY-MM-DD strings
-    const serializedOrders = orders.map(o => ({
-      ...o,
-      deliveryDate: toDateStr(o.deliveryDate),
+    const closedWeekdays = (tenant?.closedWeekdays ?? "").split(",").map(Number).filter(Boolean);
+
+    const serializedOrders = orders.map(o => ({ ...o, deliveryDate: toDateStr(o.deliveryDate) }));
+    const serializedPast   = pastOrders.map(o => ({ ...o, deliveryDate: toDateStr(o.deliveryDate) }));
+    const serializedRec    = recurring.map(r => ({
+      ...r,
+      exceptions: r.exceptions.map((e: any) => ({ ...e, date: toDateStr(e.date) })),
     }));
 
-    return Response.json({ orders: serializedOrders, breadTypes, recurring, addresses });
+    return Response.json({ orders: serializedOrders, breadTypes, recurring: serializedRec, pastOrders: serializedPast, closedWeekdays });
   } catch (e) { return toResponse(e); }
 }
 
@@ -93,7 +104,7 @@ export async function POST(req: Request) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 
-    const order = await prisma.oneOffOrder.create({
+    const order = await (prisma as any).oneOffOrder.create({
       data: {
         tenantId: customer.tenantId,
         customerId: customer.id,
@@ -102,7 +113,7 @@ export async function POST(req: Request) {
         deliveryAddressId: input.deliveryAddressId ?? null,
         lines: { create: input.lines },
       },
-      include: { lines: { include: { breadType: true } }, deliveryAddress: true },
+      include: { lines: { include: { breadType: true } } },
     });
 
     const dateLabel = deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
@@ -110,7 +121,7 @@ export async function POST(req: Request) {
       to: customer.email!,
       customerName: customer.name,
       deliveryDate: dateLabel,
-      lines: order.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+      lines: order.lines.map((l: any) => ({ name: l.breadType.name, quantity: l.quantity })),
       action: "placed",
     }).catch(() => {});
 
@@ -135,6 +146,32 @@ export async function PATCH(req: Request) {
     const session = await getServerSession(authOptions);
     const customer = await getCustomer(session);
     const body = await req.json();
+
+    // Toggle recurring order active/inactive
+    if (body.recurringOrderId && typeof body.active === "boolean") {
+      await prisma.recurringOrder.updateMany({
+        where: { id: body.recurringOrderId, customerId: customer.id },
+        data: { active: body.active },
+      });
+      return Response.json({ ok: true });
+    }
+
+    // Skip or unskip a specific date
+    if (body.recurringOrderId && body.skipDate) {
+      const skipDate = new Date(body.skipDate + "T12:00:00Z");
+      if (body.unskip) {
+        await prisma.recurringOrderException.deleteMany({
+          where: { recurringOrderId: body.recurringOrderId, date: skipDate },
+        });
+      } else {
+        await prisma.recurringOrderException.upsert({
+          where: { recurringOrderId_date: { recurringOrderId: body.recurringOrderId, date: skipDate } },
+          create: { recurringOrderId: body.recurringOrderId, date: skipDate, active: false },
+          update: { active: false },
+        });
+      }
+      return Response.json({ ok: true });
+    }
 
     // Route to one-off or recurring update based on payload
     if (body.recurringOrderId) {
@@ -191,14 +228,10 @@ export async function PATCH(req: Request) {
 
     // Delete existing lines and recreate
     await prisma.oneOffOrderLine.deleteMany({ where: { oneOffId: input.id } });
-    const updated = await prisma.oneOffOrder.update({
+    const updated = await (prisma as any).oneOffOrder.update({
       where: { id: input.id },
-      data: {
-        notes: input.notes ?? order.notes,
-        deliveryAddressId: input.deliveryAddressId !== undefined ? input.deliveryAddressId : order.deliveryAddressId,
-        lines: { create: input.lines.filter(l => l.quantity > 0) },
-      },
-      include: { lines: { include: { breadType: true } }, deliveryAddress: true },
+      data: { notes: input.notes ?? order.notes, lines: { create: input.lines.filter((l: any) => l.quantity > 0) } },
+      include: { lines: { include: { breadType: true } } },
     });
 
     const dateLabel = order.deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
@@ -206,7 +239,7 @@ export async function PATCH(req: Request) {
       to: customer.email!,
       customerName: customer.name,
       deliveryDate: dateLabel,
-      lines: updated.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+      lines: updated.lines.map((l: any) => ({ name: l.breadType.name, quantity: l.quantity })),
       action: "updated",
     }).catch(() => {});
 
