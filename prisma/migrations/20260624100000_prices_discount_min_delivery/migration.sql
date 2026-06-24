@@ -1,4 +1,4 @@
-﻿-- AlterTable: add price to BreadType
+-- AlterTable: add price to BreadType
 ALTER TABLE "BreadType" ADD COLUMN "price" DECIMAL(65,30);
 
 -- AlterTable: add discountPercent to Customer
