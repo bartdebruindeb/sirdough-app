@@ -260,7 +260,7 @@ export default function MijnBestellingenPage() {
   function getUpcomingDates(weekday: number): string[] {
     const dates: string[] = [];
     const now = new Date();
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 56; i++) {
       const d = new Date(now); d.setDate(now.getDate() + i);
       if (jsWeekdayToISO(d) === weekday) dates.push(d.toISOString().slice(0, 10));
     }
