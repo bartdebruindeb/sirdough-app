@@ -49,7 +49,7 @@ export async function GET(req: Request) {
         include: { lines: { include: { breadType: true } } },
         orderBy: { deliveryDate: "asc" },
       }),
-      prisma.breadType.findMany({
+      (prisma as any).breadType.findMany({
         where: { tenantId: customer.tenantId, customerOrderable: true, active: true },
         orderBy: { sortOrder: "asc" },
       }),
@@ -70,10 +70,11 @@ export async function GET(req: Request) {
         include: { lines: { include: { breadType: true } } },
         orderBy: { deliveryDate: "desc" },
       }),
-      prisma.tenant.findUnique({ where: { id: customer.tenantId }, select: { closedWeekdays: true } }),
+      (prisma as any).tenant.findUnique({ where: { id: customer.tenantId }, select: { closedWeekdays: true, minDeliveryAmount: true } }),
     ]);
 
-    const closedWeekdays = (tenant?.closedWeekdays ?? "").split(",").map(Number).filter(Boolean);
+    const closedWeekdays = ((tenant as any)?.closedWeekdays ?? "").split(",").map(Number).filter(Boolean);
+    const minDeliveryAmount = (tenant as any)?.minDeliveryAmount ? Number((tenant as any).minDeliveryAmount) : null;
 
     const serializedOrders = orders.map(o => ({ ...o, deliveryDate: toDateStr(o.deliveryDate) }));
     const serializedPast   = pastOrders.map(o => ({ ...o, deliveryDate: toDateStr(o.deliveryDate) }));
@@ -82,7 +83,20 @@ export async function GET(req: Request) {
       exceptions: r.exceptions.map((e: any) => ({ ...e, date: toDateStr(e.date) })),
     }));
 
-    return Response.json({ orders: serializedOrders, breadTypes, recurring: serializedRec, pastOrders: serializedPast, closedWeekdays });
+    const breadTypesWithPrice = breadTypes.map((b: any) => ({
+      ...b,
+      price: b.price ? Number(b.price) : null,
+    }));
+
+    return Response.json({
+      orders: serializedOrders,
+      breadTypes: breadTypesWithPrice,
+      recurring: serializedRec,
+      pastOrders: serializedPast,
+      closedWeekdays,
+      minDeliveryAmount,
+      discountPercent: (customer as any).discountPercent ?? 0,
+    });
   } catch (e) { return toResponse(e); }
 }
 

@@ -26,6 +26,7 @@ model Tenant {
   bakeryAddress   String?
   bakeryLat       Float?
   bakeryLng       Float?
+  minDeliveryAmount Decimal? // minimum order value excl. BTW for delivery
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -122,6 +123,7 @@ model BreadType {
   active      Boolean @default(true)
   sortOrder   Int     @default(0)
   customerOrderable Boolean @default(false)
+  price       Decimal? // excl. BTW, shown in customer portal
   doughTypeId String?         // links to shared dough type
   doughWeightPerLoaf Float @default(1010) // per loaf incl. fillings
   /// e.g. "rond 1kg", "lang 750gr", "baguette"
@@ -229,6 +231,7 @@ model Customer {
   lat       Float?
   lng       Float?
   active    Boolean @default(true)
+  discountPercent Int @default(0) // 0, 5, 10, 15 or 20 percent discount
   userId    String? @unique  // linked User account for customer portal
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id])

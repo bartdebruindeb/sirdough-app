@@ -8,6 +8,7 @@ export const ALL_NAV = [
   { href: "/bestellingen", label: "Bestellingen",  icon: "◧", desc: "Vaste en eenmalige bestellingen invoeren",      color: "#dbeafe" },
 { href: "/bezorgen",     label: "Bezorgen",      icon: "◬", desc: "Bezorglijst per klant afvinken",                color: "#ede9fe" },
   { href: "/klanten",      label: "Klanten",       icon: "◑", desc: "Klantgegevens en uitnodigingen",                color: "#fae8ff" },
+  { href: "/prijslijst",   label: "Prijslijst",    icon: "◈", desc: "Broodprijzen en minimale bestelwaarde",           color: "#d1fae5" },
   { href: "/team",         label: "Team",          icon: "◒", desc: "Teamleden en rollen beheren",                   color: "#cffafe" },
   { href: "/facturatie",   label: "Facturatie",    icon: "◰", desc: "Overzicht per klant over een periode",          color: "#fce7f3" },
 ];

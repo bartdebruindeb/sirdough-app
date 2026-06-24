@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
-type BreadType = { id: string; name: string; sortOrder: number };
+const PICKUP_LOCATIONS = [
+  { id: "rotterdam", label: "Rotterdam" },
+  { id: "delft",     label: "Delft" },
+  { id: "den-haag",  label: "Den Haag" },
+];
+
+type BreadType = { id: string; name: string; sortOrder: number; price: number | null };
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
 type RecurringOrder = { id: string; weekday: number; active: boolean; lines: RecurringLine[]; exceptions: RecurringException[] };
@@ -12,6 +18,14 @@ type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
+
+function calcBasketTotal(qty: Record<string,number>, breadTypes: BreadType[], discountPercent: number): number {
+  return breadTypes.reduce((sum, bt) => {
+    const q = qty[bt.id] ?? 0;
+    if (!q || !bt.price) return sum;
+    return sum + bt.price * q * (1 - discountPercent / 100);
+  }, 0);
+}
 
 // Cutoff = 4am UTC on the day BEFORE delivery
 function cutoffDate(deliveryDateStr: string): Date {
@@ -50,28 +64,36 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)",
 };
 
-function QtyGrid({ qty, onChange, breadTypes }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[] }) {
+function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0 }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[]; discountPercent?: number }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8 }}>
-      {breadTypes.map(bt => (
-        <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
-          <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>{shortName(bt.name)}</label>
-          <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
-            onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
-            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", color: "var(--text)", textAlign: "right" }} />
-        </div>
-      ))}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 8 }}>
+      {breadTypes.map(bt => {
+        const unitPrice = bt.price != null ? bt.price * (1 - discountPercent / 100) : null;
+        return (
+          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
+            <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 2 }}>{shortName(bt.name)}</label>
+            {unitPrice != null && (
+              <span style={{ fontSize: 10, color: "var(--accent)", display: "block", marginBottom: 4 }}>€ {unitPrice.toFixed(2)}</span>
+            )}
+            <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
+              onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
+              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", color: "var(--text)", textAlign: "right" }} />
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 export default function MijnBestellingenPage() {
-  const [recurring, setRecurring]     = useState<RecurringOrder[]>([]);
-  const [upcoming, setUpcoming]       = useState<OneOffOrder[]>([]);
-  const [pastOrders, setPastOrders]   = useState<OneOffOrder[]>([]);
-  const [breadTypes, setBreadTypes]   = useState<BreadType[]>([]);
+  const [recurring, setRecurring]         = useState<RecurringOrder[]>([]);
+  const [upcoming, setUpcoming]           = useState<OneOffOrder[]>([]);
+  const [pastOrders, setPastOrders]       = useState<OneOffOrder[]>([]);
+  const [breadTypes, setBreadTypes]       = useState<BreadType[]>([]);
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
-  const [loading, setLoading]         = useState(true);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [minDeliveryAmount, setMinDeliveryAmount] = useState<number | null>(null);
+  const [loading, setLoading]             = useState(true);
 
   // Email debounce
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,6 +131,9 @@ export default function MijnBestellingenPage() {
   const [savingNew, setSavingNew]       = useState(false);
   const [dateError, setDateError]       = useState("");
 
+  // New one-off: pickup
+  const [newPickup, setNewPickup]       = useState<string>(""); // "" = delivery, else location id
+
   // Past log
   const [showLog, setShowLog]           = useState(false);
 
@@ -120,6 +145,8 @@ export default function MijnBestellingenPage() {
         setRecurring(d.recurring ?? []);
         setPastOrders(d.pastOrders ?? []);
         setClosedWeekdays(d.closedWeekdays ?? []);
+        setDiscountPercent(d.discountPercent ?? 0);
+        setMinDeliveryAmount(d.minDeliveryAmount ?? null);
         setLoading(false);
       });
   }
@@ -198,12 +225,18 @@ export default function MijnBestellingenPage() {
   async function createOO() {
     const err = validateDate(newDate);
     if (err || !newDate || Object.values(newQty).every(v => v === 0)) return;
+    const isPickup = !!newPickup;
+    const total = calcBasketTotal(newQty, breadTypes, discountPercent);
+    if (!isPickup && minDeliveryAmount !== null && total < minDeliveryAmount) return;
     setSavingNew(true);
+    const notesWithPickup = newPickup
+      ? `Afhalen: ${PICKUP_LOCATIONS.find(l => l.id === newPickup)?.label}${newNotes ? " — " + newNotes : ""}`
+      : (newNotes || undefined);
     await fetch("/api/mijn/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deliveryDate: newDate, notes: newNotes || undefined, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })) }),
+      body: JSON.stringify({ deliveryDate: newDate, notes: notesWithPickup, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity: quantity as number })) }),
     });
-    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setDateError(""); scheduleEmail(); load();
+    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
   }
 
   const usedWeekdays = new Set(recurring.map(r => r.weekday));
@@ -297,7 +330,7 @@ export default function MijnBestellingenPage() {
                       </div>
                     )}
 
-                    {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} />}
+                    {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />}
 
                     {/* Upcoming 2 weeks skip planning */}
                     {order.active && upcomingDates.length > 0 && !isEditing && (
@@ -338,7 +371,7 @@ export default function MijnBestellingenPage() {
                       {availableWeekdays.map(d => <option key={d} value={d}>{WEEKDAYS[d]}</option>)}
                     </select>
                   </div>
-                  <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} />
+                  <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => setShowNewRec(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
                     <button onClick={createRec} disabled={savingNewRec} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
@@ -369,11 +402,61 @@ export default function MijnBestellingenPage() {
                     <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inputStyle} />
                   </div>
                 </div>
+                {/* Pickup / delivery toggle */}
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[{ id: "", label: "Bezorgen" }, ...PICKUP_LOCATIONS].map(loc => (
+                      <button key={loc.id} type="button"
+                        onClick={() => setNewPickup(loc.id)}
+                        style={{
+                          fontSize: 12, padding: "5px 12px", borderRadius: 7, cursor: "pointer",
+                          border: `1px solid ${newPickup === loc.id ? "var(--accent)" : "var(--border)"}`,
+                          background: newPickup === loc.id ? "var(--accent-light)" : "var(--surface)",
+                          color: newPickup === loc.id ? "var(--accent)" : "var(--text)",
+                          fontWeight: newPickup === loc.id ? 600 : 400,
+                        }}>
+                        {loc.id === "" ? "🚚 Bezorgen" : `🏪 ${loc.label}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
-                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} />
+                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+
+                {/* Basket total + min delivery warning */}
+                {(() => {
+                  const total = calcBasketTotal(newQty, breadTypes, discountPercent);
+                  const isPickup = !!newPickup;
+                  const belowMin = !isPickup && minDeliveryAmount !== null && total < minDeliveryAmount && total > 0;
+                  const hasPrices = breadTypes.some(b => b.price != null);
+                  return hasPrices ? (
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 13, color: "var(--text-subtle)" }}>Totaal (excl. BTW)</span>
+                        <span style={{ fontSize: 16, fontWeight: 600 }}>€ {total.toFixed(2)}</span>
+                      </div>
+                      {discountPercent > 0 && (
+                        <p style={{ fontSize: 11, color: "var(--success)", margin: "3px 0 0" }}>{discountPercent}% korting verwerkt</p>
+                      )}
+                      {belowMin && (
+                        <p style={{ fontSize: 12, color: "var(--danger)", margin: "4px 0 0" }}>
+                          Minimale bestelwaarde voor bezorging is € {minDeliveryAmount!.toFixed(2)}. Voeg meer toe of kies afhalen.
+                        </p>
+                      )}
+                      {isPickup && minDeliveryAmount !== null && (
+                        <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "3px 0 0" }}>Geen minimale bestelwaarde bij afhalen.</p>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
+
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => { setShowNewOO(false); setDateError(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                  <button onClick={createOO} disabled={savingNew || !!dateError || !newDate || Object.values(newQty).every(v => v === 0)} className="btn-primary" style={{ fontSize: 13 }}>
+                  <button onClick={() => { setShowNewOO(false); setDateError(""); setNewPickup(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                  <button onClick={createOO}
+                    disabled={savingNew || !!dateError || !newDate || Object.values(newQty).every(v => v === 0) || (!newPickup && minDeliveryAmount !== null && calcBasketTotal(newQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newQty, breadTypes, discountPercent) > 0)}
+                    className="btn-primary" style={{ fontSize: 13 }}>
                     {savingNew ? "Plaatsen..." : "Bestelling plaatsen"}
                   </button>
                 </div>
@@ -430,7 +513,7 @@ export default function MijnBestellingenPage() {
                           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
                           <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
                         </div>
-                        <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} />
+                        <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                       </div>
                     )}
                   </div>

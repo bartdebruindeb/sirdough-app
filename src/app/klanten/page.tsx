@@ -12,6 +12,7 @@ type Customer = {
   preferredBread: string | null;
   lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
+  discountPercent: number;
   deliveryAddresses: DeliveryAddress[];
 };
 
@@ -518,6 +519,26 @@ export default function KlantenPage() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Discount selector */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 80 }}>
+                  <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase" }}>Korting</label>
+                  <select
+                    value={c.discountPercent}
+                    onChange={async e => {
+                      const val = Number(e.target.value);
+                      await fetch("/api/customers", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: c.id, discountPercent: val }),
+                      });
+                      setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, discountPercent: val } : x));
+                    }}
+                    style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "4px 6px", cursor: "pointer" }}
+                  >
+                    {[0, 5, 10, 15, 20].map(v => <option key={v} value={v}>{v}%</option>)}
+                  </select>
                 </div>
 
                 {/* Account status */}
