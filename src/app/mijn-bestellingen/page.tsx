@@ -56,6 +56,34 @@ function formatDate(s: string) {
 function shortName(n: string) {
   return n.replace("Boeren ", "B. ").replace("Morning buns", "Buns").replace(" KG", "kg");
 }
+
+// Map bread name → image in /brood/. Strip weight suffixes to find base name.
+const BREAD_IMAGES: Record<string, string> = {
+  "Baguette Kaas Peper": "Baguette Kaas Peper.jpg",
+  "Baguette":            "Baquette.jpg",
+  "Boeren":              "Boeren 1kg.jpg",
+  "Choco koek":          "Choco koek.jpg",
+  "Gekiemde Rogge":      "Gekiemde Rogge.jpg",
+  "Kaneel Bun":          "Kaneel Bun.jpg",
+  "Kardemon Bun":        "Kardemon Bun.jpg",
+  "Morning Buns":        "Morning Buns.jpg",
+  "Morning buns":        "Morning Buns.jpg",
+  "Olijf":               "Olijf.jpg",
+  "Rozijn":              "Rozijn.jpg",
+  "Sesam":               "Sesam.jpg",
+  "Spelt":               "Spelt.jpg",
+  "Volkoren":            "Volkoren.jpg",
+  "Zaden":               "Zaden.jpg",
+};
+
+function breadImage(name: string): string | null {
+  // Try exact match first
+  if (BREAD_IMAGES[name]) return `/brood/${encodeURIComponent(BREAD_IMAGES[name])}`;
+  // Strip weight suffix: "Sesam 1,5 KG" → "Sesam", "Boeren 1KG" → "Boeren"
+  const base = name.replace(/\s*(1[,.]?5?\s*KG|1\s*KG|750\s*g?r?|0[,.]?75\s*KG)\s*$/i, "").trim();
+  if (BREAD_IMAGES[base]) return `/brood/${encodeURIComponent(BREAD_IMAGES[base])}`;
+  return null;
+}
 // weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
 function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
 
@@ -73,21 +101,32 @@ function isAvailableOnDate(bt: BreadType, dateStr: string): boolean {
 
 function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate = "" }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[]; discountPercent?: number; deliveryDate?: string }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 8 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px,1fr))", gap: 10 }}>
       {breadTypes.map(bt => {
         const available = isAvailableOnDate(bt, deliveryDate);
         const unitPrice = bt.price != null ? bt.price * (1 - discountPercent / 100) : null;
+        const img = breadImage(bt.name);
         return (
-          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", opacity: available ? 1 : 0.4, position: "relative" }}>
-            <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 2 }}>{shortName(bt.name)}</label>
-            {!available && <span style={{ fontSize: 9, color: "var(--danger)", display: "block", marginBottom: 2 }}>niet op deze dag</span>}
-            {unitPrice != null && available && (
-              <span style={{ fontSize: 10, color: "var(--accent)", display: "block", marginBottom: 4 }}>€ {unitPrice.toFixed(2)}</span>
+          <div key={bt.id} style={{
+            background: "var(--surface-2)", border: `1px solid ${qty[bt.id] ? "var(--accent)" : "var(--border)"}`,
+            borderRadius: 10, overflow: "hidden", opacity: available ? 1 : 0.4,
+            display: "flex", flexDirection: "column",
+          }}>
+            {img && (
+              <img src={img} alt={bt.name}
+                style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
             )}
-            <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
-              disabled={!available}
-              onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
-              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", color: "var(--text)", textAlign: "right" }} />
+            <div style={{ padding: "8px 10px", flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+              <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text)", lineHeight: 1.2 }}>{shortName(bt.name)}</label>
+              {!available && <span style={{ fontSize: 9, color: "var(--danger)" }}>niet op deze dag</span>}
+              {unitPrice != null && available && (
+                <span style={{ fontSize: 11, color: "var(--accent)" }}>€ {unitPrice.toFixed(2)}</span>
+              )}
+              <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
+                disabled={!available}
+                onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
+                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 16, fontWeight: 700, background: "var(--surface)", color: "var(--text)", textAlign: "right", marginTop: "auto" }} />
+            </div>
           </div>
         );
       })}
