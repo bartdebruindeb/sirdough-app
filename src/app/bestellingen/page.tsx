@@ -5,7 +5,7 @@ import { useUndoStack } from "@/hooks/useUndoStack";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
-type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean };
+type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
 type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
@@ -31,41 +31,100 @@ function colName(name: string) {
     .replace("Gekiemde Rogge","G.Rogge").replace("Morning buns","Buns");
 }
 
+const DAYS_NL = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+
 // ── Bread type manager ────────────────────────────────────────────────────────
 function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; onChanged: () => void }) {
   const [saving, setSaving] = useState<string|null>(null);
+  const [expandedDays, setExpandedDays] = useState<string|null>(null);
 
-  async function toggle(bt: BreadType) {
-    setSaving(bt.id);
+  async function patch(id: string, data: object) {
+    setSaving(id);
     await fetch("/api/bread-types", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-      body: JSON.stringify({ id: bt.id, customerOrderable: !bt.customerOrderable }),
+      body: JSON.stringify({ id, ...data }),
     });
     setSaving(null);
     onChanged();
   }
 
+  function toggleDayForBread(bt: BreadType, day: number) {
+    const current = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
+    const updated = current.includes(day) ? current.filter(d => d !== day) : [...current, day].sort();
+    patch(bt.id, { availableWeekdays: updated.length > 0 && updated.length < 7 ? updated.join(",") : null });
+  }
+
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Bestelbaar voor klanten</h3>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {breadTypes.map(bt => (
-          <button key={bt.id} onClick={() => toggle(bt)} disabled={saving === bt.id} style={{
-            padding: "6px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer",
-            border: "1px solid",
-            borderColor: bt.customerOrderable ? "var(--accent)" : "var(--border)",
-            background: bt.customerOrderable ? "var(--accent-light)" : "var(--surface-2)",
-            color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
-            fontFamily: "var(--font-body)",
-            opacity: saving === bt.id ? 0.6 : 1,
-          }}>
-            {bt.customerOrderable ? "✓" : "+"} {bt.name}
-          </button>
-        ))}
+      <h3 style={{ fontSize: 14, marginBottom: "1rem" }}>Beschikbaarheid broodsoorten</h3>
+
+      {/* Table-style layout */}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Brood</th>
+              <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Klant&shy;portal</th>
+              <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Winkel</th>
+              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Beschikbare dagen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {breadTypes.map(bt => {
+              const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
+              const allDays = days.length === 0;
+              return (
+                <tr key={bt.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>{bt.name}</td>
+                  <td style={{ textAlign: "center", padding: "6px 8px" }}>
+                    <button onClick={() => patch(bt.id, { customerOrderable: !bt.customerOrderable })} disabled={saving === bt.id}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 14,
+                        borderColor: bt.customerOrderable ? "var(--accent)" : "var(--border)",
+                        background: bt.customerOrderable ? "var(--accent-light)" : "var(--surface)",
+                        color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
+                      }}>
+                      {bt.customerOrderable ? "✓" : ""}
+                    </button>
+                  </td>
+                  <td style={{ textAlign: "center", padding: "6px 8px" }}>
+                    <button onClick={() => patch(bt.id, { winkelOrderable: !bt.winkelOrderable })} disabled={saving === bt.id}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 14,
+                        borderColor: bt.winkelOrderable ? "#d97706" : "var(--border)",
+                        background: bt.winkelOrderable ? "#fef3c7" : "var(--surface)",
+                        color: bt.winkelOrderable ? "#92400e" : "var(--text-subtle)",
+                      }}>
+                      {bt.winkelOrderable ? "✓" : ""}
+                    </button>
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                      {[1,2,3,4,5,6,7].map(d => (
+                        <button key={d} onClick={() => toggleDayForBread(bt, d)} disabled={saving === bt.id}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 11,
+                            borderColor: (allDays || days.includes(d)) ? "var(--success)" : "var(--border)",
+                            background: (allDays || days.includes(d)) ? "var(--success-bg)" : "var(--surface)",
+                            color: (allDays || days.includes(d)) ? "var(--success)" : "var(--text-subtle)",
+                          }}>
+                          {DAYS_NL[d]}
+                        </button>
+                      ))}
+                      {!allDays && (
+                        <button onClick={() => patch(bt.id, { availableWeekdays: null })} disabled={saving === bt.id}
+                          style={{ fontSize: 10, padding: "2px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "none", cursor: "pointer", color: "var(--text-subtle)" }}>
+                          Alle
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-        Klik op een broodsoort om te wisselen. Goudkleurig = bestelbaar voor klanten.
+      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "10px 0 0" }}>
+        Groene dagen = beschikbaar. Klik op een dag om te wisselen. "Alle" = geen beperking.
       </p>
     </div>
   );
@@ -177,13 +236,20 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
         ))}
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
-        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>(
-          <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
-            <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
-              style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
-          </div>
-        ))}
+        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>{
+          const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
+          const dateDay = date ? new Date(date+"T12:00:00Z").getUTCDay() : -1;
+          const isoDay = dateDay === 0 ? 7 : dateDay;
+          const available = days.length === 0 || days.includes(isoDay);
+          return (
+            <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px", opacity: available ? 1 : 0.4 }}>
+              <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
+              {!available && <span style={{ fontSize:9, color:"var(--danger)", display:"block" }}>niet op deze dag</span>}
+              <input type="number" disabled={!available} onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
+                style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
+            </div>
+          );
+        })}
       </div>
       {deadlineWarning && (
         <div style={{ background:"#fff3cd", border:"1px solid #ffc107", borderRadius:8, padding:"12px 14px", marginBottom:10 }}>
@@ -268,13 +334,18 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
         </div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
-        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>(
-          <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px" }}>
-            <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
-            <input type="number" onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
-              style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
-          </div>
-        ))}
+        {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>{
+          const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
+          const available = days.length === 0 || days.includes(weekday);
+          return (
+            <div key={bt.id} style={{ background:"var(--surface-2)", border:"1px solid var(--border)", borderRadius:7, padding:"7px 9px", opacity: available ? 1 : 0.4 }}>
+              <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:3 }}>{colName(bt.name)}</label>
+              {!available && <span style={{ fontSize:9, color:"var(--danger)", display:"block" }}>niet op deze dag</span>}
+              <input type="number" disabled={!available} onKeyDown={e=>{if(["e","E","-","+",","].includes(e.key))e.preventDefault()}} min={0} max={999} value={qty[bt.id]||""} onChange={e=>setQty(q=>({...q,[bt.id]:Math.min(999,parseInt(e.target.value)||0)}))} placeholder="0"
+                style={{ width:"100%", border:"1px solid var(--border)", borderRadius:5, padding:"4px 6px", fontSize:14, fontWeight:600, background:"var(--surface)", textAlign:"right" }} />
+            </div>
+          );
+        })}
       </div>
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
       {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}

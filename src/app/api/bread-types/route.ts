@@ -65,6 +65,8 @@ export async function POST(req: Request) {
 const PatchBreadTypeSchema = z.object({
   id: z.string(),
   customerOrderable: z.boolean().optional(),
+  winkelOrderable: z.boolean().optional(),
+  availableWeekdays: z.string().nullable().optional(),
   active: z.boolean().optional(),
   name: z.string().optional(),
   sortOrder: z.number().optional(),

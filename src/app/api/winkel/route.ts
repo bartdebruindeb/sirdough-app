@@ -41,8 +41,7 @@ export async function GET(req: Request) {
       orderBy: { date: "desc" },
     });
 
-    // Bread types for column headers — include whether a recipe exists,
-    // since all bread types with a recipe should be orderable in winkel
+    // Bread types for column headers
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
       orderBy: { sortOrder: "asc" },

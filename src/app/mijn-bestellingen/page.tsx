@@ -10,7 +10,7 @@ const PICKUP_LOCATIONS = [
   { id: "Winkel Den Haag",  label: "Den Haag" },
 ];
 
-type BreadType = { id: string; name: string; sortOrder: number; price: number | null };
+type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null };
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
 type RecurringOrder = { id: string; weekday: number; active: boolean; lines: RecurringLine[]; exceptions: RecurringException[] };
@@ -64,18 +64,28 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)",
 };
 
-function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0 }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[]; discountPercent?: number }) {
+function isAvailableOnDate(bt: BreadType, dateStr: string): boolean {
+  if (!bt.availableWeekdays || !dateStr) return true;
+  const d = new Date(dateStr + "T12:00:00Z");
+  const isoDay = d.getDay() === 0 ? 7 : d.getDay();
+  return bt.availableWeekdays.split(",").map(Number).includes(isoDay);
+}
+
+function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate = "" }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[]; discountPercent?: number; deliveryDate?: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 8 }}>
       {breadTypes.map(bt => {
+        const available = isAvailableOnDate(bt, deliveryDate);
         const unitPrice = bt.price != null ? bt.price * (1 - discountPercent / 100) : null;
         return (
-          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
+          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", opacity: available ? 1 : 0.4, position: "relative" }}>
             <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 2 }}>{shortName(bt.name)}</label>
-            {unitPrice != null && (
+            {!available && <span style={{ fontSize: 9, color: "var(--danger)", display: "block", marginBottom: 2 }}>niet op deze dag</span>}
+            {unitPrice != null && available && (
               <span style={{ fontSize: 10, color: "var(--accent)", display: "block", marginBottom: 4 }}>€ {unitPrice.toFixed(2)}</span>
             )}
             <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
+              disabled={!available}
               onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
               style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", color: "var(--text)", textAlign: "right" }} />
           </div>
@@ -425,7 +435,7 @@ export default function MijnBestellingenPage() {
                 </div>
 
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
-                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
 
                 {/* Basket total + min delivery warning */}
                 {(() => {

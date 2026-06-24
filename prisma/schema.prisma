@@ -123,6 +123,8 @@ model BreadType {
   active      Boolean @default(true)
   sortOrder   Int     @default(0)
   customerOrderable Boolean @default(false)
+  winkelOrderable   Boolean @default(false) // independent of customerOrderable
+  availableWeekdays String? // null = all days; "1,2,5" = Mon/Tue/Fri only (ISO weekday)
   price       Decimal? // excl. BTW, shown in customer portal
   doughTypeId String?         // links to shared dough type
   doughWeightPerLoaf Float @default(1010) // per loaf incl. fillings
