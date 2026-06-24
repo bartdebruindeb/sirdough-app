@@ -3,38 +3,24 @@ import { useEffect, useState } from "react";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
-type BreadType = { id: string; slug: string; name: string; sortOrder: number };
+type BreadType = { id: string; name: string; sortOrder: number };
+type Address = { id: string; label: string; street: string; postalCode: string; city: string; isDefault: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
-type RecurringOrder = { id: string; weekday: number; active: boolean; notes: string | null; lines: RecurringLine[] };
+type RecurringOrder = { id: string; weekday: number; lines: RecurringLine[] };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null;
+  deliveryAddressId: string | null;
+  deliveryAddress: Address | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
 
 function isEditable(deliveryDateStr: string): boolean {
-  const delivery = new Date(deliveryDateStr + "T00:00:00");
-  const cutoff = new Date(delivery);
-  cutoff.setDate(cutoff.getDate() - 1);
-  cutoff.setHours(4, 0, 0, 0);
+  const cutoff = new Date(deliveryDateStr + "T04:00:00Z");
   return new Date() < cutoff;
 }
 
-function isRecurringEditable(weekday: number): boolean {
-  const now = new Date();
-  const dayDiff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
-  const nextDate = new Date(now);
-  nextDate.setDate(nextDate.getDate() + dayDiff);
-  const cutoff = new Date(nextDate);
-  cutoff.setDate(cutoff.getDate() - 1);
-  cutoff.setHours(4, 0, 0, 0);
-  return now < cutoff;
-}
-
 function timeUntilCutoff(deliveryDateStr: string): string {
-  const delivery = new Date(deliveryDateStr + "T00:00:00");
-  const cutoff = new Date(delivery);
-  cutoff.setDate(cutoff.getDate() - 1);
-  cutoff.setHours(4, 0, 0, 0);
+  const cutoff = new Date(deliveryDateStr + "T04:00:00Z");
   const diff = cutoff.getTime() - Date.now();
   if (diff <= 0) return "";
   const hours = Math.floor(diff / 3600000);
@@ -44,26 +30,62 @@ function timeUntilCutoff(deliveryDateStr: string): string {
   return `nog ${mins} minuten`;
 }
 
+function isRecurringEditable(weekday: number): boolean {
+  const now = new Date();
+  const dayDiff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
+  const nextDate = new Date(now);
+  nextDate.setDate(nextDate.getDate() + dayDiff);
+  return isEditable(nextDate.toISOString().slice(0, 10));
+}
+
+function nextDateForWeekday(weekday: number): string {
+  const now = new Date();
+  const dayDiff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
+  const d = new Date(now);
+  d.setDate(d.getDate() + dayDiff);
+  return d.toISOString().slice(0, 10);
+}
+
 function shortName(name: string) {
   return name.replace("Boeren ", "B. ").replace("Morning buns", "Buns").replace(" KG", "kg");
 }
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+}
+
+const inputStyle: React.CSSProperties = {
+  border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 13, width: "100%",
+  background: "var(--surface)", color: "var(--text)",
+};
 
 export default function MijnBestellingenPage() {
   const [recurring, setRecurring]   = useState<RecurringOrder[]>([]);
   const [upcoming, setUpcoming]     = useState<OneOffOrder[]>([]);
   const [breadTypes, setBreadTypes] = useState<BreadType[]>([]);
+  const [addresses, setAddresses]   = useState<Address[]>([]);
   const [loading, setLoading]       = useState(true);
 
-  const [editingDay, setEditingDay] = useState<string | null>(null);
-  const [editQty, setEditQty]       = useState<Record<string,number>>({});
-  const [saving, setSaving]         = useState(false);
-  const [savedDay, setSavedDay]     = useState<string | null>(null);
+  // Recurring edit state
+  const [editingRecurringId, setEditingRecurringId] = useState<string | null>(null);
+  const [editRecurringQty, setEditRecurringQty]     = useState<Record<string,number>>({});
+  const [savingRecurring, setSavingRecurring]       = useState(false);
+  const [savedRecurringId, setSavedRecurringId]     = useState<string | null>(null);
 
+  // One-off edit state
+  const [editingOneOffId, setEditingOneOffId] = useState<string | null>(null);
+  const [editOneOffQty, setEditOneOffQty]     = useState<Record<string,number>>({});
+  const [editOneOffNotes, setEditOneOffNotes] = useState("");
+  const [editOneOffAddr, setEditOneOffAddr]   = useState<string>("");
+  const [savingOneOff, setSavingOneOff]       = useState(false);
+
+  // New order state
   const [showNewOrder, setShowNewOrder] = useState(false);
-  const [newDate, setNewDate]       = useState("");
-  const [newQty, setNewQty]         = useState<Record<string,number>>({});
-  const [newNotes, setNewNotes]     = useState("");
-  const [savingNew, setSavingNew]   = useState(false);
+  const [newDate, setNewDate]           = useState("");
+  const [newQty, setNewQty]             = useState<Record<string,number>>({});
+  const [newNotes, setNewNotes]         = useState("");
+  const [newAddr, setNewAddr]           = useState<string>("");
+  const [savingNew, setSavingNew]       = useState(false);
 
   function load() {
     fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
@@ -71,31 +93,64 @@ export default function MijnBestellingenPage() {
         setUpcoming(data.orders ?? []);
         setBreadTypes(data.breadTypes ?? []);
         setRecurring(data.recurring ?? []);
+        const addrs = data.addresses ?? [];
+        setAddresses(addrs);
+        const def = addrs.find((a: Address) => a.isDefault);
+        if (def) setNewAddr(def.id);
         setLoading(false);
       });
   }
   useEffect(() => { load(); }, []);
 
-  function startEdit(order: RecurringOrder) {
+  function startEditRecurring(order: RecurringOrder) {
     const q: Record<string,number> = {};
     for (const l of order.lines) q[l.breadTypeId] = l.quantity;
-    setEditQty(q);
-    setEditingDay(order.id);
+    setEditRecurringQty(q);
+    setEditingRecurringId(order.id);
   }
 
   async function saveRecurring(order: RecurringOrder) {
-    setSaving(true);
-    const lines = breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editQty[bt.id] ?? 0 }));
+    setSavingRecurring(true);
+    const lines = breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecurringQty[bt.id] ?? 0 }));
     const res = await fetch("/api/mijn/bestellingen", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recurringOrderId: order.id, lines }),
     });
-    setSaving(false);
+    setSavingRecurring(false);
     if (res.ok) {
-      setSavedDay(order.id);
-      setTimeout(() => setSavedDay(null), 3000);
-      setEditingDay(null);
+      setSavedRecurringId(order.id);
+      setTimeout(() => setSavedRecurringId(null), 3000);
+      setEditingRecurringId(null);
+      load();
+    }
+  }
+
+  function startEditOneOff(order: OneOffOrder) {
+    const q: Record<string,number> = {};
+    for (const l of order.lines) q[l.breadTypeId] = l.quantity;
+    setEditOneOffQty(q);
+    setEditOneOffNotes(order.notes ?? "");
+    setEditOneOffAddr(order.deliveryAddressId ?? (addresses.find(a => a.isDefault)?.id ?? ""));
+    setEditingOneOffId(order.id);
+  }
+
+  async function saveOneOff(order: OneOffOrder) {
+    setSavingOneOff(true);
+    const lines = breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOneOffQty[bt.id] ?? 0 })).filter(l => l.quantity > 0);
+    const res = await fetch("/api/mijn/bestellingen", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: order.id,
+        notes: editOneOffNotes || undefined,
+        deliveryAddressId: editOneOffAddr || null,
+        lines,
+      }),
+    });
+    setSavingOneOff(false);
+    if (res.ok) {
+      setEditingOneOffId(null);
       load();
     }
   }
@@ -110,6 +165,7 @@ export default function MijnBestellingenPage() {
       body: JSON.stringify({
         deliveryDate: newDate,
         notes: newNotes || undefined,
+        deliveryAddressId: newAddr || undefined,
         lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })),
       }),
     });
@@ -128,6 +184,39 @@ export default function MijnBestellingenPage() {
 
   const today = new Date().toISOString().slice(0,10);
 
+  function AddressSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    if (addresses.length === 0) return null;
+    return (
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
+        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+          <option value="">-- Geen adres geselecteerd --</option>
+          {addresses.map(a => (
+            <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  function QtyGrid({ qty, onChange }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void }) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8 }}>
+        {breadTypes.map(bt => (
+          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
+            <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+              {shortName(bt.name)}
+            </label>
+            <input type="number" min={0} value={qty[bt.id] || ""}
+              onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
+              placeholder="0"
+              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", textAlign: "right", color: "var(--text)" }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "1.5rem", maxWidth: 700 }}>
       <h1 style={{ fontSize: 26, marginBottom: "0.25rem" }}>Mijn bestellingen</h1>
@@ -139,16 +228,16 @@ export default function MijnBestellingenPage() {
 
       {!loading && (
         <>
+          {/* Vaste bestellingen */}
           {recurring.length > 0 && (
             <section style={{ marginBottom: "2rem" }}>
               <h2 style={{ fontSize: 17, marginBottom: "0.75rem" }}>Vaste bestellingen</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {recurring.map(order => {
-                  const isEditing = editingDay === order.id;
+                  const isEditing = editingRecurringId === order.id;
                   const editable = isRecurringEditable(order.weekday);
-                  const nextDayDiff = (order.weekday - (new Date().getDay() || 7) + 7) % 7 || 7;
-                  const nextDateStr = (() => { const d = new Date(); d.setDate(d.getDate() + nextDayDiff); return d.toISOString().slice(0,10); })();
-                  const timeLeft = timeUntilCutoff(nextDateStr);
+                  const nextDate = nextDateForWeekday(order.weekday);
+                  const timeLeft = timeUntilCutoff(nextDate);
 
                   return (
                     <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
@@ -156,32 +245,26 @@ export default function MijnBestellingenPage() {
                         <div>
                           <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
                           {editable && timeLeft && (
-                            <span style={{ fontSize: 12, color: "var(--success)", marginLeft: 8 }}>
-                              Wijzigen mogelijk ({timeLeft})
-                            </span>
+                            <span style={{ fontSize: 12, color: "var(--success)", marginLeft: 8 }}>Wijzigen mogelijk ({timeLeft})</span>
                           )}
                           {!editable && (
-                            <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>
-                              Gesloten voor wijzigingen
-                            </span>
+                            <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>Gesloten voor wijzigingen</span>
                           )}
                         </div>
                         {editable && !isEditing && (
-                          <button onClick={() => startEdit(order)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
-                            Wijzigen
-                          </button>
+                          <button onClick={() => startEditRecurring(order)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>Wijzigen</button>
                         )}
                         {isEditing && (
                           <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => setEditingDay(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
-                            <button onClick={() => saveRecurring(order)} disabled={saving} className="btn-primary" style={{ fontSize: 12 }}>
-                              {saving ? "Opslaan..." : "Opslaan"}
+                            <button onClick={() => setEditingRecurringId(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
+                            <button onClick={() => saveRecurring(order)} disabled={savingRecurring} className="btn-primary" style={{ fontSize: 12 }}>
+                              {savingRecurring ? "Opslaan..." : "Opslaan"}
                             </button>
                           </div>
                         )}
                       </div>
 
-                      {savedDay === order.id && (
+                      {savedRecurringId === order.id && (
                         <p style={{ color: "var(--success)", fontSize: 13, margin: "4px 0 0" }}>Opgeslagen - bevestiging verstuurd</p>
                       )}
 
@@ -196,21 +279,7 @@ export default function MijnBestellingenPage() {
                         </div>
                       )}
 
-                      {isEditing && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8 }}>
-                          {breadTypes.map(bt => (
-                            <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
-                              <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-                                {shortName(bt.name)}
-                              </label>
-                              <input type="number" min={0} value={editQty[bt.id] || ""}
-                                onChange={e => setEditQty(q => ({ ...q, [bt.id]: parseInt(e.target.value) || 0 }))}
-                                placeholder="0"
-                                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", textAlign: "right" }} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {isEditing && <QtyGrid qty={editRecurringQty} onChange={setEditRecurringQty} />}
                     </div>
                   );
                 })}
@@ -218,47 +287,32 @@ export default function MijnBestellingenPage() {
             </section>
           )}
 
+          {/* Eenmalige bestellingen */}
           <section>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
-              <button onClick={() => setShowNewOrder(true)} className="btn-primary" style={{ fontSize: 13 }}>
+              <button onClick={() => { setShowNewOrder(true); }} className="btn-primary" style={{ fontSize: 13 }}>
                 + Bestelling plaatsen
               </button>
             </div>
 
             {showNewOrder && (
-              <div className="card" style={{ padding: "1.25rem", marginBottom: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div className="card" style={{ padding: "1.25rem", marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdatum</label>
-                    <input type="date" value={newDate} min={today}
-                      onChange={e => setNewDate(e.target.value)}
-                      style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 13, width: "100%" }} />
+                    <input type="date" value={newDate} min={today} onChange={e => setNewDate(e.target.value)} style={inputStyle} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                    <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00"
-                      style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 13, width: "100%" }} />
+                    <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inputStyle} />
                   </div>
                 </div>
+                <AddressSelect value={newAddr} onChange={setNewAddr} />
                 {newDate && !isEditable(newDate) && (
-                  <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 8 }}>
-                    Te laat - de bestelling voor {newDate} moest voor 4:00 uur zijn geplaatst.
-                  </p>
+                  <p style={{ color: "var(--danger)", fontSize: 13 }}>Te laat - de bestelling voor {newDate} moest voor 4:00 uur zijn geplaatst.</p>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8, marginBottom: 12 }}>
-                  {breadTypes.map(bt => (
-                    <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
-                      <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-                        {shortName(bt.name)}
-                      </label>
-                      <input type="number" min={0} value={newQty[bt.id] || ""}
-                        onChange={e => setNewQty(q => ({ ...q, [bt.id]: parseInt(e.target.value) || 0 }))}
-                        placeholder="0"
-                        style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", textAlign: "right" }} />
-                    </div>
-                  ))}
-                </div>
+                <QtyGrid qty={newQty} onChange={setNewQty} />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setShowNewOrder(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
                   <button onClick={placeOneOff} disabled={savingNew || !newDate || !isEditable(newDate)} className="btn-primary" style={{ fontSize: 13 }}>
@@ -278,36 +332,60 @@ export default function MijnBestellingenPage() {
               {upcoming.map(order => {
                 const editable = isEditable(order.deliveryDate);
                 const timeLeft = timeUntilCutoff(order.deliveryDate);
-                const d = new Date(order.deliveryDate + "T12:00:00Z");
-                const dateLabel = d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+                const isEditing = editingOneOffId === order.id;
+
                 return (
                   <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
                       <div>
-                        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 4px" }}>{dateLabel}</p>
-                        {order.notes && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 6px" }}>{order.notes}</p>}
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {order.lines.map(l => (
-                            <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
-                              {shortName(l.breadType.name)} x {l.quantity}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                        {editable && timeLeft && (
-                          <span style={{ fontSize: 11, color: "var(--success)" }}>{timeLeft}</span>
+                        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{formatDate(order.deliveryDate)}</p>
+                        {order.deliveryAddress && (
+                          <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 4px" }}>
+                            {order.deliveryAddress.label} - {order.deliveryAddress.street}, {order.deliveryAddress.city}
+                          </p>
                         )}
-                        {editable && (
-                          <button onClick={() => deleteOneOff(order.id)} style={{
-                            background: "none", border: "1px solid var(--border)", borderRadius: 6,
-                            padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "var(--danger)",
-                          }}>
+                        {order.notes && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 6px" }}>{order.notes}</p>}
+                        {!isEditing && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {order.lines.map(l => (
+                              <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
+                                {shortName(l.breadType.name)} x {l.quantity}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                        {editable && timeLeft && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeLeft}</span>}
+                        {editable && !isEditing && (
+                          <button onClick={() => startEditOneOff(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
+                        )}
+                        {editable && !isEditing && (
+                          <button onClick={() => deleteOneOff(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>
                             Annuleren
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {isEditing && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
+                            <input value={editOneOffNotes} onChange={e => setEditOneOffNotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
+                          </div>
+                        </div>
+                        <AddressSelect value={editOneOffAddr} onChange={setEditOneOffAddr} />
+                        <QtyGrid qty={editOneOffQty} onChange={setEditOneOffQty} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setEditingOneOffId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+                          <button onClick={() => saveOneOff(order)} disabled={savingOneOff} className="btn-primary" style={{ fontSize: 13 }}>
+                            {savingOneOff ? "Opslaan..." : "Opslaan"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+﻿import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
@@ -18,7 +18,17 @@ async function getCustomer(session: any) {
   return customer;
 }
 
-// GET /api/mijn/bestellingen — returns upcoming one-off orders + bread types
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function isCutoffPassed(deliveryDate: Date): boolean {
+  const cutoff = new Date(deliveryDate);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+  cutoff.setUTCHours(4, 0, 0, 0);
+  return new Date() >= cutoff;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -27,14 +37,17 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const from = url.searchParams.get("from") ?? new Date().toISOString().slice(0, 10);
 
-    const [orders, breadTypes, recurring] = await Promise.all([
+    const [orders, breadTypes, recurring, addresses] = await Promise.all([
       prisma.oneOffOrder.findMany({
         where: {
           tenantId: customer.tenantId,
           customerId: customer.id,
           deliveryDate: { gte: new Date(from + "T00:00:00Z") },
         },
-        include: { lines: { include: { breadType: true } } },
+        include: {
+          lines: { include: { breadType: true } },
+          deliveryAddress: true,
+        },
         orderBy: { deliveryDate: "asc" },
       }),
       prisma.breadType.findMany({
@@ -46,31 +59,37 @@ export async function GET(req: Request) {
         include: { lines: { include: { breadType: true } } },
         orderBy: { weekday: "asc" },
       }),
+      (prisma as any).customerAddress.findMany({
+        where: { customerId: customer.id },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      }),
     ]);
 
-    return Response.json({ orders, breadTypes, recurring });
+    // Serialize dates as YYYY-MM-DD strings
+    const serializedOrders = orders.map(o => ({
+      ...o,
+      deliveryDate: toDateStr(o.deliveryDate),
+    }));
+
+    return Response.json({ orders: serializedOrders, breadTypes, recurring, addresses });
   } catch (e) { return toResponse(e); }
 }
 
 const PlaceOrderSchema = z.object({
   deliveryDate: z.string(),
   notes: z.string().optional(),
+  deliveryAddressId: z.string().optional(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().positive() })),
 });
 
-// POST /api/mijn/bestellingen — place a one-off order
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const customer = await getCustomer(session);
     const input = await parseJson(req, PlaceOrderSchema);
 
-    // Enforce 4am cutoff — customers cannot order past deadline
-    const deliveryDate = new Date(input.deliveryDate + "T00:00:00");
-    const cutoff = new Date(deliveryDate);
-    cutoff.setDate(cutoff.getDate() - 1);
-    cutoff.setHours(4, 0, 0, 0);
-    if (new Date() >= cutoff) {
+    const deliveryDate = new Date(input.deliveryDate + "T12:00:00Z");
+    if (isCutoffPassed(deliveryDate)) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 
@@ -78,14 +97,15 @@ export async function POST(req: Request) {
       data: {
         tenantId: customer.tenantId,
         customerId: customer.id,
-        deliveryDate: new Date(input.deliveryDate + "T12:00:00Z"),
+        deliveryDate,
         notes: input.notes ?? null,
+        deliveryAddressId: input.deliveryAddressId ?? null,
         lines: { create: input.lines },
       },
-      include: { lines: { include: { breadType: true } } },
+      include: { lines: { include: { breadType: true } }, deliveryAddress: true },
     });
 
-    const dateLabel = new Date(input.deliveryDate + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+    const dateLabel = deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
     sendOrderConfirmation({
       to: customer.email!,
       customerName: customer.name,
@@ -94,71 +114,106 @@ export async function POST(req: Request) {
       action: "placed",
     }).catch(() => {});
 
-    return Response.json(order, { status: 201 });
+    return Response.json({ ...order, deliveryDate: toDateStr(order.deliveryDate) }, { status: 201 });
   } catch (e) { return toResponse(e); }
 }
+
+const UpdateOneOffSchema = z.object({
+  id: z.string(),
+  notes: z.string().optional(),
+  deliveryAddressId: z.string().nullable().optional(),
+  lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
+});
 
 const UpdateRecurringSchema = z.object({
   recurringOrderId: z.string(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
 });
 
-// PATCH /api/mijn/bestellingen — update recurring order quantities
 export async function PATCH(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const customer = await getCustomer(session);
-    const input = await parseJson(req, UpdateRecurringSchema);
+    const body = await req.json();
 
-    const order = await prisma.recurringOrder.findFirst({
-      where: { id: input.recurringOrderId, customerId: customer.id },
-    });
+    // Route to one-off or recurring update based on payload
+    if (body.recurringOrderId) {
+      const input = UpdateRecurringSchema.parse(body);
+      const order = await prisma.recurringOrder.findFirst({
+        where: { id: input.recurringOrderId, customerId: customer.id },
+      });
+      if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+
+      const now = new Date();
+      const dayDiff = (order.weekday - (now.getDay() || 7) + 7) % 7 || 7;
+      const nextDate = new Date(now);
+      nextDate.setDate(nextDate.getDate() + dayDiff);
+      nextDate.setHours(12, 0, 0, 0);
+      if (isCutoffPassed(nextDate)) {
+        return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
+      }
+
+      for (const line of input.lines) {
+        if (line.quantity === 0) {
+          await prisma.recurringOrderLine.deleteMany({
+            where: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId },
+          });
+        } else {
+          await prisma.recurringOrderLine.upsert({
+            where: { recurringOrderId_breadTypeId: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId } },
+            create: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId, quantity: line.quantity },
+            update: { quantity: line.quantity },
+          });
+        }
+      }
+
+      const updated = await prisma.recurringOrder.findFirst({
+        where: { id: input.recurringOrderId },
+        include: { lines: { include: { breadType: true } } },
+      });
+      sendRecurringOrderConfirmation({
+        to: customer.email!,
+        customerName: customer.name,
+        weekday: WEEKDAYS[order.weekday],
+        lines: (updated?.lines ?? []).filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+      }).catch(() => {});
+
+      return Response.json({ ok: true });
+    }
+
+    // One-off order edit
+    const input = UpdateOneOffSchema.parse(body);
+    const order = await prisma.oneOffOrder.findFirst({ where: { id: input.id, customerId: customer.id } });
     if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
-
-    // Check cutoff: next occurrence of this weekday
-    const now = new Date();
-    const dayDiff = (order.weekday - (now.getDay() || 7) + 7) % 7 || 7;
-    const nextDate = new Date(now);
-    nextDate.setDate(nextDate.getDate() + dayDiff);
-    const cutoff = new Date(nextDate);
-    cutoff.setDate(cutoff.getDate() - 1);
-    cutoff.setHours(4, 0, 0, 0);
-    if (now >= cutoff) {
+    if (isCutoffPassed(order.deliveryDate)) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 
-    // Upsert each line
-    for (const line of input.lines) {
-      if (line.quantity === 0) {
-        await prisma.recurringOrderLine.deleteMany({
-          where: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId },
-        });
-      } else {
-        await prisma.recurringOrderLine.upsert({
-          where: { recurringOrderId_breadTypeId: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId } },
-          create: { recurringOrderId: input.recurringOrderId, breadTypeId: line.breadTypeId, quantity: line.quantity },
-          update: { quantity: line.quantity },
-        });
-      }
-    }
-
-    // Fetch updated lines for email
-    const updated = await prisma.recurringOrder.findFirst({
-      where: { id: input.recurringOrderId },
-      include: { lines: { include: { breadType: true } } },
+    // Delete existing lines and recreate
+    await prisma.oneOffOrderLine.deleteMany({ where: { oneOffId: input.id } });
+    const updated = await prisma.oneOffOrder.update({
+      where: { id: input.id },
+      data: {
+        notes: input.notes ?? order.notes,
+        deliveryAddressId: input.deliveryAddressId !== undefined ? input.deliveryAddressId : order.deliveryAddressId,
+        lines: { create: input.lines.filter(l => l.quantity > 0) },
+      },
+      include: { lines: { include: { breadType: true } }, deliveryAddress: true },
     });
-    sendRecurringOrderConfirmation({
+
+    const dateLabel = order.deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+    sendOrderConfirmation({
       to: customer.email!,
       customerName: customer.name,
-      weekday: WEEKDAYS[order.weekday],
-      lines: (updated?.lines ?? []).filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+      deliveryDate: dateLabel,
+      lines: updated.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+      action: "updated",
     }).catch(() => {});
 
-    return Response.json({ ok: true });
+    return Response.json({ ...updated, deliveryDate: toDateStr(updated.deliveryDate) });
   } catch (e) { return toResponse(e); }
 }
 
-// DELETE /api/mijn/bestellingen?id=xxx — cancel a one-off order
 export async function DELETE(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -170,11 +225,7 @@ export async function DELETE(req: Request) {
     const order = await prisma.oneOffOrder.findFirst({ where: { id, customerId: customer.id } });
     if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
 
-    // Enforce cutoff
-    const cutoff = new Date(order.deliveryDate);
-    cutoff.setDate(cutoff.getDate() - 1);
-    cutoff.setHours(4, 0, 0, 0);
-    if (new Date() >= cutoff) {
+    if (isCutoffPassed(order.deliveryDate)) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 

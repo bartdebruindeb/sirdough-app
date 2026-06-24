@@ -251,7 +251,8 @@ model CustomerAddress {
   city       String
   isDefault  Boolean @default(false)
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  oneOffOrders OneOffOrder[]
 
   @@index([customerId])
 }
@@ -289,16 +290,18 @@ model RecurringOrderLine {
 // ─── One-off orders (eenmalige bestellingen) ─────────────────────────────────
 
 model OneOffOrder {
-  id           String   @id @default(cuid())
-  tenantId     String
-  customerId   String
-  deliveryDate DateTime
-  notes        String?
-  createdAt    DateTime @default(now())
+  id                String   @id @default(cuid())
+  tenantId          String
+  customerId        String
+  deliveryDate      DateTime
+  notes             String?
+  deliveryAddressId String?
+  createdAt         DateTime @default(now())
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id])
-  customer Customer        @relation(fields: [customerId], references: [id])
-  lines    OneOffOrderLine[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  deliveryAddress CustomerAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  lines           OneOffOrderLine[]
 
   @@index([tenantId, deliveryDate])
 }
