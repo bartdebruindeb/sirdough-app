@@ -474,6 +474,42 @@ function getGreeting(hour: number) {
   return "Goedenavond";
 }
 
+function AnnouncementWidget({ role }: { role: string | null }) {
+  const [msg, setMsg] = useState("");
+  const [saved, setSaved] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/announcement", { headers: { "x-role": role ?? "" } })
+      .then(r => r.json()).then(d => { setMsg(d.message ?? ""); setSaved(d.message ?? ""); }).catch(() => {});
+  }, [role]);
+
+  async function save() {
+    setSaving(true);
+    await fetch("/api/announcement", { method: "PUT", headers: { "Content-Type": "application/json", "x-role": role ?? "" }, body: JSON.stringify({ message: msg }) }).catch(() => {});
+    setSaved(msg); setSaving(false);
+  }
+
+  if (role !== "OWNER") return null;
+
+  return (
+    <div className="card" style={{ padding: "1rem 1.5rem", marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>📢 Bericht voor klanten</h3>
+        {saved && <span style={{ fontSize: 11, color: "var(--success)" }}>Zichtbaar in klantportal</span>}
+      </div>
+      <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={2} placeholder="Laat dit leeg om geen bericht te tonen…"
+        style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, background: "var(--surface)", color: "var(--text)", resize: "vertical", fontFamily: "var(--font-body)", boxSizing: "border-box" }} />
+      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+        {msg !== "" && <button onClick={() => { setMsg(""); }} className="btn-secondary" style={{ fontSize: 12 }}>Leegmaken</button>}
+        <button onClick={save} disabled={saving || msg === saved} className="btn-primary" style={{ fontSize: 12 }}>
+          {saving ? "Opslaan…" : "Opslaan"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { role } = useRole();
   const [today, setToday] = useState("");
@@ -490,6 +526,9 @@ export default function HomePage() {
       <p style={{ color: "var(--text-subtle)", fontSize: 13, margin: "0 0 6px" }}>{today}</p>
       <h1 style={{ fontSize: 34, marginBottom: "0.25rem" }}>{greeting}</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Wat gaan we vandaag bakken?</p>
+
+      {/* ── Announcement for customers ── */}
+      <AnnouncementWidget role={role} />
 
       {/* ── Production (totals + batch status) ── */}
       <ProductionWidget role={role} />
