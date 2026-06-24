@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -9,55 +9,79 @@ type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadTy
 type RecurringOrder = { id: string; weekday: number; lines: RecurringLine[] };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null;
-  deliveryAddressId: string | null;
-  deliveryAddress: Address | null;
+  deliveryAddressId: string | null; deliveryAddress: Address | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
 
+const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
+
 function isEditable(deliveryDateStr: string): boolean {
-  const cutoff = new Date(deliveryDateStr + "T04:00:00Z");
-  return new Date() < cutoff;
+  return new Date() < new Date(deliveryDateStr + "T04:00:00Z");
 }
 
 function timeUntilCutoff(deliveryDateStr: string): string {
-  const cutoff = new Date(deliveryDateStr + "T04:00:00Z");
-  const diff = cutoff.getTime() - Date.now();
+  const diff = new Date(deliveryDateStr + "T04:00:00Z").getTime() - Date.now();
   if (diff <= 0) return "";
-  const hours = Math.floor(diff / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  if (hours > 24) return `nog ${Math.floor(hours/24)} dag${Math.floor(hours/24) !== 1 ? "en" : ""}`;
-  if (hours > 0) return `nog ${hours}u ${mins}m`;
-  return `nog ${mins} minuten`;
+  const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+  if (h > 24) return `nog ${Math.floor(h/24)} dag${Math.floor(h/24) !== 1 ? "en" : ""}`;
+  if (h > 0) return `nog ${h}u ${m}m`;
+  return `nog ${m} min`;
 }
 
 function isRecurringEditable(weekday: number): boolean {
   const now = new Date();
-  const dayDiff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
-  const nextDate = new Date(now);
-  nextDate.setDate(nextDate.getDate() + dayDiff);
-  return isEditable(nextDate.toISOString().slice(0, 10));
+  const diff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
+  const next = new Date(now); next.setDate(now.getDate() + diff);
+  return isEditable(next.toISOString().slice(0, 10));
 }
 
-function nextDateForWeekday(weekday: number): string {
+function nextDateStr(weekday: number): string {
   const now = new Date();
-  const dayDiff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
-  const d = new Date(now);
-  d.setDate(d.getDate() + dayDiff);
+  const diff = (weekday - (now.getDay() || 7) + 7) % 7 || 7;
+  const d = new Date(now); d.setDate(now.getDate() + diff);
   return d.toISOString().slice(0, 10);
 }
 
-function shortName(name: string) {
-  return name.replace("Boeren ", "B. ").replace("Morning buns", "Buns").replace(" KG", "kg");
+function formatDate(s: string) {
+  return new Date(s + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+function shortName(n: string) {
+  return n.replace("Boeren ", "B. ").replace("Morning buns", "Buns").replace(" KG", "kg");
 }
 
 const inputStyle: React.CSSProperties = {
-  border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 13, width: "100%",
-  background: "var(--surface)", color: "var(--text)",
+  border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px",
+  fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)",
 };
+
+function QtyGrid({ qty, onChange, breadTypes }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void; breadTypes: BreadType[] }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8 }}>
+      {breadTypes.map(bt => (
+        <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
+          <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>{shortName(bt.name)}</label>
+          <input type="number" min={0} value={qty[bt.id] || ""} placeholder="0"
+            onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", color: "var(--text)", textAlign: "right" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AddressSelect({ value, onChange, addresses }: { value: string; onChange: (v: string) => void; addresses: Address[] }) {
+  if (addresses.length === 0) return null;
+  return (
+    <div>
+      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
+      <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+        <option value="">-- Geen adres --</option>
+        {addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}</option>)}
+      </select>
+    </div>
+  );
+}
 
 export default function MijnBestellingenPage() {
   const [recurring, setRecurring]   = useState<RecurringOrder[]>([]);
@@ -66,156 +90,129 @@ export default function MijnBestellingenPage() {
   const [addresses, setAddresses]   = useState<Address[]>([]);
   const [loading, setLoading]       = useState(true);
 
-  // Recurring edit state
-  const [editingRecurringId, setEditingRecurringId] = useState<string | null>(null);
-  const [editRecurringQty, setEditRecurringQty]     = useState<Record<string,number>>({});
-  const [savingRecurring, setSavingRecurring]       = useState(false);
-  const [savedRecurringId, setSavedRecurringId]     = useState<string | null>(null);
+  // Email debounce
+  const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function scheduleEmail() {
+    localStorage.setItem("pendingOrderEmail", "1");
+    if (emailTimer.current) clearTimeout(emailTimer.current);
+    emailTimer.current = setTimeout(async () => {
+      localStorage.removeItem("pendingOrderEmail");
+      await fetch("/api/mijn/email-summary", { method: "POST" }).catch(() => {});
+    }, EMAIL_DEBOUNCE_MS);
+  }
 
-  // One-off edit state
-  const [editingOneOffId, setEditingOneOffId] = useState<string | null>(null);
-  const [editOneOffQty, setEditOneOffQty]     = useState<Record<string,number>>({});
-  const [editOneOffNotes, setEditOneOffNotes] = useState("");
-  const [editOneOffAddr, setEditOneOffAddr]   = useState<string>("");
-  const [savingOneOff, setSavingOneOff]       = useState(false);
+  // Recurring edit
+  const [editingRecId, setEditingRecId] = useState<string | null>(null);
+  const [editRecQty, setEditRecQty]     = useState<Record<string,number>>({});
+  const [savingRec, setSavingRec]       = useState(false);
+  const [savedRecId, setSavedRecId]     = useState<string | null>(null);
 
-  // New order state
-  const [showNewOrder, setShowNewOrder] = useState(false);
+  // New recurring
+  const [showNewRec, setShowNewRec]     = useState(false);
+  const [newRecWeekday, setNewRecWeekday] = useState(1);
+  const [newRecQty, setNewRecQty]       = useState<Record<string,number>>({});
+  const [savingNewRec, setSavingNewRec] = useState(false);
+
+  // One-off edit
+  const [editingOOId, setEditingOOId]   = useState<string | null>(null);
+  const [editOOQty, setEditOOQty]       = useState<Record<string,number>>({});
+  const [editOONotes, setEditOONotes]   = useState("");
+  const [editOOAddr, setEditOOAddr]     = useState("");
+  const [savingOO, setSavingOO]         = useState(false);
+
+  // New one-off
+  const [showNewOO, setShowNewOO]       = useState(false);
   const [newDate, setNewDate]           = useState("");
   const [newQty, setNewQty]             = useState<Record<string,number>>({});
   const [newNotes, setNewNotes]         = useState("");
-  const [newAddr, setNewAddr]           = useState<string>("");
+  const [newAddr, setNewAddr]           = useState("");
   const [savingNew, setSavingNew]       = useState(false);
 
   function load() {
     fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
-      .then(data => {
-        setUpcoming(data.orders ?? []);
-        setBreadTypes(data.breadTypes ?? []);
-        setRecurring(data.recurring ?? []);
-        const addrs = data.addresses ?? [];
+      .then(d => {
+        setUpcoming(d.orders ?? []);
+        setBreadTypes(d.breadTypes ?? []);
+        setRecurring(d.recurring ?? []);
+        const addrs = d.addresses ?? [];
         setAddresses(addrs);
         const def = addrs.find((a: Address) => a.isDefault);
-        if (def) setNewAddr(def.id);
+        if (def && !newAddr) setNewAddr(def.id);
         setLoading(false);
       });
   }
   useEffect(() => { load(); }, []);
 
-  function startEditRecurring(order: RecurringOrder) {
+  // Recurring: edit existing
+  function startEditRec(o: RecurringOrder) {
     const q: Record<string,number> = {};
-    for (const l of order.lines) q[l.breadTypeId] = l.quantity;
-    setEditRecurringQty(q);
-    setEditingRecurringId(order.id);
+    o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
+    setEditRecQty(q); setEditingRecId(o.id);
   }
-
-  async function saveRecurring(order: RecurringOrder) {
-    setSavingRecurring(true);
-    const lines = breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecurringQty[bt.id] ?? 0 }));
+  async function saveRec(o: RecurringOrder) {
+    setSavingRec(true);
     const res = await fetch("/api/mijn/bestellingen", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recurringOrderId: order.id, lines }),
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recurringOrderId: o.id, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecQty[bt.id] ?? 0 })) }),
     });
-    setSavingRecurring(false);
-    if (res.ok) {
-      setSavedRecurringId(order.id);
-      setTimeout(() => setSavedRecurringId(null), 3000);
-      setEditingRecurringId(null);
-      load();
-    }
+    setSavingRec(false);
+    if (res.ok) { setSavedRecId(o.id); setTimeout(() => setSavedRecId(null), 3000); setEditingRecId(null); scheduleEmail(); load(); }
   }
-
-  function startEditOneOff(order: OneOffOrder) {
-    const q: Record<string,number> = {};
-    for (const l of order.lines) q[l.breadTypeId] = l.quantity;
-    setEditOneOffQty(q);
-    setEditOneOffNotes(order.notes ?? "");
-    setEditOneOffAddr(order.deliveryAddressId ?? (addresses.find(a => a.isDefault)?.id ?? ""));
-    setEditingOneOffId(order.id);
-  }
-
-  async function saveOneOff(order: OneOffOrder) {
-    setSavingOneOff(true);
-    const lines = breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOneOffQty[bt.id] ?? 0 })).filter(l => l.quantity > 0);
-    const res = await fetch("/api/mijn/bestellingen", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: order.id,
-        notes: editOneOffNotes || undefined,
-        deliveryAddressId: editOneOffAddr || null,
-        lines,
-      }),
-    });
-    setSavingOneOff(false);
-    if (res.ok) {
-      setEditingOneOffId(null);
-      load();
-    }
-  }
-
-  async function placeOneOff() {
-    if (!newDate || Object.values(newQty).every(v => v === 0)) return;
-    if (!isEditable(newDate)) return;
-    setSavingNew(true);
-    await fetch("/api/mijn/bestellingen", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        deliveryDate: newDate,
-        notes: newNotes || undefined,
-        deliveryAddressId: newAddr || undefined,
-        lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })),
-      }),
-    });
-    setSavingNew(false);
-    setShowNewOrder(false);
-    setNewQty({});
-    setNewNotes("");
+  async function deleteRec(id: string) {
+    if (!confirm("Vaste bestelling verwijderen?")) return;
+    await fetch(`/api/mijn/bestellingen?id=${id}&type=recurring`, { method: "DELETE" });
     load();
   }
 
-  async function deleteOneOff(id: string) {
+  // Recurring: create new
+  async function createRec() {
+    setSavingNewRec(true);
+    const res = await fetch("/api/mijn/bestellingen", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weekday: newRecWeekday, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: newRecQty[bt.id] ?? 0 })) }),
+    });
+    setSavingNewRec(false);
+    if (res.ok) { setShowNewRec(false); setNewRecQty({}); scheduleEmail(); load(); }
+  }
+
+  // One-off: edit
+  function startEditOO(o: OneOffOrder) {
+    const q: Record<string,number> = {};
+    o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
+    setEditOOQty(q); setEditOONotes(o.notes ?? "");
+    setEditOOAddr(o.deliveryAddressId ?? addresses.find(a => a.isDefault)?.id ?? "");
+    setEditingOOId(o.id);
+  }
+  async function saveOO(o: OneOffOrder) {
+    setSavingOO(true);
+    const res = await fetch("/api/mijn/bestellingen", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, deliveryAddressId: editOOAddr || null, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
+    });
+    setSavingOO(false);
+    if (res.ok) { setEditingOOId(null); scheduleEmail(); load(); }
+  }
+  async function deleteOO(id: string) {
     if (!confirm("Bestelling annuleren?")) return;
     await fetch(`/api/mijn/bestellingen?id=${id}`, { method: "DELETE" });
     load();
   }
 
+  // One-off: create
+  async function createOO() {
+    if (!newDate || Object.values(newQty).every(v => v === 0) || !isEditable(newDate)) return;
+    setSavingNew(true);
+    await fetch("/api/mijn/bestellingen", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deliveryDate: newDate, notes: newNotes || undefined, deliveryAddressId: newAddr || undefined, lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity })) }),
+    });
+    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes("");
+    scheduleEmail(); load();
+  }
+
+  const usedWeekdays = new Set(recurring.map(r => r.weekday));
+  const availableWeekdays = [1,2,3,4,5,6,7].filter(d => !usedWeekdays.has(d));
   const today = new Date().toISOString().slice(0,10);
-
-  function AddressSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-    if (addresses.length === 0) return null;
-    return (
-      <div>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
-        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
-          <option value="">-- Geen adres geselecteerd --</option>
-          {addresses.map(a => (
-            <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}</option>
-          ))}
-        </select>
-      </div>
-    );
-  }
-
-  function QtyGrid({ qty, onChange }: { qty: Record<string,number>; onChange: (q: Record<string,number>) => void }) {
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 8 }}>
-        {breadTypes.map(bt => (
-          <div key={bt.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px" }}>
-            <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-              {shortName(bt.name)}
-            </label>
-            <input type="number" min={0} value={qty[bt.id] || ""}
-              onChange={e => onChange({ ...qty, [bt.id]: parseInt(e.target.value) || 0 })}
-              placeholder="0"
-              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", fontSize: 15, fontWeight: 600, background: "var(--surface)", textAlign: "right", color: "var(--text)" }} />
-          </div>
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div style={{ padding: "1.5rem", maxWidth: 700 }}>
@@ -229,74 +226,89 @@ export default function MijnBestellingenPage() {
       {!loading && (
         <>
           {/* Vaste bestellingen */}
-          {recurring.length > 0 && (
-            <section style={{ marginBottom: "2rem" }}>
-              <h2 style={{ fontSize: 17, marginBottom: "0.75rem" }}>Vaste bestellingen</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {recurring.map(order => {
-                  const isEditing = editingRecurringId === order.id;
-                  const editable = isRecurringEditable(order.weekday);
-                  const nextDate = nextDateForWeekday(order.weekday);
-                  const timeLeft = timeUntilCutoff(nextDate);
+          <section style={{ marginBottom: "2rem" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+              <h2 style={{ fontSize: 17, margin: 0 }}>Vaste bestellingen</h2>
+              {availableWeekdays.length > 0 && (
+                <button onClick={() => { setNewRecWeekday(availableWeekdays[0]); setShowNewRec(true); }} className="btn-secondary" style={{ fontSize: 12 }}>
+                  + Dag toevoegen
+                </button>
+              )}
+            </div>
 
-                  return (
-                    <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
-                        <div>
-                          <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
-                          {editable && timeLeft && (
-                            <span style={{ fontSize: 12, color: "var(--success)", marginLeft: 8 }}>Wijzigen mogelijk ({timeLeft})</span>
-                          )}
-                          {!editable && (
-                            <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>Gesloten voor wijzigingen</span>
-                          )}
-                        </div>
-                        {editable && !isEditing && (
-                          <button onClick={() => startEditRecurring(order)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>Wijzigen</button>
-                        )}
-                        {isEditing && (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => setEditingRecurringId(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
-                            <button onClick={() => saveRecurring(order)} disabled={savingRecurring} className="btn-primary" style={{ fontSize: 12 }}>
-                              {savingRecurring ? "Opslaan..." : "Opslaan"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {savedRecurringId === order.id && (
-                        <p style={{ color: "var(--success)", fontSize: 13, margin: "4px 0 0" }}>Opgeslagen - bevestiging verstuurd</p>
-                      )}
-
-                      {!isEditing && (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                          {order.lines.filter(l => l.quantity > 0).map(l => (
-                            <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
-                              {shortName(l.breadType.name)} x {l.quantity}
-                            </span>
-                          ))}
-                          {order.lines.length === 0 && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Geen producten</span>}
-                        </div>
-                      )}
-
-                      {isEditing && <QtyGrid qty={editRecurringQty} onChange={setEditRecurringQty} />}
-                    </div>
-                  );
-                })}
+            {recurring.length === 0 && !showNewRec && (
+              <div className="card" style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>
+                Nog geen vaste bestellingen. Klik op "Dag toevoegen" om te starten.
               </div>
-            </section>
-          )}
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {recurring.map(order => {
+                const isEditing = editingRecId === order.id;
+                const editable = isRecurringEditable(order.weekday);
+                const timeLeft = timeUntilCutoff(nextDateStr(order.weekday));
+
+                return (
+                  <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
+                      <div>
+                        <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
+                        {editable && timeLeft && <span style={{ fontSize: 12, color: "var(--success)", marginLeft: 8 }}>Wijzigen mogelijk ({timeLeft})</span>}
+                        {!editable && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>Gesloten voor wijzigingen</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {editable && !isEditing && <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>}
+                        {isEditing && <>
+                          <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
+                          <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
+                        </>}
+                        {!isEditing && <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>Verwijder</button>}
+                      </div>
+                    </div>
+
+                    {savedRecId === order.id && <p style={{ color: "var(--success)", fontSize: 12, marginTop: 4 }}>Opgeslagen</p>}
+
+                    {!isEditing && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        {order.lines.filter(l => l.quantity > 0).map(l => (
+                          <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
+                            {shortName(l.breadType.name)} x {l.quantity}
+                          </span>
+                        ))}
+                        {order.lines.length === 0 && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Geen producten</span>}
+                      </div>
+                    )}
+                    {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} />}
+                  </div>
+                );
+              })}
+
+              {showNewRec && (
+                <div className="card" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Dag</label>
+                    <select value={newRecWeekday} onChange={e => setNewRecWeekday(Number(e.target.value))} style={inputStyle}>
+                      {availableWeekdays.map(d => <option key={d} value={d}>{WEEKDAYS[d]}</option>)}
+                    </select>
+                  </div>
+                  <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setShowNewRec(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                    <button onClick={createRec} disabled={savingNewRec} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* Eenmalige bestellingen */}
           <section>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
-              <button onClick={() => { setShowNewOrder(true); }} className="btn-primary" style={{ fontSize: 13 }}>
-                + Bestelling plaatsen
-              </button>
+              <button onClick={() => setShowNewOO(true)} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
             </div>
 
-            {showNewOrder && (
+            {showNewOO && (
               <div className="card" style={{ padding: "1.25rem", marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
@@ -308,32 +320,27 @@ export default function MijnBestellingenPage() {
                     <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inputStyle} />
                   </div>
                 </div>
-                <AddressSelect value={newAddr} onChange={setNewAddr} />
+                <AddressSelect value={newAddr} onChange={setNewAddr} addresses={addresses} />
                 {newDate && !isEditable(newDate) && (
-                  <p style={{ color: "var(--danger)", fontSize: 13 }}>Te laat - de bestelling voor {newDate} moest voor 4:00 uur zijn geplaatst.</p>
+                  <p style={{ color: "var(--danger)", fontSize: 13 }}>Te laat - bestelling moet voor 4:00 uur worden geplaatst.</p>
                 )}
-                <QtyGrid qty={newQty} onChange={setNewQty} />
+                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setShowNewOrder(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                  <button onClick={placeOneOff} disabled={savingNew || !newDate || !isEditable(newDate)} className="btn-primary" style={{ fontSize: 13 }}>
-                    {savingNew ? "Plaatsen..." : "Bestelling plaatsen"}
-                  </button>
+                  <button onClick={() => setShowNewOO(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                  <button onClick={createOO} disabled={savingNew || !newDate || !isEditable(newDate)} className="btn-primary" style={{ fontSize: 13 }}>{savingNew ? "Plaatsen..." : "Bestelling plaatsen"}</button>
                 </div>
               </div>
             )}
 
-            {upcoming.length === 0 && !showNewOrder && (
-              <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>
-                Geen komende eenmalige bestellingen.
-              </div>
+            {upcoming.length === 0 && !showNewOO && (
+              <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>Geen komende eenmalige bestellingen.</div>
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {upcoming.map(order => {
                 const editable = isEditable(order.deliveryDate);
                 const timeLeft = timeUntilCutoff(order.deliveryDate);
-                const isEditing = editingOneOffId === order.id;
-
+                const isEditing = editingOOId === order.id;
                 return (
                   <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
@@ -357,14 +364,12 @@ export default function MijnBestellingenPage() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0, marginLeft: 12 }}>
                         {editable && timeLeft && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeLeft}</span>}
-                        {editable && !isEditing && (
-                          <button onClick={() => startEditOneOff(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
-                        )}
-                        {editable && !isEditing && (
-                          <button onClick={() => deleteOneOff(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>
-                            Annuleren
-                          </button>
-                        )}
+                        {editable && !isEditing && <button onClick={() => startEditOO(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>}
+                        {isEditing && <>
+                          <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
+                          <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 11 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
+                        </>}
+                        {editable && !isEditing && <button onClick={() => deleteOO(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>Annuleren</button>}
                       </div>
                     </div>
 
@@ -373,17 +378,11 @@ export default function MijnBestellingenPage() {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                           <div>
                             <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                            <input value={editOneOffNotes} onChange={e => setEditOneOffNotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
+                            <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
                           </div>
                         </div>
-                        <AddressSelect value={editOneOffAddr} onChange={setEditOneOffAddr} />
-                        <QtyGrid qty={editOneOffQty} onChange={setEditOneOffQty} />
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => setEditingOneOffId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-                          <button onClick={() => saveOneOff(order)} disabled={savingOneOff} className="btn-primary" style={{ fontSize: 13 }}>
-                            {savingOneOff ? "Opslaan..." : "Opslaan"}
-                          </button>
-                        </div>
+                        <AddressSelect value={editOOAddr} onChange={setEditOOAddr} addresses={addresses} />
+                        <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} />
                       </div>
                     )}
                   </div>

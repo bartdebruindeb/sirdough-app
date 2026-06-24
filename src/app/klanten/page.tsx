@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 
 type User = { id: string; email: string; active: boolean } | null;
+type DeliveryAddress = { id: string; label: string; street: string; postalCode: string; city: string; isDefault: boolean };
 type Customer = {
   id: string; name: string; city: string | null; address: string | null;
   postalCode: string | null;
@@ -11,6 +12,7 @@ type Customer = {
   preferredBread: string | null;
   lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
+  deliveryAddresses: DeliveryAddress[];
 };
 
 const inp: React.CSSProperties = {
@@ -507,6 +509,15 @@ export default function KlantenPage() {
                     {c.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontStyle: "italic" }}>{c.notes}</span>}
                     {c.preferredBread && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "1px 7px", borderRadius: 8 }}>🍞 {c.preferredBread}</span>}
                   </div>
+                  {c.deliveryAddresses?.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                      {c.deliveryAddresses.map(a => (
+                        <span key={a.id} style={{ fontSize: 11, color: "var(--text-subtle)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 8px" }}>
+                          {a.isDefault ? "⭐ " : ""}{a.label}: {a.street}, {a.postalCode} {a.city}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Account status */}

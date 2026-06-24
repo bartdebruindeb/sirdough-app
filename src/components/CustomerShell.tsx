@@ -47,7 +47,13 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{name}</span>
-          <button onClick={() => signOut({ callbackUrl: "/login" })}
+          <button onClick={async () => {
+            if (localStorage.getItem("pendingOrderEmail")) {
+              localStorage.removeItem("pendingOrderEmail");
+              await fetch("/api/mijn/email-summary", { method: "POST" }).catch(() => {});
+            }
+            signOut({ callbackUrl: "/login" });
+          }}
             style={{ fontSize: 12, padding: "5px 10px", borderRadius: 6, border: "1px solid #3c2a1e",
               background: "transparent", color: "#9c8878", cursor: "pointer", fontFamily: "var(--font-body)" }}>
             Uitloggen

@@ -20,7 +20,10 @@ export async function GET(req: Request) {
 
     const customers = await prisma.customer.findMany({
       where: { tenantId: tid },
-      include: { user: { select: { id: true, email: true, active: true } } },
+      include: {
+        user: { select: { id: true, email: true, active: true } },
+        deliveryAddresses: { orderBy: [{ isDefault: "desc" }, { id: "asc" }] },
+      },
       orderBy: sortBy === "city"
         ? [{ city: "asc" }, { name: "asc" }]
         : [{ name: "asc" }],

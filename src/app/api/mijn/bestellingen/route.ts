@@ -214,13 +214,53 @@ export async function PATCH(req: Request) {
   } catch (e) { return toResponse(e); }
 }
 
+const CreateRecurringSchema = z.object({
+  weekday: z.number().int().min(1).max(7),
+  lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
+});
+
+// PUT /api/mijn/bestellingen — create a new recurring order for a weekday
+export async function PUT(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    const customer = await getCustomer(session);
+    const input = await parseJson(req, CreateRecurringSchema);
+
+    const existing = await prisma.recurringOrder.findFirst({
+      where: { tenantId: customer.tenantId, customerId: customer.id, weekday: input.weekday },
+    });
+    if (existing) return Response.json({ error: "CONFLICT", message: "Er bestaat al een vaste bestelling voor deze dag." }, { status: 409 });
+
+    const order = await prisma.recurringOrder.create({
+      data: {
+        tenantId: customer.tenantId,
+        customerId: customer.id,
+        weekday: input.weekday,
+        active: true,
+        lines: {
+          create: input.lines.filter(l => l.quantity > 0),
+        },
+      },
+      include: { lines: { include: { breadType: true } } },
+    });
+
+    return Response.json(order, { status: 201 });
+  } catch (e) { return toResponse(e); }
+}
+
 export async function DELETE(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const customer = await getCustomer(session);
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
+    const type = url.searchParams.get("type"); // "recurring" or omit for one-off
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
+
+    if (type === "recurring") {
+      await prisma.recurringOrder.deleteMany({ where: { id, customerId: customer.id } });
+      return new Response(null, { status: 204 });
+    }
 
     const order = await prisma.oneOffOrder.findFirst({ where: { id, customerId: customer.id } });
     if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
