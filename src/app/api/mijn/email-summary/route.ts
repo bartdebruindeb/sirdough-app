@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const session = await getServerSession(authOptions);
-    const customerId = session?.user?.customerId as string | undefined;
+    const customerId = (session?.user as any)?.customerId as string | undefined;
     if (!customerId) return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
