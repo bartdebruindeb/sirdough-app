@@ -13,6 +13,7 @@ type Customer = {
   lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
   discountPercent: number;
+  customerNumber: number | null;
   deliveryAddresses: DeliveryAddress[];
 };
 
@@ -519,6 +520,26 @@ export default function KlantenPage() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Customer number */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 64 }}>
+                  <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase" }}>Klantnr.</label>
+                  <input
+                    type="number"
+                    value={c.customerNumber ?? ""}
+                    placeholder="—"
+                    onBlur={async e => {
+                      const val = e.target.value === "" ? null : Number(e.target.value);
+                      await fetch("/api/customers", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: c.id, customerNumber: val }),
+                      });
+                      setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, customerNumber: val } : x));
+                    }}
+                    style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "4px 6px", width: 60, textAlign: "center" }}
+                  />
                 </div>
 
                 {/* Discount selector */}

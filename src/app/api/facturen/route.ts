@@ -9,6 +9,7 @@ import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
 import { createExactInvoice } from "@/server/lib/exact";
 import { buildInvoiceHtml } from "@/server/lib/invoiceHtml";
+import { buildPdfData, generateInvoicePdf } from "@/server/lib/invoicePdf";
 import { Resend } from "resend";
 import { z } from "zod";
 
@@ -130,68 +131,62 @@ export async function POST(req: Request) {
 
     const { start, end } = weekBounds(input.week);
 
-    const customer = await (prisma as any).customer.findUnique({
-      where: { id: input.customerId, tenantId: tid },
-    });
-    if (!customer) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+    // Build PDF data (fetches tenant + customer + orders from DB)
+    const pdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, null);
+    const totalExcl = pdfData.totalExcl;
+    const customer = { name: pdfData.customerName, email: pdfData.customerEmail };
 
-    const orders = await prisma.oneOffOrder.findMany({
-      where: { id: { in: input.orderIds }, tenantId: tid },
-      include: { lines: { include: { breadType: true } } },
-    });
-
-    const discount = customer.discountPercent ?? 0;
-    const lines = orders.flatMap((o: any) =>
-      o.lines.map((l: any) => ({
-        description: `${l.breadType.name} (${o.deliveryDate.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })})`,
-        quantity: l.quantity,
-        unitPrice: (l.breadType.price ? Number(l.breadType.price) : 0) * (1 - discount / 100),
-      }))
-    );
-    const totalExcl = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-
-    // Try Exact Online
-    const invoiceDate = end.toISOString().slice(0, 10);
+    // Try Exact Online to get invoice number
     const exact = await createExactInvoice(tid, {
-      customerName: customer.name,
-      customerEmail: customer.email ?? "",
-      invoiceDate,
-      lines,
+      customerName: pdfData.customerName,
+      customerEmail: pdfData.customerEmail ?? "",
+      invoiceDate: end.toISOString().slice(0, 10),
+      lines: pdfData.deliveryGroups.flatMap(g => g.lines.map(l => ({
+        description: `${l.description} (${g.date})`,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      }))),
       yourRef: `Week ${input.week}`,
     }).catch(() => null);
 
-    // Save invoice record
+    const invoiceNumber = exact?.invoiceNumber ?? null;
+
+    // Generate PDF with final invoice number
+    const finalPdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, invoiceNumber);
+    const pdfBuffer = await generateInvoicePdf(finalPdfData);
+    const finalNumber = finalPdfData.invoiceNumber;
+
+    // Save invoice record with PDF
     const invoice = await (prisma as any).invoice.create({
       data: {
         tenantId: tid,
         customerId: input.customerId,
-        invoiceNumber: exact?.invoiceNumber ?? null,
+        invoiceNumber: invoiceNumber,
         exactGuid: exact?.exactGuid ?? null,
         periodStart: start,
         periodEnd: end,
         totalAmountExcl: totalExcl,
         vatPercent: input.vatPercent,
+        pdfData: pdfBuffer,
         orders: { create: input.orderIds.map(id => ({ orderId: id })) },
       },
     });
 
-    const invoiceNumber = invoice.invoiceNumber ?? `DBK-${invoice.id.slice(-6).toUpperCase()}`;
-
-    // Send email
-    if (customer.email) {
+    // Send email with PDF attachment
+    if (pdfData.customerEmail) {
       await sendInvoiceEmail({
-        to: customer.email,
-        customerName: customer.name,
-        invoiceNumber,
+        to: pdfData.customerEmail,
+        customerName: pdfData.customerName,
+        invoiceNumber: finalNumber,
         week: input.week,
-        lines: lines.map(l => ({ ...l, lineTotal: l.quantity * l.unitPrice })),
+        pdfBuffer,
         totalExcl,
         vatPercent: input.vatPercent,
       });
       await (prisma as any).invoice.update({ where: { id: invoice.id }, data: { sentAt: new Date() } });
     }
 
-    return Response.json({ ok: true, invoiceNumber, sentTo: customer.email ?? null });
+    return Response.json({ ok: true, invoiceId: invoice.id, invoiceNumber: finalNumber, sentTo: pdfData.customerEmail ?? null });
   } catch (e) { return toResponse(e); }
 }
 
@@ -200,20 +195,34 @@ async function sendInvoiceEmail(opts: {
   customerName: string;
   invoiceNumber: string;
   week: string;
-  lines: { description: string; quantity: number; unitPrice: number; lineTotal: number }[];
+  pdfBuffer: Buffer;
   totalExcl: number;
   vatPercent: number;
 }) {
   const key = process.env.RESEND_API_KEY;
   if (!key) { console.warn("RESEND_API_KEY not set — invoice email skipped"); return; }
   const from = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
+  const vat = opts.totalExcl * (opts.vatPercent / 100);
+  const total = opts.totalExcl + vat;
+  const [year, wn] = opts.week.split("-W");
 
-  const html = buildInvoiceHtml(opts);
+  const html = `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+    <p style="font-size:18px;font-weight:700">Digital Bakery</p>
+    <p>Beste ${opts.customerName},</p>
+    <p>Bijgaand de factuur voor week ${wn} van ${year}.</p>
+    <p style="font-size:15px;font-weight:700">Totaal te voldoen: € ${(total).toFixed(2).replace(".", ",")}</p>
+    <p style="font-size:12px;color:#999">De factuur is als bijlage toegevoegd aan deze e-mail.</p>
+  </div>`;
+
   const resend = new Resend(key);
   await resend.emails.send({
     from,
     to: opts.to,
     subject: `Factuur ${opts.invoiceNumber} – Digital Bakery`,
     html,
+    attachments: [{
+      filename: `factuur-${opts.invoiceNumber}.pdf`,
+      content: opts.pdfBuffer,
+    }],
   });
 }

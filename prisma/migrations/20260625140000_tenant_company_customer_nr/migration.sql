@@ -1,0 +1,15 @@
+ALTER TABLE "Tenant" ADD COLUMN "companyName"      TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyAddress"   TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyPostal"    TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyCity"      TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "kvk"              TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "btwNumber"        TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "iban"             TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "bic"              TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyPhone"     TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyEmail"     TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "companyWebsite"   TEXT;
+ALTER TABLE "Tenant" ADD COLUMN "paymentTermDays"  INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE "Tenant" ADD COLUMN "paymentCondition" TEXT NOT NULL DEFAULT '30 dagen';
+ALTER TABLE "Customer" ADD COLUMN "customerNumber" INTEGER;
+ALTER TABLE "Invoice" ADD COLUMN "pdfData"         BYTEA;

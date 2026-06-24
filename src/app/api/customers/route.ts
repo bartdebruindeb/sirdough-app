@@ -95,6 +95,7 @@ const UpdateCustomerSchema = z.object({
   preferredBread: z.string().optional(),
   active: z.boolean().optional(),
   discountPercent: z.number().int().min(0).max(100).optional(),
+  customerNumber: z.number().int().nullable().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
 });
@@ -122,6 +123,7 @@ export async function PATCH(req: Request) {
         ...(data.preferredBread !== undefined && { preferredBread: data.preferredBread || null }),
         ...(data.active !== undefined && { active: data.active }),
         ...(data.discountPercent !== undefined && { discountPercent: data.discountPercent }),
+        ...(data.customerNumber !== undefined && { customerNumber: data.customerNumber }),
         ...(data.lat !== undefined && { lat: data.lat }),
         ...(data.lng !== undefined && { lng: data.lng }),
       },
