@@ -56,15 +56,15 @@ function shortName(n: string) {
 
 // Map bread name → image in /brood/. Strip weight suffixes to find base name.
 const BREAD_IMAGES: Record<string, string> = {
-  "Baguette Kaas Peper": "Baguette Kaas Peper.jpg",
+  "Baguette Kaas Peper": "Baguette-Kaas-Peper.jpg",
   "Baguette":            "Baquette.jpg",
-  "Boeren":              "Boeren 1kg.jpg",
-  "Choco koek":          "Choco koek.jpg",
-  "Gekiemde Rogge":      "Gekiemde Rogge.jpg",
-  "Kaneel Bun":          "Kaneel Bun.jpg",
-  "Kardemon Bun":        "Kardemon Bun.jpg",
-  "Morning Buns":        "Morning Buns.jpg",
-  "Morning buns":        "Morning Buns.jpg",
+  "Boeren":              "Boeren-1kg.jpg",
+  "Choco koek":          "Choco-koek.jpg",
+  "Gekiemde Rogge":      "Gekiemde-Rogge.jpg",
+  "Kaneel Bun":          "Kaneel-Bun.jpg",
+  "Kardemon Bun":        "Kardemon-Bun.jpg",
+  "Morning Buns":        "Morning-Buns.jpg",
+  "Morning buns":        "Morning-Buns.jpg",
   "Olijf":               "Olijf.jpg",
   "Rozijn":              "Rozijn.jpg",
   "Sesam":               "Sesam.jpg",
@@ -74,11 +74,10 @@ const BREAD_IMAGES: Record<string, string> = {
 };
 
 function breadImage(name: string): string | null {
-  // Try exact match first
-  if (BREAD_IMAGES[name]) return `/brood/${encodeURIComponent(BREAD_IMAGES[name])}`;
+  if (BREAD_IMAGES[name]) return `/brood/${BREAD_IMAGES[name]}`;
   // Strip weight suffix: "Sesam 1,5 KG" → "Sesam", "Boeren 1KG" → "Boeren"
   const base = name.replace(/\s*(1[,.]?5?\s*KG|1\s*KG|750\s*g?r?|0[,.]?75\s*KG)\s*$/i, "").trim();
-  if (BREAD_IMAGES[base]) return `/brood/${encodeURIComponent(BREAD_IMAGES[base])}`;
+  if (BREAD_IMAGES[base]) return `/brood/${BREAD_IMAGES[base]}`;
   return null;
 }
 // weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
