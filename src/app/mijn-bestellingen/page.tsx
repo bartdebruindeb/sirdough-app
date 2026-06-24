@@ -303,6 +303,10 @@ export default function MijnBestellingenPage() {
                 const upcomingDates = getUpcomingDates(order.weekday);
                 const skippedDates = new Set(order.exceptions.filter(e => !e.active).map(e => e.date));
 
+                // Find next editable occurrence (may be next week if this week is locked)
+                const nextEditable = upcomingDates.find(d => isEditable(d)) ?? null;
+                const thisWeekLocked = !editable && order.active;
+
                 return (
                   <div key={order.id} className="card" style={{ padding: "1rem 1.25rem", opacity: order.active ? 1 : 0.65 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isEditing ? 12 : 4 }}>
@@ -310,14 +314,19 @@ export default function MijnBestellingenPage() {
                         <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
                         {!order.active && <span style={{ fontSize: 11, background: "var(--danger-bg)", color: "var(--danger)", padding: "2px 8px", borderRadius: 8 }}>Gepauzeerd</span>}
                         {order.active && editable && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeUntilCutoff(next)}</span>}
-                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Gesloten</span>}
+                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Vandaag gesloten</span>}
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {order.active && editable && !isEditing && (
+                        {order.active && !isEditing && (
                           <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
                         {isEditing && (
                           <>
+                            {thisWeekLocked && nextEditable && (
+                              <span style={{ fontSize: 10, color: "var(--text-subtle)", alignSelf: "center" }}>
+                                geldt vanaf {new Date(nextEditable+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"})}
+                              </span>
+                            )}
                             <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
                             <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
                           </>
@@ -533,6 +542,84 @@ export default function MijnBestellingenPage() {
               })}
             </div>
           </section>
+
+          {/* Deze week overzicht */}
+          {(() => {
+            const now = new Date();
+            // Monday of current week
+            const mon = new Date(now);
+            mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+            mon.setHours(0,0,0,0);
+            const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+
+            // Collect items for each day this week
+            const weekItems: { date: string; lines: { name: string; quantity: number }[]; source: "vast"|"eenmalig"; locked: boolean }[] = [];
+
+            // Recurring orders active this week
+            recurring.filter(o => o.active).forEach(o => {
+              // Find the date this weekday falls in current week
+              const d = new Date(mon); d.setDate(mon.getDate() + ((o.weekday - 1 + 7) % 7));
+              const dateStr = d.toISOString().slice(0,10);
+              // Only include if it's within this week
+              if (d >= mon && d <= sun) {
+                const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
+                if (!skipped && o.lines.some(l => l.quantity > 0)) {
+                  weekItems.push({
+                    date: dateStr,
+                    lines: o.lines.filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+                    source: "vast",
+                    locked: !isEditable(dateStr),
+                  });
+                }
+              }
+            });
+
+            // One-off orders this week
+            upcoming.forEach(o => {
+              const d = new Date(o.deliveryDate + "T12:00:00Z");
+              if (d >= mon && d <= sun) {
+                weekItems.push({
+                  date: o.deliveryDate,
+                  lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
+                  source: "eenmalig",
+                  locked: !isEditable(o.deliveryDate),
+                });
+              }
+            });
+
+            weekItems.sort((a,b) => a.date.localeCompare(b.date));
+            if (weekItems.length === 0) return null;
+
+            return (
+              <section style={{ marginBottom: "2rem" }}>
+                <h2 style={{ fontSize: 17, marginBottom: "0.75rem" }}>Deze week</h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {weekItems.map((item, i) => (
+                    <div key={i} className="card" style={{ padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ minWidth: 80 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+                          {new Date(item.date+"T12:00:00Z").toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"})}
+                        </p>
+                        <span style={{ fontSize: 10, color: item.locked ? "var(--text-subtle)" : "var(--success)" }}>
+                          {item.locked ? "gesloten" : timeUntilCutoff(item.date)}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flex: 1 }}>
+                        {item.lines.map((l,j) => (
+                          <span key={j} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 9px", borderRadius: 12 }}>
+                            {shortName(l.name)} ×{l.quantity}
+                          </span>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--text-subtle)", flexShrink: 0 }}>
+                        {item.source === "vast" ? "vast" : "eenmalig"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Bestelhistorie */}
           {pastOrders.length > 0 && (
