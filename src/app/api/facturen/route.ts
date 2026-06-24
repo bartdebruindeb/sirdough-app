@@ -117,6 +117,7 @@ const SendSchema = z.object({
   orderIds: z.array(z.string()),
   week: z.string(),
   vatPercent: z.number().default(9),
+  billingEntityId: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
     const { start, end } = weekBounds(input.week);
 
     // Build PDF data (fetches tenant + customer + orders from DB)
-    const pdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, null);
+    const pdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, null, input.billingEntityId);
     const totalExcl = pdfData.totalExcl;
     const customer = { name: pdfData.customerName, email: pdfData.customerEmail };
 
@@ -152,7 +153,7 @@ export async function POST(req: Request) {
     const invoiceNumber = exact?.invoiceNumber ?? null;
 
     // Generate PDF with final invoice number
-    const finalPdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, invoiceNumber);
+    const finalPdfData = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, invoiceNumber, input.billingEntityId);
     const pdfBuffer = await generateInvoicePdf(finalPdfData);
     const finalNumber = finalPdfData.invoiceNumber;
 
@@ -161,6 +162,7 @@ export async function POST(req: Request) {
       data: {
         tenantId: tid,
         customerId: input.customerId,
+        billingEntityId: input.billingEntityId ?? null,
         invoiceNumber: invoiceNumber,
         exactGuid: exact?.exactGuid ?? null,
         periodStart: start,

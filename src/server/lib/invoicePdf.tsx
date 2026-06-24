@@ -244,8 +244,9 @@ export async function buildPdfData(
   week: string,
   vatPercent: number,
   invoiceNumber: string | null,
+  billingEntityId?: string | null,
 ): Promise<PdfInvoiceData> {
-  const [tenant, customer, orders] = await Promise.all([
+  const [tenant, customer, orders, billingEntity] = await Promise.all([
     (prisma as any).tenant.findUnique({ where: { id: tenantId } }),
     (prisma as any).customer.findUnique({ where: { id: customerId, tenantId } }),
     prisma.oneOffOrder.findMany({
@@ -253,7 +254,13 @@ export async function buildPdfData(
       include: { lines: { include: { breadType: true } } },
       orderBy: { deliveryDate: "asc" },
     }),
+    billingEntityId
+      ? (prisma as any).billingEntity.findUnique({ where: { id: billingEntityId } })
+      : (prisma as any).billingEntity.findFirst({ where: { tenantId, isDefault: true } }),
   ]);
+
+  // Use billing entity if found, fall back to tenant fields
+  const biller = billingEntity ?? tenant;
 
   const discount: number = customer?.discountPercent ?? 0;
 
@@ -285,19 +292,19 @@ export async function buildPdfData(
   const nr = invoiceNumber ?? `DBK-${Math.floor(Date.now() / 1000).toString(36).toUpperCase()}`;
 
   return {
-    companyName: tenant?.companyName ?? tenant?.name ?? "Digital Bakery",
-    companyAddress: tenant?.companyAddress,
-    companyPostal: tenant?.companyPostal,
-    companyCity: tenant?.companyCity,
-    kvk: tenant?.kvk,
-    btwNumber: tenant?.btwNumber,
-    iban: tenant?.iban,
-    bic: tenant?.bic,
-    companyPhone: tenant?.companyPhone,
-    companyEmail: tenant?.companyEmail,
-    companyWebsite: tenant?.companyWebsite,
-    paymentTermDays: tenant?.paymentTermDays ?? 30,
-    paymentCondition: tenant?.paymentCondition ?? "30 dagen",
+    companyName: biller?.name ?? biller?.companyName ?? tenant?.name ?? "Digital Bakery",
+    companyAddress: biller?.companyAddress,
+    companyPostal: biller?.companyPostal,
+    companyCity: biller?.companyCity,
+    kvk: biller?.kvk,
+    btwNumber: biller?.btwNumber,
+    iban: biller?.iban,
+    bic: biller?.bic,
+    companyPhone: biller?.companyPhone,
+    companyEmail: biller?.companyEmail,
+    companyWebsite: biller?.companyWebsite,
+    paymentTermDays: biller?.paymentTermDays ?? 30,
+    paymentCondition: biller?.paymentCondition ?? "30 dagen",
     customerName: customer?.name ?? "",
     customerAddress: customer?.address,
     customerPostal: customer?.postalCode,

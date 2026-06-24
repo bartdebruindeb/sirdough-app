@@ -18,6 +18,7 @@ const Schema = z.object({
   orderIds: z.array(z.string()),
   week: z.string(),
   vatPercent: z.number().default(9),
+  billingEntityId: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
     const input = Schema.parse(await req.json());
 
-    const data = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, null);
+    const data = await buildPdfData(tid, input.customerId, input.orderIds, input.week, input.vatPercent, null, input.billingEntityId);
     const pdf = await generateInvoicePdf(data);
 
     return new Response(pdf as unknown as BodyInit, {

@@ -57,6 +57,7 @@ model Tenant {
   announcements      Announcement[]
   productionBatches  ProductionBatch[]
   invoices           Invoice[]
+  billingEntities    BillingEntity[]
   exactToken         ExactToken?
 }
 
@@ -461,6 +462,32 @@ model DeliveryStatus {
   @@index([tenantId, date])
 }
 
+// ─── Billing entities (one per BV) ───────────────────────────────────────────
+
+model BillingEntity {
+  id               String  @id @default(cuid())
+  tenantId         String
+  name             String
+  companyAddress   String?
+  companyPostal    String?
+  companyCity      String?
+  kvk              String?
+  btwNumber        String?
+  iban             String?
+  bic              String?
+  companyPhone     String?
+  companyEmail     String?
+  companyWebsite   String?
+  paymentTermDays  Int     @default(30)
+  paymentCondition String  @default("30 dagen")
+  isDefault        Boolean @default(false)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+
+  @@index([tenantId])
+}
+
 // ─── Invoicing ────────────────────────────────────────────────────────────────
 
 model Invoice {
@@ -473,13 +500,15 @@ model Invoice {
   periodEnd      DateTime  // end of billed period (Sunday)
   totalAmountExcl Decimal  // excl. BTW
   vatPercent     Int       @default(9)
+  billingEntityId String?
   sentAt         DateTime?
   pdfData        Bytes?    // stored PDF binary
   createdAt      DateTime  @default(now())
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id])
-  customer Customer         @relation(fields: [customerId], references: [id])
-  orders   InvoiceOrder[]
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  billingEntity BillingEntity?   @relation(fields: [billingEntityId], references: [id])
+  orders        InvoiceOrder[]
 
   @@index([tenantId, periodStart])
 }

@@ -4,8 +4,10 @@ import { useSearchParams } from "next/navigation";
 
 type InvoiceLine = { name: string; quantity: number; unitPrice: number; lineTotal: number; date: string };
 type CustomerRow = { customerId: string; customerName: string; customerEmail: string | null; discountPercent: number; lines: InvoiceLine[]; total: number; orderIds: string[] };
-type SentInvoice = { id: string; customerId: string; customerName?: string; invoiceNumber: string | null; sentAt: string | null; totalAmountExcl: string };
-type Settings = { companyName?: string; companyAddress?: string; companyPostal?: string; companyCity?: string; kvk?: string; btwNumber?: string; iban?: string; bic?: string; companyPhone?: string; companyEmail?: string; companyWebsite?: string; paymentTermDays?: number; paymentCondition?: string };
+type SentInvoice = { id: string; customerId: string; invoiceNumber: string | null; sentAt: string | null; totalAmountExcl: string };
+type BillingEntity = { id: string; name: string; companyAddress?: string; companyPostal?: string; companyCity?: string; kvk?: string; btwNumber?: string; iban?: string; bic?: string; companyPhone?: string; companyEmail?: string; companyWebsite?: string; paymentTermDays?: number; paymentCondition?: string; isDefault?: boolean };
+
+const EMPTY_ENTITY: Partial<BillingEntity> = { name: "", paymentTermDays: 30, paymentCondition: "30 dagen", isDefault: false };
 
 function prevWeek(w: string) { const [y, wn] = w.split("-W").map(Number); return wn === 1 ? `${y - 1}-W52` : `${y}-W${String(wn - 1).padStart(2, "0")}`; }
 function nextWeek(w: string) { const [y, wn] = w.split("-W").map(Number); return wn >= 52 ? `${y + 1}-W01` : `${y}-W${String(wn + 1).padStart(2, "0")}`; }
@@ -30,17 +32,19 @@ export default function FacturatiePage() {
   const [exactConnected, setExactConnected] = useState<boolean | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Billing entities
+  const [entities, setEntities] = useState<BillingEntity[]>([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
+  const [showEntities, setShowEntities] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<Partial<BillingEntity> | null>(null);
+  const [savingEntity, setSavingEntity] = useState(false);
+
   // Preview modal
   const [previewCustomer, setPreviewCustomer] = useState<CustomerRow | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const previewBlobRef = useRef<Blob | null>(null);
-
-  // Settings panel
-  const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<Settings>({});
-  const [savingSettings, setSavingSettings] = useState(false);
 
   const load = useCallback((w: string) => {
     setLoading(true);
@@ -51,25 +55,31 @@ export default function FacturatiePage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(week); }, [week, load]);
-
-  useEffect(() => {
-    fetch("/api/exact/status").then(r => r.json()).then(d => setExactConnected(d.connected)).catch(() => setExactConnected(false));
-    fetch("/api/instellingen").then(r => r.json()).then(d => setSettings(d)).catch(() => {});
+  const loadEntities = useCallback(() => {
+    fetch("/api/billing-entities").then(r => r.json()).then(d => {
+      setEntities(d.entities ?? []);
+      const def = (d.entities ?? []).find((e: BillingEntity) => e.isDefault) ?? d.entities?.[0];
+      if (def) setSelectedEntityId(def.id);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => { load(week); }, [week, load]);
+  useEffect(() => {
+    loadEntities();
+    fetch("/api/exact/status").then(r => r.json()).then(d => setExactConnected(d.connected)).catch(() => setExactConnected(false));
+  }, [loadEntities]);
 
   async function generate(c: CustomerRow) {
     setGenerating(c.customerId);
     const res = await fetch("/api/facturen/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerId: c.customerId, orderIds: c.orderIds, week }),
+      body: JSON.stringify({ customerId: c.customerId, orderIds: c.orderIds, week, billingEntityId: selectedEntityId || null }),
     });
     if (!res.ok) { setGenerating(null); alert("Genereren mislukt."); return; }
     const blob = await res.blob();
     previewBlobRef.current = blob;
-    const url = URL.createObjectURL(blob);
-    setPreviewUrl(url);
+    setPreviewUrl(URL.createObjectURL(blob));
     setPreviewCustomer(c);
     setGenerating(null);
   }
@@ -80,7 +90,7 @@ export default function FacturatiePage() {
     const res = await fetch("/api/facturen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerId: previewCustomer.customerId, orderIds: previewCustomer.orderIds, week }),
+      body: JSON.stringify({ customerId: previewCustomer.customerId, orderIds: previewCustomer.orderIds, week, billingEntityId: selectedEntityId || null }),
     }).then(r => r.json()).catch(() => null);
     setSending(false);
     closeModal();
@@ -90,9 +100,7 @@ export default function FacturatiePage() {
 
   function closeModal() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    setPreviewCustomer(null);
-    previewBlobRef.current = null;
+    setPreviewUrl(null); setPreviewCustomer(null); previewBlobRef.current = null;
   }
 
   function downloadPreview() {
@@ -103,14 +111,36 @@ export default function FacturatiePage() {
     a.click();
   }
 
-  async function saveSettings() {
-    setSavingSettings(true);
-    await fetch("/api/instellingen", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }).catch(() => {});
-    setSavingSettings(false);
+  async function saveEntity() {
+    if (!editingEntity?.name) return;
+    setSavingEntity(true);
+    const method = editingEntity.id ? "PATCH" : "POST";
+    await fetch("/api/billing-entities", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editingEntity),
+    });
+    setSavingEntity(false);
+    setEditingEntity(null);
+    loadEntities();
   }
 
+  async function deleteEntity(id: string) {
+    if (!confirm("Entiteit verwijderen?")) return;
+    await fetch("/api/billing-entities", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    loadEntities();
+  }
+
+  const selectedEntity = entities.find(e => e.id === selectedEntityId);
   const [y, wn] = week.split("-W");
   const weekLabel = `Week ${wn}, ${y}`;
+
+  const ENTITY_FIELDS: [keyof BillingEntity, string][] = [
+    ["name", "Bedrijfsnaam *"], ["companyAddress", "Adres"], ["companyPostal", "Postcode"],
+    ["companyCity", "Stad"], ["kvk", "KvK-nummer"], ["btwNumber", "BTW-nummer"],
+    ["iban", "IBAN"], ["bic", "BIC"], ["companyPhone", "Telefoon"],
+    ["companyEmail", "E-mail"], ["companyWebsite", "Website"], ["paymentCondition", "Betalingsconditie"],
+  ];
 
   return (
     <div style={{ padding: "1.5rem", maxWidth: 860 }}>
@@ -122,65 +152,90 @@ export default function FacturatiePage() {
           <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setShowSettings(s => !s)} className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
-            {showSettings ? "Sluiten" : "⚙ Bedrijfsgegevens"}
+          <button onClick={() => setShowEntities(s => !s)} className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
+            {showEntities ? "Sluiten" : "⚙ BV's beheren"}
           </button>
-          {exactConnected === false && (
-            <a href="/api/exact/connect" className="btn-secondary" style={{ fontSize: 12, textDecoration: "none", padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-subtle)" }}>
-              Koppel Exact
-            </a>
-          )}
-          {exactConnected === true && (
-            <span style={{ fontSize: 12, color: "var(--success)", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "4px 10px", borderRadius: 6 }}>✓ Exact</span>
-          )}
+          {exactConnected === false && <a href="/api/exact/connect" className="btn-secondary" style={{ fontSize: 12, textDecoration: "none", padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-subtle)" }}>Koppel Exact</a>}
+          {exactConnected === true && <span style={{ fontSize: 12, color: "var(--success)", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "4px 10px", borderRadius: 6 }}>✓ Exact</span>}
         </div>
       </div>
 
       {exactParam === "ok" && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>Exact Online succesvol gekoppeld.</div>}
-      {exactParam === "error" && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>Koppeling met Exact Online mislukt.</div>}
 
-      {/* ── Company settings panel ─────────────────── */}
-      {showSettings && (
+      {/* ── BV management panel ─────────────────────── */}
+      {showEntities && (
         <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", marginBottom: 16, marginTop: 0 }}>Bedrijfsgegevens (op factuur)</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {([
-              ["companyName", "Bedrijfsnaam"],
-              ["companyAddress", "Adres"],
-              ["companyPostal", "Postcode"],
-              ["companyCity", "Stad"],
-              ["kvk", "KvK-nummer"],
-              ["btwNumber", "BTW-nummer"],
-              ["iban", "IBAN"],
-              ["bic", "BIC"],
-              ["companyPhone", "Telefoon"],
-              ["companyEmail", "E-mail"],
-              ["companyWebsite", "Website"],
-              ["paymentCondition", "Betalingsconditie"],
-            ] as [keyof Settings, string][]).map(([key, label]) => (
-              <div key={key}>
-                <label style={{ fontSize: 11, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>{label}</label>
-                <input style={inp} value={(settings[key] as string) ?? ""} onChange={e => setSettings(s => ({ ...s, [key]: e.target.value }))} />
-              </div>
-            ))}
-            <div>
-              <label style={{ fontSize: 11, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>Betaaltermijn (dagen)</label>
-              <input style={inp} type="number" value={settings.paymentTermDays ?? 30} onChange={e => setSettings(s => ({ ...s, paymentTermDays: Number(e.target.value) }))} />
-            </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>Facturerende entiteiten</h2>
+            <button onClick={() => setEditingEntity({ ...EMPTY_ENTITY })} className="btn-primary" style={{ fontSize: 12 }}>+ Toevoegen</button>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-            <button onClick={saveSettings} disabled={savingSettings} className="btn-primary" style={{ fontSize: 12 }}>
-              {savingSettings ? "Opslaan…" : "Opslaan"}
-            </button>
+          {entities.length === 0 && <p style={{ fontSize: 13, color: "var(--text-subtle)" }}>Nog geen entiteiten. Voeg er een toe.</p>}
+          {entities.map(e => (
+            <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 8, background: e.isDefault ? "var(--accent-light)" : "var(--surface)" }}>
+              <div>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</span>
+                {e.companyCity && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{e.companyCity}</span>}
+                {e.isDefault && <span style={{ fontSize: 11, background: "var(--accent)", color: "#fff", padding: "1px 7px", borderRadius: 6, marginLeft: 8 }}>standaard</span>}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setEditingEntity({ ...e })} className="btn-secondary" style={{ fontSize: 11, padding: "3px 10px" }}>Bewerken</button>
+                <button onClick={() => deleteEntity(e.id)} className="btn-secondary" style={{ fontSize: 11, padding: "3px 10px", color: "#dc2626" }}>Verwijderen</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Entity edit modal ──────────────────────── */}
+      {editingEntity && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div className="card" style={{ width: "100%", maxWidth: 560, padding: "1.5rem", maxHeight: "90vh", overflowY: "auto" }}>
+            <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 16 }}>{editingEntity.id ? "Entiteit bewerken" : "Nieuwe entiteit"}</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {ENTITY_FIELDS.map(([key, label]) => (
+                <div key={key}>
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>{label}</label>
+                  <input style={inp} value={(editingEntity[key] as string) ?? ""} onChange={e => setEditingEntity(s => ({ ...s, [key]: e.target.value }))} />
+                </div>
+              ))}
+              <div>
+                <label style={{ fontSize: 11, color: "var(--text-subtle)", display: "block", marginBottom: 3 }}>Betaaltermijn (dagen)</label>
+                <input style={inp} type="number" value={editingEntity.paymentTermDays ?? 30} onChange={e => setEditingEntity(s => ({ ...s, paymentTermDays: Number(e.target.value) }))} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 18 }}>
+                <input type="checkbox" id="isDefault" checked={!!editingEntity.isDefault} onChange={e => setEditingEntity(s => ({ ...s, isDefault: e.target.checked }))} />
+                <label htmlFor="isDefault" style={{ fontSize: 12 }}>Standaard entiteit</label>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setEditingEntity(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
+              <button onClick={saveEntity} disabled={savingEntity || !editingEntity.name} className="btn-primary" style={{ fontSize: 12 }}>
+                {savingEntity ? "Opslaan…" : "Opslaan"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Week selector ──────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem" }}>
+      {/* ── Week + entity selector ─────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem", flexWrap: "wrap" }}>
         <button onClick={() => setWeek(prevWeek(week))} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>‹ Vorige</button>
         <span style={{ fontWeight: 600, fontSize: 15 }}>{weekLabel}</span>
         <button onClick={() => setWeek(nextWeek(week))} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>Volgende ›</button>
+
+        {entities.length > 0 && (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Factureren van:</span>
+            <select value={selectedEntityId} onChange={e => setSelectedEntityId(e.target.value)}
+              style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "5px 10px", cursor: "pointer" }}>
+              {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {entities.length === 0 && (
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#f97316" }}>⚠ Voeg eerst een entiteit toe via "BV's beheren"</span>
+        )}
       </div>
 
       {loading && <p style={{ color: "var(--text-subtle)", fontSize: 13 }}>Laden…</p>}
@@ -198,7 +253,7 @@ export default function FacturatiePage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.875rem 1.25rem" }}>
                 <button onClick={() => setExpanded(expanded === c.customerId ? null : c.customerId)}
                   style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", flex: 1, padding: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{c.customerName}</span>
                     {c.customerEmail
                       ? <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.customerEmail}</span>
@@ -207,12 +262,7 @@ export default function FacturatiePage() {
                   </div>
                   <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.orderIds.length} bestelling{c.orderIds.length !== 1 ? "en" : ""} · € {c.total.toFixed(2)} excl. BTW</span>
                 </button>
-                <button
-                  onClick={() => generate(c)}
-                  disabled={generating === c.customerId}
-                  className="btn-primary"
-                  style={{ fontSize: 12, padding: "6px 14px", marginLeft: 12, flexShrink: 0 }}
-                >
+                <button onClick={() => generate(c)} disabled={generating === c.customerId} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px", marginLeft: 12, flexShrink: 0 }}>
                   {generating === c.customerId ? "Genereren…" : "Genereer factuur"}
                 </button>
               </div>
@@ -249,10 +299,7 @@ export default function FacturatiePage() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>€ {Number(inv.totalAmountExcl).toFixed(2)}</span>
-                <a href={`/api/facturen/${inv.id}`} target="_blank" rel="noopener"
-                  style={{ fontSize: 12, color: "var(--text-subtle)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>
-                  PDF ↗
-                </a>
+                <a href={`/api/facturen/${inv.id}`} target="_blank" rel="noopener" style={{ fontSize: 12, color: "var(--text-subtle)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>PDF ↗</a>
               </div>
             </div>
           ))}
@@ -263,11 +310,11 @@ export default function FacturatiePage() {
       {previewUrl && previewCustomer && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", flexDirection: "column", padding: 24 }}>
           <div style={{ background: "var(--surface)", borderRadius: 12, display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", maxWidth: 860, width: "100%", margin: "0 auto" }}>
-            {/* Modal header */}
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
               <div>
-                <span style={{ fontWeight: 600, fontSize: 15 }}>Factuur — {previewCustomer.customerName}</span>
-                {!previewCustomer.customerEmail && <span style={{ fontSize: 12, color: "#f97316", marginLeft: 10 }}>⚠ geen e-mailadres — factuur wordt aangemaakt maar niet verstuurd</span>}
+                <span style={{ fontWeight: 600, fontSize: 15 }}>{previewCustomer.customerName}</span>
+                {selectedEntity && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>van {selectedEntity.name}</span>}
+                {!previewCustomer.customerEmail && <span style={{ fontSize: 12, color: "#f97316", marginLeft: 10 }}>⚠ geen e-mail</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={downloadPreview} className="btn-secondary" style={{ fontSize: 12 }}>Download PDF</button>
@@ -277,7 +324,6 @@ export default function FacturatiePage() {
                 <button onClick={closeModal} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
               </div>
             </div>
-            {/* PDF iframe */}
             <iframe src={previewUrl} style={{ flex: 1, border: "none", background: "#f5f5f5" }} title="Factuur preview" />
           </div>
         </div>
