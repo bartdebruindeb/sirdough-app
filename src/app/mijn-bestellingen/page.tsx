@@ -585,30 +585,26 @@ export default function MijnBestellingenPage() {
 
           {/* Deze week overzicht */}
           {(() => {
-            const now = new Date();
-            // Monday of current week
-            const mon = new Date(now);
-            mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-            mon.setHours(0,0,0,0);
-            const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+            // Use UTC dates throughout to avoid local-midnight → UTC offset shifting days
+            const todayUTC = new Date().toISOString().slice(0,10);
+            const isoDay = jsWeekdayToISO(new Date());
+            const monStr = (() => { const d = new Date(todayUTC+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() - (isoDay - 1)); return d.toISOString().slice(0,10); })();
+            const sunStr = (() => { const d = new Date(monStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10); })();
 
-            // Collect items for each day this week
-            const weekItems: { date: string; lines: { name: string; quantity: number }[]; source: "vast"|"eenmalig"; locked: boolean }[] = [];
+            const weekItems: { date: string; lines: { name: string; quantity: number }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null }[] = [];
 
             // Recurring orders active this week
             recurring.filter(o => o.active).forEach(o => {
-              // Find the date this weekday falls in current week
-              const d = new Date(mon); d.setDate(mon.getDate() + ((o.weekday - 1 + 7) % 7));
+              const d = new Date(monStr+"T12:00:00Z");
+              d.setUTCDate(d.getUTCDate() + ((o.weekday - 1 + 7) % 7));
               const dateStr = d.toISOString().slice(0,10);
-              // Only include if it's within this week
-              if (d >= mon && d <= sun) {
+              if (dateStr >= monStr && dateStr <= sunStr) {
                 const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
                 if (!skipped && o.lines.some(l => l.quantity > 0)) {
                   weekItems.push({
                     date: dateStr,
                     lines: o.lines.filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
-                    source: "vast",
-                    locked: !isEditable(dateStr),
+                    source: "vast", locked: !isEditable(dateStr), pickup: null,
                   });
                 }
               }
@@ -616,13 +612,12 @@ export default function MijnBestellingenPage() {
 
             // One-off orders this week
             upcoming.forEach(o => {
-              const d = new Date(o.deliveryDate + "T12:00:00Z");
-              if (d >= mon && d <= sun) {
+              if (o.deliveryDate >= monStr && o.deliveryDate <= sunStr) {
                 weekItems.push({
                   date: o.deliveryDate,
                   lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
-                  source: "eenmalig",
-                  locked: !isEditable(o.deliveryDate),
+                  source: "eenmalig", locked: !isEditable(o.deliveryDate),
+                  pickup: (o as any).pickupLocation ?? null,
                 });
               }
             });
@@ -651,9 +646,15 @@ export default function MijnBestellingenPage() {
                           </span>
                         ))}
                       </div>
-                      <span style={{ fontSize: 10, color: "var(--text-subtle)", flexShrink: 0 }}>
-                        {item.source === "vast" ? "vast" : "eenmalig"}
-                      </span>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>
+                          {item.source === "vast" ? "vast" : "eenmalig"}
+                        </span>
+                        {item.pickup
+                          ? <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 6 }}>🏪 {item.pickup.replace("Winkel ","")}</span>
+                          : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚 bezorgen</span>
+                        }
+                      </div>
                     </div>
                   ))}
                 </div>
