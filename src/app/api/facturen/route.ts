@@ -8,6 +8,7 @@ import { prisma } from "@/server/config/db";
 import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
 import { createExactInvoice } from "@/server/lib/exact";
+import { buildInvoiceHtml } from "@/server/lib/invoiceHtml";
 import { Resend } from "resend";
 import { z } from "zod";
 
@@ -203,48 +204,13 @@ async function sendInvoiceEmail(opts: {
   totalExcl: number;
   vatPercent: number;
 }) {
-  const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-  if (!resend) return;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) { console.warn("RESEND_API_KEY not set — invoice email skipped"); return; }
+  const from = process.env.RESEND_FROM;
+  if (!from) { console.warn("RESEND_FROM not set — invoice email skipped (onboarding@resend.dev only works to Resend account owner)"); return; }
 
-  const vat = opts.totalExcl * (opts.vatPercent / 100);
-  const total = opts.totalExcl + vat;
-  const from = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
-
-  const rows = opts.lines.map(l =>
-    `<tr>
-      <td style="padding:5px 8px;border-bottom:1px solid #f0ebe5">${l.description}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #f0ebe5;text-align:center">${l.quantity}×</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #f0ebe5;text-align:right">€ ${l.unitPrice.toFixed(2)}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #f0ebe5;text-align:right;font-weight:500">€ ${l.lineTotal.toFixed(2)}</td>
-    </tr>`
-  ).join("");
-
-  const html = `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-    <p style="font-size:20px;font-weight:700;margin-bottom:2px">Digital Bakery</p>
-    <p style="color:#888;margin-top:0;font-size:13px">Factuur ${opts.invoiceNumber}</p>
-    <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
-    <p>Beste ${opts.customerName},</p>
-    <p>Bijgaand de factuur voor week ${opts.week.split("-W")[1]} van ${opts.week.split("-W")[0]}.</p>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0">
-      <thead>
-        <tr style="background:#f7f3ef">
-          <th style="padding:6px 8px;text-align:left;font-weight:600">Omschrijving</th>
-          <th style="padding:6px 8px;text-align:center;font-weight:600">Aantal</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600">Prijs</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600">Totaal</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <table style="width:100%;font-size:13px;margin-top:8px">
-      <tr><td style="padding:3px 8px;color:#888">Subtotaal excl. BTW</td><td style="padding:3px 8px;text-align:right">€ ${opts.totalExcl.toFixed(2)}</td></tr>
-      <tr><td style="padding:3px 8px;color:#888">BTW ${opts.vatPercent}%</td><td style="padding:3px 8px;text-align:right">€ ${vat.toFixed(2)}</td></tr>
-      <tr style="font-weight:700;font-size:15px"><td style="padding:6px 8px">Totaal incl. BTW</td><td style="padding:6px 8px;text-align:right">€ ${total.toFixed(2)}</td></tr>
-    </table>
-    <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
-    <p style="font-size:12px;color:#999">Digital Bakery – Factuur ${opts.invoiceNumber}</p>
-  </div>`;
-
+  const html = buildInvoiceHtml(opts);
+  const resend = new Resend(key);
   await resend.emails.send({
     from,
     to: opts.to,

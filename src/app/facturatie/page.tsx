@@ -79,6 +79,11 @@ export default function FacturenPage() {
           <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a href="/api/facturen/preview" target="_blank" rel="noopener"
+            className="btn-secondary"
+            style={{ fontSize: 12, textDecoration: "none", padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-subtle)" }}>
+            Voorbeeld factuur
+          </a>
           {exactConnected === false && (
             <a href="/api/exact/connect" className="btn-secondary" style={{ fontSize: 12, textDecoration: "none", padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-subtle)" }}>
               Koppel Exact Online
