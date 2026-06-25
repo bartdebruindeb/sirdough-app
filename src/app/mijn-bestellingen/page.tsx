@@ -7,12 +7,12 @@ const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
 const PICKUP_LOCATIONS = bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") }));
 
-type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null };
+type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
 type RecurringOrder = { id: string; weekday: number; active: boolean; lines: RecurringLine[]; exceptions: RecurringException[] };
 type OneOffOrder = {
-  id: string; deliveryDate: string; notes: string | null;
+  id: string; deliveryDate: string; notes: string | null; pickupLocation?: string | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
 
@@ -22,6 +22,16 @@ function calcBasketTotal(qty: Record<string,number>, breadTypes: BreadType[], di
     if (!q || !bt.price) return sum;
     return sum + bt.price * q * (1 - discountPercent / 100);
   }, 0);
+}
+function calcOrderTotal(order: OneOffOrder, discountPercent: number): number | null {
+  const lines = order.lines;
+  let total = 0, hasPrice = false;
+  for (const l of lines) {
+    if (l.breadType.price == null) continue;
+    hasPrice = true;
+    total += l.breadType.price * l.quantity * (1 - discountPercent / 100);
+  }
+  return hasPrice ? total : null;
 }
 
 // Cutoff = orderCutoffHour UTC on the day BEFORE delivery
@@ -73,10 +83,12 @@ const BREAD_IMAGES: Record<string, string> = {
   "Zaden":               "Zaden.jpg",
 };
 
-function breadImage(name: string): string | null {
+function breadImage(bt: BreadType): string | null {
+  if (bt.imageFile) return `/brood/${bt.imageFile}`;
+  const name = bt.name;
   if (BREAD_IMAGES[name]) return `/brood/${BREAD_IMAGES[name]}`;
   // Strip weight suffix: "Sesam 1,5 KG" → "Sesam", "Boeren 1KG" → "Boeren"
-  const base = name.replace(/\s*(1[,.]?5?\s*KG|1\s*KG|750\s*g?r?|0[,.]?75\s*KG)\s*$/i, "").trim();
+  const base = name.replace(/\s*\d[,.\d]*\s*(kg|KG|g|gr)\s*$/i, "").trim();
   if (BREAD_IMAGES[base]) return `/brood/${BREAD_IMAGES[base]}`;
   return null;
 }
@@ -101,7 +113,7 @@ function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate 
       {breadTypes.map(bt => {
         const available = isAvailableOnDate(bt, deliveryDate);
         const unitPrice = bt.price != null ? bt.price * (1 - discountPercent / 100) : null;
-        const img = breadImage(bt.name);
+        const img = breadImage(bt);
         return (
           <div key={bt.id} style={{
             background: "var(--surface-2)", border: `1px solid ${qty[bt.id] ? "var(--accent)" : "var(--border)"}`,
@@ -110,7 +122,7 @@ function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate 
           }}>
             {img && (
               <img src={img} alt={bt.name}
-                style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                style={{ width: "100%", height: 100, objectFit: "contain", background: "#f5f0eb", display: "block" }} />
             )}
             <div style={{ padding: "8px 10px", flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
               <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text)", lineHeight: 1.2 }}>{shortName(bt.name)}</label>
@@ -181,6 +193,8 @@ export default function MijnBestellingenPage() {
 
   // Past log
   const [showLog, setShowLog]           = useState(false);
+  const [deliveryTimeMap, setDeliveryTimeMap] = useState<Record<string,string>>({});
+  const [invoiceNumberMap, setInvoiceNumberMap] = useState<Record<string,string>>({});
 
   function load() {
     fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
@@ -192,6 +206,8 @@ export default function MijnBestellingenPage() {
         setClosedWeekdays(d.closedWeekdays ?? []);
         setDiscountPercent(d.discountPercent ?? 0);
         setMinDeliveryAmount(d.minDeliveryAmount ?? null);
+        setDeliveryTimeMap(d.deliveryTimeMap ?? {});
+        setInvoiceNumberMap(d.invoiceNumberMap ?? {});
         setLoading(false);
       });
   }
@@ -376,13 +392,18 @@ export default function MijnBestellingenPage() {
                     </div>
 
                     {!isEditing && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
                         {order.lines.filter(l => l.quantity > 0).map(l => (
                           <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
                             {shortName(l.breadType.name)} x {l.quantity}
                           </span>
                         ))}
                         {order.lines.length === 0 && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Geen producten</span>}
+                        {(() => {
+                          const t = order.lines.filter(l => l.quantity > 0).reduce((s, l) => l.breadType.price != null ? s + l.breadType.price * l.quantity * (1 - discountPercent/100) : s, 0);
+                          const hasPrice = order.lines.some(l => l.breadType.price != null);
+                          return hasPrice && t > 0 ? <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {t.toFixed(2).replace(".",",")}</span> : null;
+                        })()}
                       </div>
                     )}
 
@@ -533,6 +554,7 @@ export default function MijnBestellingenPage() {
                 const editable = isEditable(order.deliveryDate);
                 const timeLeft = timeUntilCutoff(order.deliveryDate);
                 const isEditing = editingOOId === order.id;
+                const orderTotal = calcOrderTotal(order, discountPercent);
                 return (
                   <div key={order.id} className="card" style={{ padding: "1rem 1.25rem" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isEditing ? 12 : 0 }}>
@@ -540,12 +562,17 @@ export default function MijnBestellingenPage() {
                         <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{formatDate(order.deliveryDate)}</p>
                         {order.notes && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "0 0 6px" }}>{order.notes}</p>}
                         {!isEditing && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                             {order.lines.map(l => (
                               <span key={l.breadTypeId} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "3px 10px", borderRadius: 12 }}>
                                 {shortName(l.breadType.name)} x {l.quantity}
                               </span>
                             ))}
+                            {order.pickupLocation
+                              ? <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 10 }}>🏪 {order.pickupLocation.replace("Winkel ","")}</span>
+                              : <span style={{ fontSize: 11, background: "var(--surface-2)", color: "var(--text-subtle)", padding: "2px 8px", borderRadius: 10 }}>🚚 bezorgen</span>
+                            }
+                            {orderTotal != null && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {orderTotal.toFixed(2).replace(".",",")}</span>}
                           </div>
                         )}
                       </div>
@@ -670,18 +697,34 @@ export default function MijnBestellingenPage() {
               </button>
               {showLog && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {pastOrders.map(order => (
-                    <div key={order.id} className="card" style={{ padding: "0.75rem 1rem", opacity: 0.8 }}>
-                      <p style={{ fontWeight: 500, fontSize: 13, margin: "0 0 4px" }}>{formatDate(order.deliveryDate)}</p>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {order.lines.map(l => (
-                          <span key={l.breadTypeId} style={{ fontSize: 11, background: "var(--surface-2)", color: "var(--text-subtle)", padding: "2px 8px", borderRadius: 10 }}>
-                            {shortName(l.breadType.name)} x {l.quantity}
-                          </span>
-                        ))}
+                  {pastOrders.map(order => {
+                    const pastTotal = calcOrderTotal(order, discountPercent);
+                    const deliveredAt = deliveryTimeMap[order.deliveryDate];
+                    const invNr = invoiceNumberMap[order.id];
+                    return (
+                      <div key={order.id} className="card" style={{ padding: "0.75rem 1rem", opacity: 0.8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <p style={{ fontWeight: 500, fontSize: 13, margin: "0 0 4px" }}>{formatDate(order.deliveryDate)}</p>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                            {order.pickupLocation
+                              ? <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 8 }}>🏪 {order.pickupLocation.replace("Winkel ","")}</span>
+                              : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚</span>
+                            }
+                            {deliveredAt && <span style={{ fontSize: 10, color: "var(--success)" }}>✓ {deliveredAt}</span>}
+                            {invNr && <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>📄 {invNr}</span>}
+                            {pastTotal != null && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {pastTotal.toFixed(2).replace(".",",")}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                          {order.lines.map(l => (
+                            <span key={l.breadTypeId} style={{ fontSize: 11, background: "var(--surface-2)", color: "var(--text-subtle)", padding: "2px 8px", borderRadius: 10 }}>
+                              {shortName(l.breadType.name)} x {l.quantity}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

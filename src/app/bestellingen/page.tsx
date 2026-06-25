@@ -6,7 +6,7 @@ import { bakeryConfig } from "@/config/bakery.config";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
-type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
+type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null };
 type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
@@ -61,6 +61,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
               <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Klant&shy;portal</th>
               <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Winkel</th>
               <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Beschikbare dagen</th>
+              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -109,6 +110,19 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
                         </button>
                       )}
                     </div>
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>
+                    <select
+                      value={bt.imageFile ?? ""}
+                      onChange={e => patch(bt.id, { imageFile: e.target.value || null })}
+                      disabled={saving === bt.id}
+                      style={{ fontSize: 11, padding: "3px 6px", border: "1px solid var(--border)", borderRadius: 5, background: "var(--surface)", color: "var(--text)", maxWidth: 140 }}
+                    >
+                      <option value="">— geen foto —</option>
+                      {["Baguette-Kaas-Peper.jpg","Baquette.jpg","Boeren-1kg.jpg","Choco-koek.jpg","Gekiemde-Rogge.jpg","Kaneel-Bun.jpg","Kardemon-Bun.jpg","Morning-Buns.jpg","Olijf.jpg","Rozijn.jpg","Sesam.jpg","Spelt.jpg","Volkoren.jpg","Zaden.jpg"].map(f => (
+                        <option key={f} value={f}>{f.replace(/-/g," ").replace(/\.jpg$/i,"")}</option>
+                      ))}
+                    </select>
                   </td>
                 </tr>
               );

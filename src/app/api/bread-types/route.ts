@@ -76,6 +76,7 @@ const PatchBreadTypeSchema = z.object({
   weightGrams: z.number().optional(),
   showInProduction: z.boolean().optional(),
   mixerGroup: z.string().optional().nullable(),
+  imageFile: z.string().optional().nullable(),
 });
 
 export async function PATCH(req: Request) {

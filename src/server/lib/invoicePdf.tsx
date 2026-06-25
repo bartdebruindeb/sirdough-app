@@ -1,8 +1,19 @@
 import React from "react";
+import fs from "fs";
+import path from "path";
 import {
-  Document, Page, Text, View, StyleSheet, renderToBuffer,
+  Document, Page, Text, View, Image, StyleSheet, renderToBuffer,
 } from "@react-pdf/renderer";
 import { prisma } from "@/server/config/db";
+
+function loadLogo(): string | null {
+  try {
+    const p = path.join(process.cwd(), "public", "logo.jpeg");
+    if (!fs.existsSync(p)) return null;
+    return "data:image/jpeg;base64," + fs.readFileSync(p).toString("base64");
+  } catch { return null; }
+}
+const LOGO_DATA = loadLogo();
 
 // Use Helvetica (built-in, no external font needed)
 
@@ -119,11 +130,12 @@ function InvoiceDoc({ d }: { d: PdfInvoiceData }) {
 
         {/* ── Header ─────────────────────────────────────────── */}
         <View style={s.row}>
-          {/* Logo placeholder (left) */}
+          {/* Logo (left) */}
           <View style={s.headerLeft}>
-            <View style={{ width: 80, height: 80, border: `1pt solid ${C.border}`, borderRadius: 4, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ fontSize: 7, color: C.lightGrey }}>logo</Text>
-            </View>
+            {LOGO_DATA
+              ? <Image src={LOGO_DATA} style={{ width: 80, height: 80, objectFit: "contain" }} />
+              : <View style={{ width: 80, height: 80 }} />
+            }
           </View>
 
           {/* Company info (right) */}

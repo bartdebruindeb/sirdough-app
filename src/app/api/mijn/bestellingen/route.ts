@@ -40,7 +40,7 @@ export async function GET(req: Request) {
 
     const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-    const [orders, breadTypes, recurring, pastOrders, tenant] = await Promise.all([
+    const [orders, breadTypes, recurring, pastOrders, tenant, deliveryStatuses, invoiceOrders] = await Promise.all([
       prisma.oneOffOrder.findMany({
         where: {
           tenantId: customer.tenantId,
@@ -72,6 +72,14 @@ export async function GET(req: Request) {
         orderBy: { deliveryDate: "desc" },
       }),
       (prisma as any).tenant.findUnique({ where: { id: customer.tenantId }, select: { closedWeekdays: true, minDeliveryAmount: true } }),
+      prisma.deliveryStatus.findMany({
+        where: { tenantId: customer.tenantId, customerId: customer.id, date: { gte: sixtyDaysAgo } },
+        select: { date: true, deliveredAt: true },
+      }),
+      (prisma as any).invoiceOrder.findMany({
+        where: { invoice: { tenantId: customer.tenantId, customerId: customer.id } },
+        include: { invoice: { select: { invoiceNumber: true } } },
+      }),
     ]);
 
     const closedWeekdays = ((tenant as any)?.closedWeekdays ?? "").split(",").map(Number).filter(Boolean);
@@ -89,6 +97,22 @@ export async function GET(req: Request) {
       price: b.price ? Number(b.price) : null,
     }));
 
+    // Build delivery time map: dateStr → "HH:MM"
+    const deliveryTimeMap: Record<string, string> = {};
+    for (const ds of deliveryStatuses) {
+      if (ds.deliveredAt) {
+        const dateStr = toDateStr(ds.date);
+        const t = new Date(ds.deliveredAt);
+        deliveryTimeMap[dateStr] = `${String(t.getUTCHours()).padStart(2,"0")}:${String(t.getUTCMinutes()).padStart(2,"0")}`;
+      }
+    }
+
+    // Build invoice number map: orderId → invoiceNumber
+    const invoiceNumberMap: Record<string, string> = {};
+    for (const io of invoiceOrders) {
+      if (io.invoice?.invoiceNumber) invoiceNumberMap[io.orderId] = io.invoice.invoiceNumber;
+    }
+
     return Response.json({
       orders: serializedOrders,
       breadTypes: breadTypesWithPrice,
@@ -97,6 +121,8 @@ export async function GET(req: Request) {
       closedWeekdays,
       minDeliveryAmount,
       discountPercent: (customer as any).discountPercent ?? 0,
+      deliveryTimeMap,
+      invoiceNumberMap,
     });
   } catch (e) { return toResponse(e); }
 }
