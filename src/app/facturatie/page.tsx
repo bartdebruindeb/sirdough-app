@@ -155,9 +155,13 @@ export default function FacturatiePage() {
 
       {/* ── Header ─────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
-        <div>
-          <h1 style={{ fontSize: 26, margin: 0 }}>Facturatie</h1>
-          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.jpeg" alt="logo" style={{ height: 52, width: 52, objectFit: "contain", borderRadius: 8 }} onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <div>
+            <h1 style={{ fontSize: 26, margin: 0 }}>Facturatie</h1>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => setShowEntities(s => !s)} className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }}>

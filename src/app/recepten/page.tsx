@@ -1,6 +1,6 @@
 "use client";
 import { useRole } from "@/lib/role-context";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 
 type RecipeFlour  = { id: string; name: string; percentage: number; sortOrder: number };
@@ -10,7 +10,7 @@ type Recipe = {
   doughWeightPerLoaf: number; mixerGroup: string; notes?: string;
   flourLines: RecipeFlour[]; toppings: RecipeTopping[];
 };
-type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; basketStyle?: string | null; showInProduction?: boolean; recipe: Recipe | null };
+type BreadType = { id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number; basketType: string; basketStyle?: string | null; showInProduction?: boolean; imageFile?: string | null; recipe: Recipe | null };
 
 function kg(g: number) { return g >= 1000 ? `${(g/1000).toFixed(2).replace(/\.?0+$/,"")} kg` : `${Math.round(g)} g`; }
 
@@ -334,6 +334,47 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories, basketTypeOpt
   );
 }
 
+function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: string | null; onUploaded: (imageFile: string) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/bread-types/image?id=${bt.id}`, {
+      method: "POST",
+      headers: { "x-role": role ?? "" },
+      body: form,
+    }).then(r => r.json()).catch(() => ({}));
+    setUploading(false);
+    if (res.imageFile) onUploaded(res.imageFile);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  const imgSrc = bt.imageFile ? `/brood/${bt.imageFile}?t=${Date.now()}` : null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 1rem" }}>
+      {imgSrc
+        ? <img src={imgSrc} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }} />
+        : <div style={{ width: 36, height: 36, borderRadius: 6, border: "1px dashed var(--border)", background: "var(--surface-2)" }} />
+      }
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="btn-secondary"
+        style={{ fontSize: 11, padding: "4px 10px" }}
+      >
+        {uploading ? "…" : imgSrc ? "Wijzig foto" : "Foto uploaden"}
+      </button>
+    </div>
+  );
+}
+
 export default function ReceptenPage() {
   const { role, can } = useRole();
   const isOwner = role === "OWNER";
@@ -497,7 +538,10 @@ export default function ReceptenPage() {
                         <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
                       </button>
                       {isOwner && isOpen && (
-                        <div style={{ display: "flex", gap: 6, margin: "0 1rem" }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 1rem" }}>
+                          <BreadImageUpload bt={bt} role={role} onUploaded={imageFile => {
+                            setBreadTypes(prev => prev.map(b => b.id === bt.id ? { ...b, imageFile } : b));
+                          }} />
                           <button
                             onClick={() => setEditMode(m => ({ ...m, [bt.id]: !isEditing }))}
                             className="btn-secondary"
