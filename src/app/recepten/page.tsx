@@ -350,18 +350,18 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
       body: form,
     }).then(r => r.json()).catch(() => ({}));
     setUploading(false);
-    if (res.imageFile) onUploaded(res.imageFile);
+    if (res.imageFile) { onUploaded(res.imageFile); setTs(Date.now()); }
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  const imgSrc = bt.imageFile ? `/brood/${bt.imageFile}?t=${Date.now()}` : null;
+  const [ts, setTs] = useState(() => Date.now());
+  // Always try the ID-based URL; show placeholder on error
+  const imgSrc = `/brood/${bt.id}.jpg?t=${ts}`;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 1rem" }}>
-      {imgSrc
-        ? <img src={imgSrc} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }} />
-        : <div style={{ width: 36, height: 36, borderRadius: 6, border: "1px dashed var(--border)", background: "var(--surface-2)" }} />
-      }
+      <img src={imgSrc} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }}
+        onError={e => { (e.target as HTMLImageElement).style.opacity = "0"; }} />
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
       <button
         onClick={() => fileRef.current?.click()}

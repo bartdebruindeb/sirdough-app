@@ -38,14 +38,15 @@ export async function POST(req: NextRequest) {
     // Accept only images
     if (!file.type.startsWith("image/")) return Response.json({ error: "not an image" }, { status: 400 });
 
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const filename = `${id}.${ext}`;
+    // Always save as <id>.jpg regardless of original extension for predictable URL
+    const filename = `${id}.jpg`;
     const dest = path.join(process.cwd(), "public", "brood", filename);
 
     const buf = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(dest, buf);
 
-    await (prisma as any).breadType.updateMany({ where: { id, tenantId: tid }, data: { imageFile: filename } });
+    // Best-effort DB update (field may not exist until prisma generate runs)
+    await (prisma as any).breadType.updateMany({ where: { id, tenantId: tid }, data: { imageFile: filename } }).catch(() => {});
 
     return Response.json({ ok: true, imageFile: filename });
   } catch (e) { return toResponse(e); }

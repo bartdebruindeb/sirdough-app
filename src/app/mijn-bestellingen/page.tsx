@@ -83,14 +83,14 @@ const BREAD_IMAGES: Record<string, string> = {
   "Zaden":               "Zaden.jpg",
 };
 
-function breadImage(bt: BreadType): string | null {
-  if (bt.imageFile) return `/brood/${bt.imageFile}`;
+// Returns [primaryUrl, fallbackUrl|null]. Primary = uploaded file by ID, fallback = name-map.
+function breadImageUrls(bt: BreadType): [string, string | null] {
+  const uploaded = `/brood/${bt.imageFile ?? (bt.id + ".jpg")}`;
   const name = bt.name;
-  if (BREAD_IMAGES[name]) return `/brood/${BREAD_IMAGES[name]}`;
-  // Strip weight suffix: "Sesam 1,5 KG" → "Sesam", "Boeren 1KG" → "Boeren"
-  const base = name.replace(/\s*\d[,.\d]*\s*(kg|KG|g|gr)\s*$/i, "").trim();
-  if (BREAD_IMAGES[base]) return `/brood/${BREAD_IMAGES[base]}`;
-  return null;
+  const fallback = BREAD_IMAGES[name]
+    ?? BREAD_IMAGES[name.replace(/\s*\d[,.\d]*\s*(kg|KG|g|gr)\s*$/i, "").trim()]
+    ?? null;
+  return [uploaded, fallback ? `/brood/${fallback}` : null];
 }
 // weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
 function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
@@ -113,17 +113,21 @@ function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate 
       {breadTypes.map(bt => {
         const available = isAvailableOnDate(bt, deliveryDate);
         const unitPrice = bt.price != null ? bt.price * (1 - discountPercent / 100) : null;
-        const img = breadImage(bt);
+        const [imgPrimary, imgFallback] = breadImageUrls(bt);
         return (
           <div key={bt.id} style={{
             background: "var(--surface-2)", border: `1px solid ${qty[bt.id] ? "var(--accent)" : "var(--border)"}`,
             borderRadius: 10, overflow: "hidden", opacity: available ? 1 : 0.4,
             display: "flex", flexDirection: "column",
           }}>
-            {img && (
-              <img src={img} alt={bt.name}
-                style={{ width: "100%", height: 100, objectFit: "contain", background: "#f5f0eb", display: "block" }} />
-            )}
+            <img src={imgPrimary} alt={bt.name}
+              style={{ width: "100%", height: 100, objectFit: "contain", background: "#f5f0eb", display: "block" }}
+              onError={e => {
+                const el = e.target as HTMLImageElement;
+                if (imgFallback && el.src !== window.location.origin + imgFallback) { el.src = imgFallback; }
+                else { el.style.display = "none"; }
+              }}
+            />
             <div style={{ padding: "8px 10px", flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
               <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text)", lineHeight: 1.2 }}>{shortName(bt.name)}</label>
               {!available && <span style={{ fontSize: 9, color: "var(--danger)" }}>niet op deze dag</span>}
