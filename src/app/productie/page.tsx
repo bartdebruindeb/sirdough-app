@@ -97,15 +97,26 @@ function BreadLineCard({ line, recipe, mixerCount, onMixerCountChange }: {
         {paddedWeights.map((w, i) => {
           const runningFilled = paddedWeights.slice(0, i).reduce((s, v) => s + v, 0);
           const leftHint = Math.max(0, pureDoughGrams - runningFilled);
+          const isLast = i === mixerCount - 1;
+          const remainingForThis = Math.max(0, Math.round(pureDoughGrams - paddedWeights.slice(0, i).reduce((s, v) => s + v, 0)));
           return (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 62 }}>Mixer {i + 1}:</span>
               <input type="number" value={w || ""} placeholder={String(Math.round(leftHint))}
+                min={0} max={400000}
                 onKeyDown={e => { if (["e","E","-","+"].includes(e.key)) e.preventDefault(); }}
-                onChange={e => setWeight(i, parseInt(e.target.value) || 0)}
+                onChange={e => setWeight(i, Math.min(400000, parseInt(e.target.value) || 0))}
                 style={{ width: 85, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", fontSize: 13 }} />
               <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>g</span>
               {w > 0 && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>(nog {Math.round(Math.max(0, pureDoughGrams - runningFilled - w))} g over)</span>}
+              {isLast && (
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-subtle)", cursor: "pointer", marginLeft: 4 }}>
+                  <input type="checkbox" checked={w === remainingForThis && remainingForThis > 0}
+                    onChange={e => { if (e.target.checked) setWeight(i, remainingForThis); }}
+                    style={{ width: 13, height: 13 }} />
+                  restant
+                </label>
+              )}
             </div>
           );
         })}
@@ -632,8 +643,14 @@ export default function ProductiePage() {
                   ? "Stel het aantal mixers per broodsoort in en sla het plan op om de baklijst te starten."
                   : "Pas het aantal mixers aan. Opslaan verwijdert de huidige voortgang."}
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginBottom: 16 }}>
-                {planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0).map(line => {
+              {(() => {
+                const activeLines = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0);
+                const cats = [...new Set(activeLines.map(l => l.category))];
+                return cats.map(cat => (
+                  <div key={cat} style={{ marginBottom: 16 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 8px" }}>{cat}</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+                {activeLines.filter(l => l.category === cat).map(line => {
                   const count = Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1);
                   const pureDough = Math.max(0, line.doughWeightTotal - line.toppingWeightPerLoaf * line.totalQty);
                   return (
@@ -652,7 +669,10 @@ export default function ProductiePage() {
                     </div>
                   );
                 })}
-              </div>
+                    </div>
+                  </div>
+                ));
+              })()}
               {saveError && (
                 <div style={{ background: "var(--warn-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", color: "var(--warn)", fontSize: 13, marginBottom: 12 }}>
                   {saveError}
@@ -760,20 +780,29 @@ export default function ProductiePage() {
           {planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0).length > 0 && (
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-                {planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0).map(line => {
-                  const batchCount = batches.filter(b => b.mixerGroup === line.breadTypeId).length;
-                  return (
-                    <BreadLineCard
-                      key={line.breadTypeId}
-                      line={line}
-                      recipe={getRecipeForLine(line.breadTypeId)}
-                      mixerCount={batchCount || Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1)}
-                      onMixerCountChange={n => setLineMixerCounts(c => ({ ...c, [line.breadTypeId]: n }))}
-                    />
-                  );
-                })}
-              </div>
+              {(() => {
+                const activeLines = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0);
+                const cats = [...new Set(activeLines.map(l => l.category))];
+                return cats.map(cat => (
+                  <div key={cat} style={{ marginBottom: 24 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>{cat}</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
+                      {activeLines.filter(l => l.category === cat).map(line => {
+                        const batchCount = batches.filter(b => b.mixerGroup === line.breadTypeId).length;
+                        return (
+                          <BreadLineCard
+                            key={line.breadTypeId}
+                            line={line}
+                            recipe={getRecipeForLine(line.breadTypeId)}
+                            mixerCount={batchCount || Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1)}
+                            onMixerCountChange={n => setLineMixerCounts(c => ({ ...c, [line.breadTypeId]: n }))}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
             </section>
           )}
 

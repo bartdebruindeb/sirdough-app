@@ -13,10 +13,14 @@ export async function POST(req: Request) {
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).parse(body);
 
-  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  const [customer, tenant] = await Promise.all([
+    prisma.customer.findUnique({ where: { id: customerId } }),
+    prisma.tenant.findUnique({ where: { id: tid } }),
+  ]);
   if (!customer || customer.tenantId !== tid) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+  const tenantName = tenant?.name ?? "De bakkerij";
 
   const email = customer.email;
   if (!email) return Response.json({ error: "Klant heeft geen e-mailadres" }, { status: 400 });
@@ -57,7 +61,7 @@ export async function POST(req: Request) {
     weekday: "long", day: "numeric", month: "long",
   });
 
-  await sendPakbon({ to: email, customerName: customer.name, deliveryDate: formattedDate, lines });
+  await sendPakbon({ to: email, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines });
 
   return Response.json({ ok: true });
 }

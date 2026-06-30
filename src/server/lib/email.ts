@@ -42,9 +42,9 @@ export async function sendOrderConfirmation({
 }
 
 export async function sendOrderReminder({
-  to, customerName, deliveryDate, lines,
+  to, customerName, deliveryDate, cutoffLabel, lines,
 }: {
-  to: string; customerName: string; deliveryDate: string;
+  to: string; customerName: string; deliveryDate: string; cutoffLabel: string;
   lines: { name: string; quantity: number }[];
 }) {
   const lineRows = lines.map(l => `<tr><td style="padding:4px 0">${l.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${l.quantity}×</td></tr>`).join("");
@@ -56,7 +56,7 @@ export async function sendOrderReminder({
       <p>Beste ${customerName},</p>
       <p>U heeft de volgende bestelling voor <strong>${deliveryDate}</strong>:</p>
       ${lines.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px">${lineRows}</table>` : ""}
-      <p>Wilt u iets aanpassen? Dat kan nog tot <strong>4:00 uur de ochtend vóór bezorging</strong>.</p>
+      <p>Wilt u iets aanpassen? Dat kan nog tot <strong>${cutoffLabel} 4:00</strong>.</p>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
       <p style="font-size:12px;color:#999">U ontvangt deze herinnering automatisch twee dagen voor uw bezorgdag.</p>
     </div>`;
@@ -66,19 +66,18 @@ export async function sendOrderReminder({
 }
 
 export async function sendPakbon({
-  to, customerName, deliveryDate, lines,
+  to, customerName, deliveryDate, tenantName, lines,
 }: {
-  to: string; customerName: string; deliveryDate: string;
+  to: string; customerName: string; deliveryDate: string; tenantName: string;
   lines: { name: string; quantity: number }[];
 }) {
   const lineRows = lines.map(l => `<tr><td style="padding:6px 0;border-bottom:1px solid #eee">${l.name}</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600">${l.quantity}×</td></tr>`).join("");
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
-      <p style="font-size:20px;font-weight:600;margin-bottom:4px">Digital Bakery</p>
-      <p style="color:#666;margin-top:0">Pakbon bezorging</p>
+      <p style="font-size:20px;font-weight:600;margin-bottom:4px">${tenantName}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
       <p>Beste ${customerName},</p>
-      <p>Bijgaand de pakbon voor uw bezorging op <strong>${deliveryDate}</strong>.</p>
+      <p>Bijgaand de bevestiging dat wij op <strong>${deliveryDate}</strong> de volgende bestelling hebben bezorgd:</p>
       ${lines.length > 0 ? `
       <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px">
         <thead><tr>
@@ -87,7 +86,7 @@ export async function sendPakbon({
         </tr></thead>
         <tbody>${lineRows}</tbody>
       </table>` : ""}
-      <p style="font-size:12px;color:#999">Heeft u vragen over uw bezorging? Neem contact op met uw bakker.</p>
+      <p style="font-size:12px;color:#999">Heeft u vragen over uw bezorging? Neem dan contact op met de bakkerij.</p>
     </div>`;
   const resend = getResend();
   if (!resend) return;

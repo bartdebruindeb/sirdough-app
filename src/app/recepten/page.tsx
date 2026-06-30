@@ -207,15 +207,6 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
           Toon in productieplanning
           <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>(uitschakelen = verschijnt alleen in bestellingen en bezorging)</span>
         </label>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4, marginTop: 10 }}>Samenvoegen in mixer met</label>
-        <select value={mixerGroup} onChange={e => setMixerGroup(e.target.value)} style={{ ...inputStyle, width: "100%" }}>
-          <option value="">— eigen mixergroep —</option>
-          {allBreadTypes
-            .filter(b => b.category === bt.category && b.id !== bt.id)
-            .map(b => <option key={b.id} value={b.slug}>{b.name}</option>)
-          }
-        </select>
-        <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Manden blijven apart geteld.</span>
       </div>
 
       <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>

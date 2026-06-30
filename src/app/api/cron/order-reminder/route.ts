@@ -18,8 +18,12 @@ export async function GET(req: Request) {
   const targetDate = target.toISOString().slice(0, 10);
   const targetWeekday = target.getUTCDay() === 0 ? 7 : target.getUTCDay(); // 1=Mon..7=Sun
 
-  const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
   const formattedDate = target.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+
+  // Cutoff = day before delivery at 4:00
+  const cutoff = new Date(target);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+  const cutoffLabel = cutoff.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
 
   let sent = 0;
 
@@ -41,7 +45,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, lines });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines });
     sent++;
   }
 
@@ -65,7 +69,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, lines });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines });
     sent++;
   }
 
