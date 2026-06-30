@@ -171,7 +171,7 @@ function InvoiceDoc({ d }: { d: PdfInvoiceData }) {
           </View>
           <View style={s.col}>
             {d.customerNumber != null && <View style={s.metaRow}><Text style={s.metaLabel}>Klantnummer</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>{d.customerNumber}</Text></View>}
-            <View style={s.metaRow}><Text style={s.metaLabel}>Betalingsconditie</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>{d.paymentCondition}</Text></View>
+            <View style={s.metaRow}><Text style={s.metaLabel}>Betalingstermijn</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>{d.paymentCondition}</Text></View>
             <View style={s.metaRow}><Text style={s.metaLabel}>Pagina</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>1/1</Text></View>
           </View>
         </View>

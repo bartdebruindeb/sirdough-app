@@ -47,6 +47,7 @@ export default function FacturatiePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [resending, setResending] = useState<string | null>(null);
   const previewBlobRef = useRef<Blob | null>(null);
 
   const load = useCallback((w: string) => {
@@ -296,9 +297,23 @@ export default function FacturatiePage() {
                 <span style={{ fontWeight: 500, fontSize: 13 }}>{inv.invoiceNumber ?? `DBK-${inv.id.slice(-6).toUpperCase()}`}</span>
                 {inv.sentAt && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>verstuurd {new Date(inv.sentAt).toLocaleDateString("nl-NL")}</span>}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>€ {Number(inv.totalAmountExcl).toFixed(2)}</span>
                 <a href={`/api/facturen/${inv.id}`} target="_blank" rel="noopener" style={{ fontSize: 12, color: "var(--text-subtle)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>PDF ↗</a>
+                <button
+                  disabled={resending === inv.id}
+                  onClick={async () => {
+                    setResending(inv.id);
+                    const r = await fetch(`/api/facturen/${inv.id}`, { method: "POST" }).then(x => x.json()).catch(() => ({}));
+                    setResending(null);
+                    if (r.ok) alert("Factuur opnieuw verstuurd.");
+                    else alert(r.error === "NO_EMAIL" ? "Klant heeft geen e-mailadres." : "Versturen mislukt.");
+                  }}
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: "4px 10px" }}
+                >
+                  {resending === inv.id ? "…" : "Opnieuw versturen"}
+                </button>
               </div>
             </div>
           ))}

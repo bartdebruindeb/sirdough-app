@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { bakeryConfig } from "@/config/bakery.config";
 
 const NAV = [
   { href: "/mijn-bestellingen", label: "Bestellingen",  icon: "◧" },
@@ -32,7 +33,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
           <span style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--sidebar-active)", whiteSpace: "nowrap" }}>
-            Mijn Bakkerij
+            {bakeryConfig.businessName}
           </span>
           <nav style={{ display: "flex", gap: 4 }}>
             {NAV.map(({ href, label, icon }) => {

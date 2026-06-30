@@ -47,9 +47,9 @@ function timeUntilCutoff(deliveryDateStr: string): string {
   const diff = cutoffDate(deliveryDateStr).getTime() - Date.now();
   if (diff <= 0) return "";
   const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-  if (h > 24) return `nog ${Math.floor(h / 24)}d`;
-  if (h > 0) return `nog ${h}u ${m}m`;
-  return `nog ${m} min`;
+  if (h > 24) return `Aanpassen kan nog ${Math.floor(h / 24)} dag${Math.floor(h/24)>1?"en":""}`;
+  if (h > 0) return `Aanpassen kan nog ${h}u ${m}m`;
+  return `Aanpassen kan nog ${m} min`;
 }
 function nextOccurrence(weekday: number): string {
   const now = new Date();
@@ -197,6 +197,8 @@ export default function MijnBestellingenPage() {
 
   // Past log
   const [showLog, setShowLog]           = useState(false);
+  // Section toggle
+  const [activeSection, setActiveSection] = useState<"eenmalig"|"vast"|null>(null);
   const [deliveryTimeMap, setDeliveryTimeMap] = useState<Record<string,string>>({});
   const [invoiceNumberMap, setInvoiceNumberMap] = useState<Record<string,string>>({});
 
@@ -326,15 +328,111 @@ export default function MijnBestellingenPage() {
     <div style={{ padding: "1.5rem", maxWidth: 700 }}>
       <h1 style={{ fontSize: 26, marginBottom: "0.25rem" }}>Mijn bestellingen</h1>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: "2rem" }}>
-        Wijzigingen mogelijk tot 4:00u de ochtend voor bezorging.
+        Wijzigingen mogelijk tot 4:00 am de dag vóór bezorging.
       </p>
 
       {loading && <p style={{ color: "var(--text-subtle)" }}>Laden...</p>}
 
       {!loading && (
         <>
+          {/* ── Deze week ── */}
+          {(() => {
+            const todayUTC = new Date().toISOString().slice(0,10);
+            const isoDay = jsWeekdayToISO(new Date());
+            const monStr = (() => { const d = new Date(todayUTC+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() - (isoDay - 1)); return d.toISOString().slice(0,10); })();
+            const sunStr = (() => { const d = new Date(monStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10); })();
+
+            type WeekItem = { date: string; lines: { name: string; quantity: number; price: number | null }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null };
+            const weekItems: WeekItem[] = [];
+
+            recurring.filter(o => o.active).forEach(o => {
+              const d = new Date(monStr+"T12:00:00Z");
+              d.setUTCDate(d.getUTCDate() + ((o.weekday - 1 + 7) % 7));
+              const dateStr = d.toISOString().slice(0,10);
+              if (dateStr >= monStr && dateStr <= sunStr) {
+                const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
+                if (!skipped && o.lines.some(l => l.quantity > 0)) {
+                  weekItems.push({
+                    date: dateStr,
+                    lines: o.lines.filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
+                    source: "vast", locked: !isEditable(dateStr), pickup: null,
+                  });
+                }
+              }
+            });
+            upcoming.forEach(o => {
+              if (o.deliveryDate >= monStr && o.deliveryDate <= sunStr) {
+                weekItems.push({
+                  date: o.deliveryDate,
+                  lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
+                  source: "eenmalig", locked: !isEditable(o.deliveryDate),
+                  pickup: o.pickupLocation ?? null,
+                });
+              }
+            });
+            weekItems.sort((a,b) => a.date.localeCompare(b.date));
+            if (weekItems.length === 0) return null;
+
+            return (
+              <section style={{ marginBottom: "2rem" }}>
+                <h2 style={{ fontSize: 17, marginBottom: "0.75rem" }}>Deze week</h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {weekItems.map((item, i) => {
+                    const total = item.lines.reduce((s, l) => l.price != null ? s + l.price * l.quantity * (1 - discountPercent/100) : s, 0);
+                    const hasPrice = item.lines.some(l => l.price != null);
+                    return (
+                      <div key={i} className="card" style={{ padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ minWidth: 80 }}>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+                            {new Date(item.date+"T12:00:00Z").toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"})}
+                          </p>
+                          <span style={{ fontSize: 10, color: item.locked ? "var(--danger)" : "var(--success)" }}>
+                            {item.locked ? "Aanpassen niet meer mogelijk" : timeUntilCutoff(item.date)}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flex: 1 }}>
+                          {item.lines.map((l,j) => (
+                            <span key={j} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 9px", borderRadius: 12 }}>
+                              {shortName(l.name)} ×{l.quantity}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+                          <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>{item.source === "vast" ? "vast" : "eenmalig"}</span>
+                          {item.pickup
+                            ? <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 6 }}>🏪 {item.pickup.replace("Winkel ","")}</span>
+                            : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚 bezorgen</span>
+                          }
+                          {hasPrice && total > 0 && <span style={{ fontSize: 11, fontWeight: 500 }}>€ {total.toFixed(2).replace(".",",")}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* ── Section toggle buttons ── */}
+          <div style={{ display: "flex", gap: 10, marginBottom: "1.5rem" }}>
+            <button
+              onClick={() => setActiveSection(s => s === "eenmalig" ? null : "eenmalig")}
+              className={activeSection === "eenmalig" ? "btn-primary" : "btn-secondary"}
+              style={{ flex: 1, fontSize: 13, padding: "10px 0" }}
+            >
+              Eenmalige bestellingen
+            </button>
+            <button
+              onClick={() => setActiveSection(s => s === "vast" ? null : "vast")}
+              className={activeSection === "vast" ? "btn-primary" : "btn-secondary"}
+              style={{ flex: 1, fontSize: 13, padding: "10px 0" }}
+            >
+              Vaste bestellingen
+            </button>
+          </div>
+
           {/* Vaste bestellingen */}
-          <section style={{ marginBottom: "2rem" }}>
+          {activeSection === "vast" && <section style={{ marginBottom: "2rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Vaste bestellingen</h2>
               {availableWeekdays.length > 0 && (
@@ -369,10 +467,10 @@ export default function MijnBestellingenPage() {
                         <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
                         {!order.active && <span style={{ fontSize: 11, background: "var(--danger-bg)", color: "var(--danger)", padding: "2px 8px", borderRadius: 8 }}>Gepauzeerd</span>}
                         {order.active && editable && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeUntilCutoff(next)}</span>}
-                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Vandaag gesloten</span>}
+                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--danger)" }}>Aanpassen niet meer mogelijk</span>}
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {order.active && !isEditing && (
+                        {order.active && !isEditing && editable && (
                           <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
                         {isEditing && (
@@ -386,12 +484,16 @@ export default function MijnBestellingenPage() {
                             <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
                           </>
                         )}
-                        <button onClick={() => toggleRecActive(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: order.active ? "var(--text-subtle)" : "var(--success)" }}>
-                          {order.active ? "Pauzeer" : "Hervatten"}
-                        </button>
-                        <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>
-                          Verwijder
-                        </button>
+                        {editable && (
+                          <>
+                            <button onClick={() => toggleRecActive(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: order.active ? "var(--text-subtle)" : "var(--success)" }}>
+                              {order.active ? "Pauzeer" : "Hervatten"}
+                            </button>
+                            <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>
+                              Verwijder
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -412,6 +514,12 @@ export default function MijnBestellingenPage() {
                     )}
 
                     {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />}
+
+                    {order.active && !editable && !isEditing && (
+                      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "4px 0 8px", background: "var(--surface)", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
+                        Aanpassingen voor de eerstvolgende bezorging zijn niet meer mogelijk. Neem contact op met de bakker voor spoedbezorging.
+                      </p>
+                    )}
 
                     {/* Upcoming 2 weeks skip planning */}
                     {order.active && upcomingDates.length > 0 && !isEditing && (
@@ -460,10 +568,10 @@ export default function MijnBestellingenPage() {
                 </div>
               )}
             </div>
-          </section>
+          </section>}
 
           {/* Eenmalige bestellingen */}
-          <section style={{ marginBottom: "2rem" }}>
+          {activeSection === "eenmalig" && <section style={{ marginBottom: "2rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
               <button onClick={() => setShowNewOO(true)} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
@@ -582,7 +690,7 @@ export default function MijnBestellingenPage() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0, marginLeft: 12 }}>
                         {editable && timeLeft && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeLeft}</span>}
-                        {!editable && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Gesloten</span>}
+                        {!editable && <span style={{ fontSize: 11, color: "var(--danger)" }}>Aanpassen niet meer mogelijk</span>}
                         {editable && !isEditing && (
                           <button onClick={() => startEditOO(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
@@ -612,86 +720,7 @@ export default function MijnBestellingenPage() {
                 );
               })}
             </div>
-          </section>
-
-          {/* Deze week overzicht */}
-          {(() => {
-            // Use UTC dates throughout to avoid local-midnight → UTC offset shifting days
-            const todayUTC = new Date().toISOString().slice(0,10);
-            const isoDay = jsWeekdayToISO(new Date());
-            const monStr = (() => { const d = new Date(todayUTC+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() - (isoDay - 1)); return d.toISOString().slice(0,10); })();
-            const sunStr = (() => { const d = new Date(monStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10); })();
-
-            const weekItems: { date: string; lines: { name: string; quantity: number }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null }[] = [];
-
-            // Recurring orders active this week
-            recurring.filter(o => o.active).forEach(o => {
-              const d = new Date(monStr+"T12:00:00Z");
-              d.setUTCDate(d.getUTCDate() + ((o.weekday - 1 + 7) % 7));
-              const dateStr = d.toISOString().slice(0,10);
-              if (dateStr >= monStr && dateStr <= sunStr) {
-                const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
-                if (!skipped && o.lines.some(l => l.quantity > 0)) {
-                  weekItems.push({
-                    date: dateStr,
-                    lines: o.lines.filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
-                    source: "vast", locked: !isEditable(dateStr), pickup: null,
-                  });
-                }
-              }
-            });
-
-            // One-off orders this week
-            upcoming.forEach(o => {
-              if (o.deliveryDate >= monStr && o.deliveryDate <= sunStr) {
-                weekItems.push({
-                  date: o.deliveryDate,
-                  lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity })),
-                  source: "eenmalig", locked: !isEditable(o.deliveryDate),
-                  pickup: (o as any).pickupLocation ?? null,
-                });
-              }
-            });
-
-            weekItems.sort((a,b) => a.date.localeCompare(b.date));
-            if (weekItems.length === 0) return null;
-
-            return (
-              <section style={{ marginBottom: "2rem" }}>
-                <h2 style={{ fontSize: 17, marginBottom: "0.75rem" }}>Deze week</h2>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {weekItems.map((item, i) => (
-                    <div key={i} className="card" style={{ padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ minWidth: 80 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
-                          {new Date(item.date+"T12:00:00Z").toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"})}
-                        </p>
-                        <span style={{ fontSize: 10, color: item.locked ? "var(--text-subtle)" : "var(--success)" }}>
-                          {item.locked ? "gesloten" : timeUntilCutoff(item.date)}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flex: 1 }}>
-                        {item.lines.map((l,j) => (
-                          <span key={j} style={{ fontSize: 12, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 9px", borderRadius: 12 }}>
-                            {shortName(l.name)} ×{l.quantity}
-                          </span>
-                        ))}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>
-                          {item.source === "vast" ? "vast" : "eenmalig"}
-                        </span>
-                        {item.pickup
-                          ? <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 6 }}>🏪 {item.pickup.replace("Winkel ","")}</span>
-                          : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚 bezorgen</span>
-                        }
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })()}
+          </section>}
 
           {/* Bestelhistorie */}
           {pastOrders.length > 0 && (
