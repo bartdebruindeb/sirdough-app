@@ -66,12 +66,20 @@ export async function sendOrderReminder({
 }
 
 export async function sendPakbon({
-  to, customerName, deliveryDate, tenantName, lines,
+  to, customerName, deliveryDate, tenantName, lines, deviations = [],
 }: {
   to: string; customerName: string; deliveryDate: string; tenantName: string;
   lines: { name: string; quantity: number }[];
+  deviations?: { name: string; ordered: number; delivered: number }[];
 }) {
   const lineRows = lines.map(l => `<tr><td style="padding:6px 0;border-bottom:1px solid #eee">${l.name}</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600">${l.quantity}×</td></tr>`).join("");
+  const devRows = deviations.map(d => `<tr><td style="padding:4px 0;color:#92400e">${d.name}</td><td style="padding:4px 0;text-align:right;color:#92400e">Besteld: ${d.ordered} / Geleverd: ${d.delivered}</td></tr>`).join("");
+  const devBlock = deviations.length > 0 ? `
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:16px 0">
+      <p style="margin:0 0 8px;font-weight:600;color:#92400e;font-size:13px">Afwijking van bestelling</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">${devRows}</table>
+      <p style="margin:8px 0 0;font-size:12px;color:#92400e">De factuur is aangepast op basis van het werkelijk geleverde aantal.</p>
+    </div>` : "";
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
       <p style="font-size:20px;font-weight:600;margin-bottom:4px">${tenantName}</p>
@@ -86,6 +94,7 @@ export async function sendPakbon({
         </tr></thead>
         <tbody>${lineRows}</tbody>
       </table>` : ""}
+      ${devBlock}
       <p style="font-size:12px;color:#999">Heeft u vragen over uw bezorging? Neem dan contact op met de bakkerij.</p>
     </div>`;
   const resend = getResend();

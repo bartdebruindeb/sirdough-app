@@ -71,8 +71,10 @@ export default function BezorgenPage() {
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
-  // Pakbon send state: customerId -> "idle"|"sending"|"sent"|"error"
-  const [pakbonState, setPakbonState] = useState<Record<string, string>>({});
+  // Pakbon modal
+  type PakbonLine = { breadTypeId: string; name: string; orderedQty: number; deliveredQty: number };
+  const [pakbonModal, setPakbonModal] = useState<{ customerId: string; name: string; lines: PakbonLine[] } | null>(null);
+  const [sendingPakbon, setSendingPakbon] = useState(false);
 
   function loadNotes(d: string) {
     fetch(`/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
@@ -193,18 +195,34 @@ export default function BezorgenPage() {
     setDragging(null); setDragOver(null);
   }
 
-  async function sendPakbon(customerId: string) {
-    setPakbonState(s => ({ ...s, [customerId]: "sending" }));
-    try {
-      const res = await fetch("/api/bezorgen/pakbon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-        body: JSON.stringify({ customerId, date }),
-      });
-      setPakbonState(s => ({ ...s, [customerId]: res.ok ? "sent" : "error" }));
-    } catch {
-      setPakbonState(s => ({ ...s, [customerId]: "error" }));
-    }
+  function openPakbonModal(row: DeliveryRow) {
+    const lines = activeBreadTypes
+      .filter(bt => (row.quantities[bt.id] ?? 0) > 0)
+      .map(bt => ({
+        breadTypeId: bt.id,
+        name: bt.name,
+        orderedQty: row.quantities[bt.id] ?? 0,
+        deliveredQty: row.quantities[bt.id] ?? 0,
+      }));
+    setPakbonModal({ customerId: row.customerId, name: row.name, lines });
+  }
+
+  async function confirmPakbon() {
+    if (!pakbonModal) return;
+    setSendingPakbon(true);
+    await fetch("/api/bezorgen/pakbon", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+      body: JSON.stringify({ customerId: pakbonModal.customerId, date, deliveredLines: pakbonModal.lines }),
+    }).catch(() => {});
+    // Mark as delivered
+    const now = new Date().toISOString();
+    setDelivered(d => ({ ...d, [pakbonModal.customerId]: true }));
+    setDeliveredTimes(t => ({ ...t, [pakbonModal.customerId]: now }));
+    setBusOrder(prev => prev.filter(x => x !== pakbonModal.customerId));
+    postStatus(pakbonModal.customerId, "delivered");
+    setSendingPakbon(false);
+    setPakbonModal(null);
   }
 
   async function saveNote() {
@@ -344,7 +362,7 @@ export default function BezorgenPage() {
                           </span>
                         ))}
                       </div>
-                      <button onClick={() => toggleDelivered(row.customerId)}
+                      <button onClick={() => openPakbonModal(row)}
                         style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 13, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
                         title="Geleverd">✓</button>
                       <button onClick={() => removeFromBus(row.customerId)}
@@ -430,18 +448,7 @@ export default function BezorgenPage() {
                             {new Date(deliveredTimes[row.customerId]).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         )}
-                        {(() => {
-                          const ps = pakbonState[row.customerId] ?? "idle";
-                          return (
-                            <button
-                              onClick={() => sendPakbon(row.customerId)}
-                              disabled={ps === "sending" || ps === "sent"}
-                              style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "1px solid var(--border-strong)", background: ps === "sent" ? "var(--success)" : "var(--surface)", color: ps === "sent" ? "white" : "var(--text-subtle)", cursor: ps === "sent" ? "default" : "pointer", flexShrink: 0 }}
-                              title="Stuur pakbon per e-mail">
-                              {ps === "sending" ? "..." : ps === "sent" ? "✓ Verzonden" : ps === "error" ? "Fout - opnieuw" : "Stuur pakbon"}
-                            </button>
-                          );
-                        })()}
+                        <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 500 }}>Pakbon verzonden</span>
                       </div>
                     ))}
                     {deliveredCount === rows.length && (
@@ -455,6 +462,68 @@ export default function BezorgenPage() {
 
             </div>{/* end right column */}
           </div>{/* end two-column */}
+        </div>
+      )}
+
+      {/* Pakbon modal */}
+      {pakbonModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
+          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 480, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 14, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Pakbon — {pakbonModal.name}</h2>
+              <button onClick={() => setPakbonModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
+              Controleer de aantallen. Pas aan als er iets afwijkt van de bestelling.
+            </p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                  <th style={{ textAlign: "left", padding: "6px 0", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12 }}>Broodsoort</th>
+                  <th style={{ textAlign: "center", padding: "6px 8px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12 }}>Besteld</th>
+                  <th style={{ textAlign: "center", padding: "6px 0", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12 }}>Geleverd</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pakbonModal.lines.map((line, i) => {
+                  const diff = line.deliveredQty - line.orderedQty;
+                  return (
+                    <tr key={line.breadTypeId} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 0", fontWeight: 500 }}>{line.name}</td>
+                      <td style={{ padding: "8px 8px", textAlign: "center", color: "var(--text-muted)" }}>{line.orderedQty}</td>
+                      <td style={{ padding: "8px 0", textAlign: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          <button onClick={() => setPakbonModal(m => m ? { ...m, lines: m.lines.map((l, j) => j === i ? { ...l, deliveredQty: Math.max(0, l.deliveredQty - 1) } : l) } : null)}
+                            style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>−</button>
+                          <span style={{ fontWeight: 700, minWidth: 24, textAlign: "center", color: diff !== 0 ? (diff < 0 ? "var(--danger)" : "var(--success)") : "inherit" }}>
+                            {line.deliveredQty}
+                          </span>
+                          <button onClick={() => setPakbonModal(m => m ? { ...m, lines: m.lines.map((l, j) => j === i ? { ...l, deliveredQty: l.deliveredQty + 1 } : l) } : null)}
+                            style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>+</button>
+                          {diff !== 0 && (
+                            <span style={{ fontSize: 11, color: diff < 0 ? "var(--danger)" : "var(--success)", minWidth: 40 }}>
+                              {diff > 0 ? `+${diff}` : diff}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {pakbonModal.lines.some(l => l.deliveredQty !== l.orderedQty) && (
+              <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400e" }}>
+                Afwijking van bestelling — dit wordt vermeld in de pakbon en verwerkt in de factuurlijst.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setPakbonModal(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+              <button onClick={confirmPakbon} disabled={sendingPakbon} className="btn-primary" style={{ fontSize: 13 }}>
+                {sendingPakbon ? "Verzenden…" : "Stuur pakbon & bevestig bezorging"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
