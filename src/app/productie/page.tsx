@@ -50,7 +50,160 @@ function fmtTime(iso: string | null) {
   return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
 }
 
-// --- BreadLineCard (deeg calculator per broodsoort) ---
+// --- CategoryPlanCard (mixer plan per category group) ---
+function CategoryPlanCard({ cat, catLines, mixerCount, onMixerCountChange, assign, onAssign }: {
+  cat: string; catLines: BreadLine[]; mixerCount: number;
+  onMixerCountChange: (n: number) => void;
+  assign: Record<string, number>; onAssign: (breadTypeId: string, m: number) => void;
+}) {
+  const totalQty = catLines.reduce((s, l) => s + l.totalQty, 0);
+  const totalDough = catLines.reduce((s, l) => s + l.doughWeightTotal, 0);
+  return (
+    <div className="card" style={{ padding: "1rem 1.25rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <p style={{ fontWeight: 700, fontSize: 15, margin: 0, textTransform: "capitalize" }}>{cat}</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>{totalQty} st. · {(totalDough / 1000).toFixed(1)} kg deeg</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Mixers:</span>
+          <button onClick={() => onMixerCountChange(Math.max(1, mixerCount - 1))}
+            style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 16 }}>-</button>
+          <span style={{ fontWeight: 700, fontSize: 16, minWidth: 20, textAlign: "center" }}>{mixerCount}</span>
+          <button onClick={() => onMixerCountChange(Math.min(10, mixerCount + 1))}
+            style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 16 }}>+</button>
+        </div>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            <th style={{ textAlign: "left", padding: "4px 0", fontWeight: 500, color: "var(--text-subtle)", fontSize: 11 }}>Broodsoort</th>
+            <th style={{ textAlign: "right", padding: "4px 6px", fontWeight: 500, color: "var(--text-subtle)", fontSize: 11 }}>St.</th>
+            <th style={{ textAlign: "right", padding: "4px 6px", fontWeight: 500, color: "var(--text-subtle)", fontSize: 11 }}>Deeg</th>
+            <th style={{ textAlign: "right", padding: "4px 0", fontWeight: 500, color: "var(--text-subtle)", fontSize: 11 }}>Mixer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {catLines.map(line => {
+            const pureDough = Math.max(0, line.doughWeightTotal - line.toppingWeightPerLoaf * line.totalQty);
+            return (
+              <tr key={line.breadTypeId} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: "6px 0", fontWeight: 500 }}>{line.name}</td>
+                <td style={{ padding: "6px 6px", textAlign: "right", color: "var(--text-muted)" }}>{line.totalQty}</td>
+                <td style={{ padding: "6px 6px", textAlign: "right", color: "var(--text-muted)", fontSize: 12 }}>{(pureDough / 1000).toFixed(2)} kg</td>
+                <td style={{ padding: "6px 0", textAlign: "right" }}>
+                  <select value={assign[line.breadTypeId] ?? 1}
+                    onChange={e => onAssign(line.breadTypeId, parseInt(e.target.value))}
+                    style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)" }}>
+                    {Array.from({ length: mixerCount }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>#{i + 1}</option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {mixerCount > 1 && (
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {Array.from({ length: mixerCount }, (_, i) => {
+            const m = i + 1;
+            const mLines = catLines.filter(l => (assign[l.breadTypeId] ?? 1) === m);
+            const mDough = mLines.reduce((s, l) => s + Math.max(0, l.doughWeightTotal - l.toppingWeightPerLoaf * l.totalQty), 0);
+            return (
+              <div key={m} style={{ fontSize: 12, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 10px" }}>
+                <span style={{ fontWeight: 600 }}>#{m}</span>
+                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>{(mDough / 1000).toFixed(2)} kg</span>
+                {mLines.length > 0 && <span style={{ color: "var(--text-subtle)", marginLeft: 4, fontSize: 11 }}>({mLines.map(l => l.name.split(" ")[0]).join(", ")})</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- MixerDeegCard (deeg calculator per mixer) ---
+function MixerDeegCard({ cat, mixerNum, catLines, assign, recipe }: {
+  cat: string; mixerNum: number; catLines: BreadLine[];
+  assign: Record<string, number>; recipe: RecipeInfo | null;
+}) {
+  const [weight, setWeight] = useState(0);
+  const assignedLines = catLines.filter(l => (assign[l.breadTypeId] ?? 1) === mixerNum && l.totalQty > 0);
+  if (assignedLines.length === 0) return null;
+
+  const pureDoughTotal = assignedLines.reduce((s, l) => s + Math.max(0, l.doughWeightTotal - l.toppingWeightPerLoaf * l.totalQty), 0);
+  const doughForCalc = weight > 0 ? weight : pureDoughTotal;
+  const toppingLines = assignedLines.filter(l => l.toppings.length > 0 && l.toppingWeightPerLoaf > 0);
+
+  return (
+    <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <h3 style={{ fontSize: 15, margin: 0, textTransform: "capitalize" }}>{cat} — Mixer {mixerNum}</h3>
+        <span className="badge badge-amber">{assignedLines.reduce((s, l) => s + l.totalQty, 0)} st.</span>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px" }}>{assignedLines.map(l => l.name).join(" · ")}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, fontSize: 13, marginBottom: 12 }}>
+        <span style={{ color: "var(--text-muted)" }}>Deeg totaal:</span>
+        <span style={{ fontWeight: 500, textAlign: "right" }}>{(pureDoughTotal / 1000).toFixed(2)} kg</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Ingewogen:</span>
+        <input type="number" value={weight || ""} placeholder={String(Math.round(pureDoughTotal))}
+          min={0} max={400000}
+          onKeyDown={e => { if (["e","E","-","+"].includes(e.key)) e.preventDefault(); }}
+          onChange={e => setWeight(Math.min(400000, parseInt(e.target.value) || 0))}
+          style={{ width: 100, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", fontSize: 13 }} />
+        <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>g</span>
+        {weight > 0 && Math.abs(weight - pureDoughTotal) > 10 && (
+          <span style={{ fontSize: 11, color: weight > pureDoughTotal ? "var(--danger)" : "#92400e" }}>
+            {weight > pureDoughTotal ? `${Math.round(weight - pureDoughTotal)} g te veel` : `${Math.round(pureDoughTotal - weight)} g te weinig`}
+          </span>
+        )}
+      </div>
+      {recipe && (() => {
+        const totalPct = 100 + recipe.waterPct + recipe.desemPct + recipe.zoutPct + recipe.inwasPct;
+        const flour = doughForCalc / totalPct * 100;
+        return (
+          <>
+            <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", margin: "0 0 6px", letterSpacing: "0.06em" }}>In mixer</p>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <tbody>
+                  {recipe.flourLines.map(f => (
+                    <tr key={f.name}><td style={{ padding: "2px 0", color: "var(--text-muted)" }}>{f.name}</td><td style={{ padding: "2px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * f.percentage / 100)}</td></tr>
+                  ))}
+                  <tr style={{ borderTop: "1px solid var(--border)" }}><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>Water</td><td style={{ padding: "3px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * recipe.waterPct / 100)}</td></tr>
+                  <tr><td style={{ padding: "2px 0", color: "var(--text-muted)" }}>Desem</td><td style={{ padding: "2px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * recipe.desemPct / 100)}</td></tr>
+                  <tr><td style={{ padding: "2px 0", color: "var(--text-muted)" }}>Zout</td><td style={{ padding: "2px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * recipe.zoutPct / 100)}</td></tr>
+                  {recipe.inwasPct > 0 && <tr><td style={{ padding: "2px 0", color: "var(--text-muted)" }}>Inwas</td><td style={{ padding: "2px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * recipe.inwasPct / 100)}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
+      {toppingLines.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-subtle)", margin: "0 0 6px", letterSpacing: "0.06em" }}>Met de hand</p>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <tbody>
+                {toppingLines.flatMap(line => line.toppings.map(t => (
+                  <tr key={`${line.breadTypeId}-${t.name}`}><td style={{ padding: "2px 0", color: "var(--text-muted)" }}>{line.name} – {t.name}</td><td style={{ padding: "2px 0", textAlign: "right", fontWeight: 600 }}>{g(t.gramsPerLoaf * line.totalQty)}</td></tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// STUB — keeping shape so DesemTotaal below still compiles
 function BreadLineCard({ line, recipe, mixerCount, onMixerCountChange }: {
   line: BreadLine; recipe: RecipeInfo | null;
   mixerCount: number; onMixerCountChange: (n: number) => void;
@@ -466,8 +619,24 @@ export default function ProductiePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
-  // Per-breadType mixer count for planning (keyed by breadTypeId)
-  const [lineMixerCounts, setLineMixerCounts] = useState<Record<string, number>>({});
+  // Per-category mixer count and subtype→mixer assignment
+  const [catMixerCounts, setCatMixerCounts] = useState<Record<string, number>>({});
+  const [catMixerAssign, setCatMixerAssign] = useState<Record<string, Record<string, number>>>({});
+
+  function setCatCount(cat: string, n: number) {
+    const newN = Math.max(1, Math.min(10, n));
+    setCatMixerCounts(prev => ({ ...prev, [cat]: newN }));
+    // Clamp any over-assigned subtypes to the new max mixer
+    setCatMixerAssign(prev => {
+      const a = { ...(prev[cat] ?? {}) };
+      for (const id of Object.keys(a)) if (a[id] > newN) a[id] = newN;
+      return { ...prev, [cat]: a };
+    });
+  }
+
+  function setCatSubAssign(cat: string, breadTypeId: string, m: number) {
+    setCatMixerAssign(prev => ({ ...prev, [cat]: { ...(prev[cat] ?? {}), [breadTypeId]: m } }));
+  }
   // Production batches from DB
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [savingPlan, setSavingPlan]   = useState(false);
@@ -497,11 +666,14 @@ export default function ProductiePage() {
       .then(d => {
         const bs: Batch[] = d.batches ?? [];
         setBatches(bs);
-        // Prefill mixer counts from existing batches
+        // Prefill mixer counts from existing batches (cat::m format)
         if (bs.length > 0) {
           const counts: Record<string, number> = {};
-          for (const b of bs) counts[b.mixerGroup] = Math.max(counts[b.mixerGroup] ?? 0, b.batchNumber);
-          setLineMixerCounts(counts);
+          for (const b of bs) {
+            const cat = b.mixerGroup.includes("::") ? b.mixerGroup.split("::")[0] : b.mixerGroup;
+            counts[cat] = Math.max(counts[cat] ?? 0, b.batchNumber);
+          }
+          setCatMixerCounts(counts);
         }
       })
       .catch(() => {});
@@ -515,12 +687,20 @@ export default function ProductiePage() {
     return () => clearInterval(id);
   }, [loadBatches]);
 
-  // Set default mixer count = 1 per bread line once plan loads (only when no batches yet)
+  // Set default mixer counts once plan loads (only when no batches yet)
   useEffect(() => {
     if (!plan || batches.length > 0) return;
-    const defaults: Record<string, number> = {};
-    for (const l of plan.breadLines.filter(l => l.totalQty > 0)) defaults[l.breadTypeId] = 1;
-    setLineMixerCounts(defaults);
+    const activeLines = plan.breadLines.filter(l => l.totalQty > 0);
+    const cats = [...new Set(activeLines.map(l => l.category))];
+    const counts: Record<string, number> = {};
+    const assign: Record<string, Record<string, number>> = {};
+    for (const cat of cats) {
+      counts[cat] = 1;
+      assign[cat] = {};
+      for (const l of activeLines.filter(l => l.category === cat)) assign[cat][l.breadTypeId] = 1;
+    }
+    setCatMixerCounts(counts);
+    setCatMixerAssign(assign);
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function shift(days: number) {
@@ -542,17 +722,23 @@ export default function ProductiePage() {
     if (!plan) return;
     setConfirmReset(false);
     setSavingPlan(true); setSaveError("");
-    const toCreate = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0).flatMap(line => {
-      const count = Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1);
-      const base  = Math.floor(line.totalQty / count);
-      const rem   = line.totalQty - base * count;
-      return Array.from({ length: count }, (_, i) => ({
-        mixerGroup: line.breadTypeId,
-        groupLabel: line.name,
-        batchNumber: i + 1,
-        totalLoaves: i === 0 ? base + rem : base,
-      }));
-    });
+    const activeLines = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0);
+    const cats = [...new Set(activeLines.map(l => l.category))];
+    const toCreate: { mixerGroup: string; groupLabel: string; batchNumber: number; totalLoaves: number }[] = [];
+    for (const cat of cats) {
+      const catLines = activeLines.filter(l => l.category === cat);
+      const mixerCount = catMixerCounts[cat] ?? 1;
+      for (let m = 1; m <= mixerCount; m++) {
+        const assigned = catLines.filter(l => (catMixerAssign[cat]?.[l.breadTypeId] ?? 1) === m);
+        if (assigned.length === 0) continue;
+        toCreate.push({
+          mixerGroup: `${cat}::${m}`,
+          groupLabel: mixerCount > 1 ? `${cat} – Mixer ${m}` : cat,
+          batchNumber: m,
+          totalLoaves: assigned.reduce((s, l) => s + l.totalQty, 0),
+        });
+      }
+    }
     if (toCreate.length === 0) {
       setSaveError("Geen broodsoorten met aantallen gevonden. Controleer de bestellingen voor deze dag.");
       setSavingPlan(false); return;
@@ -579,10 +765,18 @@ export default function ProductiePage() {
   const batchGroups  = batches.reduce<Record<string, Batch[]>>((acc, b) => { (acc[b.mixerGroup] ??= []).push(b); return acc; }, {});
   const totalDone    = batches.filter(b => b.status === "klaar").length;
   function getBatchLines(batch: Batch): BreadLine[] {
-    // New format: mixerGroup = breadTypeId
+    // New format: "category::mixerNum"
+    if (batch.mixerGroup.includes("::")) {
+      const [cat, mStr] = batch.mixerGroup.split("::");
+      const m = parseInt(mStr);
+      const catLines = plan?.breadLines.filter(l => l.category === cat && l.totalQty > 0) ?? [];
+      const assigned = catLines.filter(l => (catMixerAssign[cat]?.[l.breadTypeId] ?? 1) === m);
+      return assigned.length > 0 ? assigned : catLines;
+    }
+    // Old breadTypeId format
     const line = plan?.breadLines.find(l => l.breadTypeId === batch.mixerGroup);
     if (line) return [{ ...line, totalQty: batch.totalLoaves }];
-    // Fallback for old group-based batches
+    // Fallback for legacy group-based batches
     const mg = plan?.mixerGroups.find(g => g.group === batch.mixerGroup);
     if (!mg) return [];
     const frac = mg.totalLoaves > 0 ? batch.totalLoaves / mg.totalLoaves : 0;
@@ -647,29 +841,15 @@ export default function ProductiePage() {
                 const activeLines = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0);
                 const cats = [...new Set(activeLines.map(l => l.category))];
                 return cats.map(cat => (
-                  <div key={cat} style={{ marginBottom: 16 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 8px" }}>{cat}</p>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-                {activeLines.filter(l => l.category === cat).map(line => {
-                  const count = Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1);
-                  const pureDough = Math.max(0, line.doughWeightTotal - line.toppingWeightPerLoaf * line.totalQty);
-                  return (
-                    <div key={line.breadTypeId} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-                      <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 14 }}>{line.name}</p>
-                      <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>{line.totalQty} st. · {(pureDough / 1000).toFixed(2)} kg deeg</p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Mixers:</span>
-                        <button onClick={() => setLineMixerCounts(c => ({ ...c, [line.breadTypeId]: Math.max(1, (c[line.breadTypeId] ?? 1) - 1) }))}
-                          style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 15 }}>-</button>
-                        <span style={{ fontWeight: 700, fontSize: 16, minWidth: 18, textAlign: "center" }}>{count}</span>
-                        <button onClick={() => setLineMixerCounts(c => ({ ...c, [line.breadTypeId]: Math.min(10, (c[line.breadTypeId] ?? 1) + 1) }))}
-                          style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 15 }}>+</button>
-                        <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>{g(pureDough / count)} / mixer</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                    </div>
+                  <div key={cat} style={{ marginBottom: 12 }}>
+                    <CategoryPlanCard
+                      cat={cat}
+                      catLines={activeLines.filter(l => l.category === cat)}
+                      mixerCount={catMixerCounts[cat] ?? 1}
+                      onMixerCountChange={n => setCatCount(cat, n)}
+                      assign={catMixerAssign[cat] ?? {}}
+                      onAssign={(btId, m) => setCatSubAssign(cat, btId, m)}
+                    />
                   </div>
                 ));
               })()}
@@ -783,25 +963,27 @@ export default function ProductiePage() {
               {(() => {
                 const activeLines = planLines.filter(l => l.totalQty > 0 && l.doughWeightTotal > 0);
                 const cats = [...new Set(activeLines.map(l => l.category))];
-                return cats.map(cat => (
-                  <div key={cat} style={{ marginBottom: 24 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>{cat}</p>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-                      {activeLines.filter(l => l.category === cat).map(line => {
-                        const batchCount = batches.filter(b => b.mixerGroup === line.breadTypeId).length;
-                        return (
-                          <BreadLineCard
-                            key={line.breadTypeId}
-                            line={line}
-                            recipe={getRecipeForLine(line.breadTypeId)}
-                            mixerCount={batchCount || Math.max(1, lineMixerCounts[line.breadTypeId] ?? 1)}
-                            onMixerCountChange={n => setLineMixerCounts(c => ({ ...c, [line.breadTypeId]: n }))}
+                return cats.map(cat => {
+                  const catLines = activeLines.filter(l => l.category === cat);
+                  const mixerCount = catMixerCounts[cat] ?? 1;
+                  const recipe = plan?.mixerGroups.find(mg => mg.lines.some(l => l.category === cat))?.recipe ?? null;
+                  return (
+                    <div key={cat} style={{ marginBottom: 24 }}>
+                      <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-subtle)", margin: "0 0 10px" }}>{cat}</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
+                        {Array.from({ length: mixerCount }, (_, i) => (
+                          <MixerDeegCard
+                            key={i + 1}
+                            cat={cat} mixerNum={i + 1}
+                            catLines={catLines}
+                            assign={catMixerAssign[cat] ?? {}}
+                            recipe={recipe}
                           />
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ));
+                  );
+                });
               })()}
             </section>
           )}
