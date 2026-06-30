@@ -29,6 +29,7 @@ type Plan = {
 type Batch = {
   id: string;
   mixerGroup: string; groupLabel: string; batchNumber: number; totalLoaves: number;
+  weightGrams: number | null;
   status: "todo" | "in_mixer" | "rijzen" | "voorvormen" | "eindvormen" | "klaar";
   notes: string | null;
   startedAt: string | null; rijzenAt: string | null; voorvormAt: string | null; eindvormAt: string | null; klaarAt: string | null;
@@ -227,8 +228,8 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 }
 
 // ─── MixerGroupCard ───────────────────────────────────────────────────────────
-function MixerGroupCard({ mg, mixerCount }: { mg: MixerGroup; mixerCount?: number }) {
-  const mixers = mixerCount ?? (mg.group === "boeren" ? 3 : 1);
+function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[] }) {
+  const mixers = weightsKg.length || 1;
   const [showDetails, setShowDetails] = useState(false);
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
@@ -273,10 +274,30 @@ function MixerGroupCard({ mg, mixerCount }: { mg: MixerGroup; mixerCount?: numbe
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
         <span style={{ fontSize: 15, fontWeight: 700, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 10px", borderRadius: 8 }}>{mixers}×</span>
-        <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>→ {g((mg.totalDoughNoFillingsKg * 1000) / mixers)} per mixer</span>
       </div>
-      <MixerIngredients mg={mg} mixers={mixers} />
-      <VullingenCalculator mg={mg} mixers={mixers} />
+      {weightsKg.map((wKg, i) => {
+        const frac = mg.totalDoughNoFillingsKg > 0 ? wKg / mg.totalDoughNoFillingsKg : 0;
+        const mixerLines = mg.lines.map(l => ({
+          ...l,
+          totalQty: Math.round(l.totalQty * frac),
+          doughWeightTotal: l.doughWeightTotal * frac,
+          flourWeightTotal: l.flourWeightTotal * frac,
+        }));
+        const fillingsKg = mg.totalDoughKg - mg.totalDoughNoFillingsKg;
+        const virtualMg: MixerGroup = {
+          ...mg,
+          lines: mixerLines,
+          totalDoughNoFillingsKg: wKg,
+          totalDoughKg: wKg + fillingsKg * frac,
+        };
+        return (
+          <div key={i} style={{ marginTop: i > 0 ? 18 : 0, paddingTop: i > 0 ? 16 : 0, borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+            <p style={{ fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>Mixer {i + 1} — {wKg.toFixed(2)} kg</p>
+            <MixerIngredients mg={virtualMg} mixers={1} />
+            <VullingenCalculator mg={virtualMg} mixers={1} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -562,14 +583,32 @@ export default function ProductiePage() {
 
   // Per-group mixer count for planning
   const [mixerCounts, setMixerCounts] = useState<Record<string, number>>({});
+  // Per-group, per-mixer dough weight in kg (manually editable, not equally distributed)
+  const [mixerWeights, setMixerWeights] = useState<Record<string, number[]>>({});
   // Production batches from DB
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [savingPlan, setSavingPlan]   = useState(false);
   const [saveError, setSaveError]     = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const [showPlanEdit, setShowPlanEdit] = useState(false);
+  const [showAantallen, setShowAantallen] = useState(false);
   // additiveAssignment: group → breadTypeId → batchNumber
   const [additiveAssignment, setAdditiveAssignment] = useState<Record<string, Record<string, number>>>({});
+
+  // Resize a group's weight array to `count` entries, filling new slots with an even
+  // share of whatever's left of totalKg, without disturbing values the user already typed.
+  function syncWeights(group: string, count: number, totalKg: number) {
+    setMixerWeights(w => {
+      const cur = w[group] ?? [];
+      if (cur.length === count) return w;
+      const arr = cur.slice(0, count);
+      while (arr.length < count) {
+        const used = arr.reduce((s, v) => s + v, 0);
+        arr.push(Number(Math.max(0, (totalKg - used) / (count - arr.length)).toFixed(2)));
+      }
+      return { ...w, [group]: arr };
+    });
+  }
 
   // ── Load plan ──
   function loadPlan(d: string) {
@@ -593,11 +632,16 @@ export default function ProductiePage() {
       .then(d => {
         const bs: Batch[] = d.batches ?? [];
         setBatches(bs);
-        // Prefill mixer counts from existing batches
+        // Prefill mixer counts + weights from existing batches
         if (bs.length > 0) {
           const counts: Record<string, number> = {};
-          for (const b of bs) counts[b.mixerGroup] = Math.max(counts[b.mixerGroup] ?? 0, b.batchNumber);
+          const weights: Record<string, number[]> = {};
+          for (const b of bs) {
+            counts[b.mixerGroup] = Math.max(counts[b.mixerGroup] ?? 0, b.batchNumber);
+            (weights[b.mixerGroup] ??= [])[b.batchNumber - 1] = (b.weightGrams ?? 0) / 1000;
+          }
           setMixerCounts(counts);
+          setMixerWeights(weights);
         }
       })
       .catch(() => {});
@@ -611,12 +655,18 @@ export default function ProductiePage() {
     return () => clearInterval(id);
   }, [loadBatches]);
 
-  // Set default mixer counts once plan loads (only when no batches yet)
+  // Set default mixer counts + even weight split once plan loads (only when no batches yet)
   useEffect(() => {
     if (!plan || batches.length > 0) return;
     const defaults: Record<string, number> = {};
-    for (const mg of plan.mixerGroups) defaults[mg.group] = mg.group === "boeren" ? 3 : 1;
+    const weightDefaults: Record<string, number[]> = {};
+    for (const mg of plan.mixerGroups) {
+      const c = mg.group === "boeren" ? 3 : 1;
+      defaults[mg.group] = c;
+      weightDefaults[mg.group] = Array.from({ length: c }, () => Number((mg.totalDoughNoFillingsKg / c).toFixed(2)));
+    }
     setMixerCounts(defaults);
+    setMixerWeights(weightDefaults);
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function shift(days: number) {
@@ -635,14 +685,20 @@ export default function ProductiePage() {
     setSavingPlan(true); setSaveError("");
     const toCreate = planGroups.filter(mg => mg.totalLoaves > 0).flatMap(mg => {
       const count = Math.max(1, mixerCounts[mg.group] ?? 1);
-      const base  = Math.floor(mg.totalLoaves / count);
-      const rem   = mg.totalLoaves - base * count;
+      const weightsKg = mixerWeights[mg.group]?.length === count
+        ? mixerWeights[mg.group]
+        : Array.from({ length: count }, () => mg.totalDoughNoFillingsKg / count);
+      const weightSum = weightsKg.reduce((s, v) => s + v, 0) || 1;
       const assignment = additiveAssignment[mg.group] ?? {};
-      return Array.from({ length: count }, (_, i) => {
+      let loavesAssigned = 0;
+      return weightsKg.map((wKg, i) => {
         const batchNum = i + 1;
+        const isLast = i === weightsKg.length - 1;
+        const loaves = isLast ? mg.totalLoaves - loavesAssigned : Math.round(mg.totalLoaves * wKg / weightSum);
+        loavesAssigned += loaves;
         const additivesForBatch = mg.lines.filter(l => ADDITIVE_SLUGS.has(l.slug) && l.totalQty > 0 && (assignment[l.breadTypeId] ?? 1) === batchNum);
         const notes = additivesForBatch.length > 0 ? JSON.stringify({ additives: additivesForBatch.map(l => `${l.name} ×${l.totalQty}`) }) : undefined;
-        return { mixerGroup: mg.group, groupLabel: mg.label, batchNumber: batchNum, totalLoaves: i === 0 ? base + rem : base, notes };
+        return { mixerGroup: mg.group, groupLabel: mg.label, batchNumber: batchNum, totalLoaves: Math.max(0, loaves), weightGrams: Math.round(wKg * 1000), notes };
       });
     });
     if (toCreate.length === 0) {
@@ -675,6 +731,18 @@ export default function ProductiePage() {
     if (!mg) return [];
     const frac = mg.totalLoaves > 0 ? batch.totalLoaves / mg.totalLoaves : 0;
     return mg.lines.map(l => ({ ...l, totalQty: Math.round(l.totalQty * frac), doughWeightTotal: l.doughWeightTotal * frac, flourWeightTotal: l.flourWeightTotal * frac }));
+  }
+
+  const weightsByGroup: Record<string, number[]> = {};
+  for (const mg of planGroups) {
+    const savedBatches = (batchGroups[mg.group] ?? []).slice().sort((a, b) => a.batchNumber - b.batchNumber);
+    if (savedBatches.length > 0) {
+      weightsByGroup[mg.group] = savedBatches.map(b => (b.weightGrams ?? 0) / 1000);
+    } else if (mixerWeights[mg.group]?.length) {
+      weightsByGroup[mg.group] = mixerWeights[mg.group];
+    } else {
+      weightsByGroup[mg.group] = [mg.totalDoughNoFillingsKg];
+    }
   }
 
   return (
@@ -712,6 +780,47 @@ export default function ProductiePage() {
         </div>
       </div>
 
+      {/* ── Aantallen (collapsible) ── */}
+      {!loading && !error && hasAny && (
+        <section className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+          <button
+            onClick={() => setShowAantallen(s => !s)}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 20px", border: "none", background: "var(--surface-2)", cursor: "pointer", textAlign: "left" }}
+          >
+            <span style={{ fontSize: 11, transform: showAantallen ? "rotate(90deg)" : "none", transition: "transform 0.15s", color: "var(--text-subtle)" }}>▶</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Aantallen — {delivLabel}</span>
+          </button>
+          {showAantallen && (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
+                    <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planLines.filter(l => l.totalQty > 0).map((line, i) => (
+                    <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "8px 20px" }}>{line.name}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
+                      <td style={{ padding: "8px 20px", textAlign: "right" }}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       {loading && <p style={{ color: "var(--text-subtle)", textAlign: "center", padding: "3rem 0" }}>Laden…</p>}
       {!loading && error && (
         <div style={{ background: "var(--warn-bg)", border: "1px solid #fca5a5", borderRadius: 10, padding: "1rem", color: "var(--warn)", fontSize: 14, marginBottom: 16 }}>
@@ -733,9 +842,12 @@ export default function ProductiePage() {
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {planGroups.filter(mg => mg.totalLoaves > 0).map(mg => {
-                  const count         = Math.max(1, mixerCounts[mg.group] ?? 1);
-                  const perMixer      = Math.ceil(mg.totalLoaves / count);
-                  const doughPerMixer = mg.totalDoughNoFillingsKg / count;
+                  const count    = Math.max(1, mixerCounts[mg.group] ?? 1);
+                  const weightsKg = mixerWeights[mg.group]?.length === count
+                    ? mixerWeights[mg.group]
+                    : Array.from({ length: count }, () => Number((mg.totalDoughNoFillingsKg / count).toFixed(2)));
+                  const weightSum = weightsKg.reduce((s, v) => s + v, 0);
+                  const weightWarn = Math.abs(weightSum - mg.totalDoughNoFillingsKg) > 0.05;
                   const additiveLinesInGroup = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug) && l.totalQty > 0);
                   // Merge lines where mixerGroup references another slug (e.g. sesam-15kg → sesam)
                   const additiveLinesDisplay = (() => {
@@ -759,21 +871,38 @@ export default function ProductiePage() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
-                        <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.max(1, (c[mg.group] ?? 1) - 1) }))}
+                        <button onClick={() => { const nc = Math.max(1, count - 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughNoFillingsKg); }}
                           style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>−</button>
                         <span style={{ fontWeight: 700, fontSize: 18, minWidth: 24, textAlign: "center" }}>{count}</span>
-                        <button onClick={() => setMixerCounts(c => ({ ...c, [mg.group]: Math.min(10, (c[mg.group] ?? 1) + 1) }))}
+                        <button onClick={() => { const nc = Math.min(10, count + 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughNoFillingsKg); }}
                           style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>+</button>
                       </div>
                       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ color: "var(--text-muted)" }}>Per mixer stuks</span>
-                          <strong>~{perMixer}</strong>
+                        <p style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Gewicht per mixer (kg)</p>
+                        {weightsKg.map((wKg, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ color: "var(--text-muted)" }}>Mixer {i + 1}</span>
+                            <input type="number" step="0.1" min="0" value={wKg}
+                              onChange={e => {
+                                const v = parseFloat(e.target.value) || 0;
+                                setMixerWeights(w => {
+                                  const arr = [...(w[mg.group] ?? weightsKg)];
+                                  arr[i] = v;
+                                  return { ...w, [mg.group]: arr };
+                                });
+                              }}
+                              style={{ width: 70, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 6px", fontSize: 13, textAlign: "right" }} />
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+                          <span style={{ color: "var(--text-muted)" }}>Totaal ingevoerd</span>
+                          <strong style={{ color: weightWarn ? "var(--warn)" : "inherit" }}>
+                            {weightSum.toFixed(2)} kg{weightWarn ? ` (benodigd ${mg.totalDoughNoFillingsKg.toFixed(2)} kg)` : ""}
+                          </strong>
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ color: "var(--text-muted)" }}>Per mixer deeg</span>
-                          <strong>{doughPerMixer.toFixed(2)} kg</strong>
-                        </div>
+                        {weightWarn && (
+                          <p style={{ fontSize: 11, color: "var(--warn)", margin: "4px 0 0" }}>⚠ Som van de mixers wijkt af van het totaal benodigde deeg.</p>
+                        )}
                       </div>
                       {/* Additive chooser for groups with multiple mixers */}
                       {count > 1 && additiveLinesDisplay.length > 0 && (
@@ -910,7 +1039,7 @@ export default function ProductiePage() {
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} mixerCount={(batchGroups[mg.group] ?? []).length || undefined} />)}
+                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughNoFillingsKg]} />)}
               </div>
             </section>
           )}
@@ -920,41 +1049,6 @@ export default function ProductiePage() {
             <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
             {hasAny && <MandenTotaal lines={planLines} />}
           </section>
-
-          {/* ── Aantallen ── */}
-          {hasAny && (
-            <section className="card" style={{ overflow: "hidden" }}>
-              <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Aantallen — {delivLabel}</span>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                      <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
-                      <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
-                      <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {planLines.filter(l => l.totalQty > 0).map((line, i) => (
-                      <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                        <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
-                        <td style={{ padding: "8px 20px", textAlign: "right" }}>
-                          <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
 
         </div>
       )}

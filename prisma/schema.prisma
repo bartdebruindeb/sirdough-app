@@ -555,6 +555,7 @@ model ProductionBatch {
   groupLabel     String    // "Boerenmix", "Baguettedeeg", etc.
   batchNumber    Int
   totalLoaves    Int       @default(0)
+  weightGrams    Int?
   status         String    @default("todo")
   startedAt      DateTime? // timestamp when moved to in_mixer
   rijzenAt       DateTime? // timestamp when moved to rijzen
