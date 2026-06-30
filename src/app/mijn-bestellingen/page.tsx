@@ -403,7 +403,7 @@ export default function MijnBestellingenPage() {
                             ? <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 6 }}>🏪 {item.pickup.replace("Winkel ","")}</span>
                             : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚 bezorgen</span>
                           }
-                          {hasPrice && total > 0 && <span style={{ fontSize: 11, fontWeight: 500 }}>€ {total.toFixed(2).replace(".",",")}</span>}
+                          {hasPrice && total > 0 && <span style={{ fontSize: 11, fontWeight: 500 }}>€ {total.toFixed(2).replace(".",",")} excl. BTW</span>}
                         </div>
                       </div>
                     );
@@ -684,7 +684,7 @@ export default function MijnBestellingenPage() {
                               ? <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 10 }}>🏪 {order.pickupLocation.replace("Winkel ","")}</span>
                               : <span style={{ fontSize: 11, background: "var(--surface-2)", color: "var(--text-subtle)", padding: "2px 8px", borderRadius: 10 }}>🚚 bezorgen</span>
                             }
-                            {orderTotal != null && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {orderTotal.toFixed(2).replace(".",",")}</span>}
+                            {orderTotal != null && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {orderTotal.toFixed(2).replace(".",",")} excl. BTW</span>}
                           </div>
                         )}
                       </div>

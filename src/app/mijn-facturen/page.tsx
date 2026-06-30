@@ -56,9 +56,13 @@ export default function MijnFacturenPage() {
                 </p>
               )}
             </div>
-            <div style={{ textAlign: "right" }}>
+            <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>€ {total.toFixed(2)}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-subtle)" }}>incl. {inv.vatPercent}% BTW</p>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--text-subtle)" }}>incl. {inv.vatPercent}% BTW</p>
+              <a href={`/api/facturen/${inv.id}`} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 12, padding: "4px 12px", borderRadius: 6, border: "1px solid var(--accent)", color: "var(--accent)", textDecoration: "none", background: "var(--accent-light)" }}>
+                PDF openen
+              </a>
             </div>
           </div>
         );

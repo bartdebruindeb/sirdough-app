@@ -228,11 +228,9 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
 function NewBreadTypeModal({ onClose, onSaved, existingCategories, basketTypeOptions }: {
   onClose: () => void; onSaved: () => void; existingCategories: string[]; basketTypeOptions: string[];
 }) {
-  const allCats = [...new Set(["boeren","mand","baguette","spelt","volkoren","rogge","zoet",...existingCategories])];
+  const allCats = [...new Set([...existingCategories.length ? existingCategories : ["boeren","baguette","spelt","volkoren","rogge","zoet"]])];
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("boeren");
-  const [newCat, setNewCat] = useState("");
-  const [addingCat, setAddingCat] = useState(false);
+  const [category, setCategory] = useState(allCats[0] ?? "boeren");
   const [weightGrams, setWeightGrams] = useState(1010);
   const [basketType, setBasketType] = useState("");
   const [basketStyle, setBasketStyle] = useState("");
@@ -275,24 +273,10 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories, basketTypeOpt
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Categorie</label>
-          {addingCat?(
-            <div style={{display:"flex",gap:8,flexDirection:"column"}}>
-              <div style={{display:"flex",gap:8}}>
-                <input value={newCat} onChange={e=>setNewCat(e.target.value)} style={{...inp,flex:1}} placeholder="Naam nieuwe categorie" autoFocus
-                  onKeyDown={e=>{if(e.key==="Enter"&&newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} />
-                <button onClick={()=>{if(newCat.trim()){setCategory(newCat.trim().toLowerCase());setAddingCat(false);}}} className="btn-primary" style={{fontSize:13,padding:"8px 12px"}}>OK</button>
-                <button onClick={()=>setAddingCat(false)} className="btn-secondary" style={{fontSize:13}}>✕</button>
-              </div>
-              <p style={{fontSize:11,color:"var(--text-subtle)",margin:0}}>De categorie wordt aangemaakt zodra je dit broodtype opslaat.</p>
-            </div>
-          ):(
-            <div style={{display:"flex",gap:8}}>
-              <select value={category} onChange={e=>setCategory(e.target.value)} style={{...inp,flex:1}}>
-                {allCats.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
-              </select>
-              <button onClick={()=>setAddingCat(true)} className="btn-secondary" style={{fontSize:13,padding:"8px 10px",whiteSpace:"nowrap"}}>+ Nieuw</button>
-            </div>
-          )}
+          <select value={category} onChange={e=>setCategory(e.target.value)} style={inp}>
+            {allCats.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+          </select>
+          <p style={{fontSize:11,color:"var(--text-subtle)",margin:"3px 0 0"}}>Nieuwe categorie toevoegen via "Categorieën beheren".</p>
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
@@ -388,6 +372,10 @@ export default function ReceptenPage() {
   const [showBasketManager, setShowBasketManager] = useState(false);
   const [basketTypes, setBasketTypes] = useState<string[]>(["750 gram","rond","1 kg","1,5 kg"]);
   const [newBasketName, setNewBasketName] = useState("");
+  const [extraCategories, setExtraCategories] = useState<string[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [renamingCat, setRenamingCat] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<BreadType | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -402,11 +390,28 @@ export default function ReceptenPage() {
   async function loadSettings() {
     const d = await fetch("/api/settings", { headers: { "x-role": role ?? "" } }).then(r => r.json()).catch(() => ({}));
     if (d.basketTypes?.length) setBasketTypes(d.basketTypes);
+    if (d.extraCategories) setExtraCategories(d.extraCategories);
   }
 
   async function saveBasketTypes(types: string[]) {
     setBasketTypes(types);
     await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" }, body: JSON.stringify({ basketTypes: types }) });
+  }
+
+  async function saveExtraCategories(cats: string[]) {
+    setExtraCategories(cats);
+    await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" }, body: JSON.stringify({ extraCategories: cats }) });
+  }
+
+  async function renameCategory(from: string, to: string) {
+    if (!to.trim() || to === from) return;
+    const toName = to.trim().toLowerCase();
+    await fetch("/api/bread-types", { method: "PUT", headers: { "Content-Type": "application/json", "x-role": role ?? "" }, body: JSON.stringify({ from, to: toName }) });
+    // update extraCategories if needed
+    const newExtra = extraCategories.map(c => c === from ? toName : c);
+    await saveExtraCategories(newExtra);
+    load();
+    setRenamingCat(null);
   }
 
   useEffect(() => { load(); loadSettings(); }, []);
@@ -427,7 +432,7 @@ export default function ReceptenPage() {
     load();
   }
 
-  const categories = [...new Set(breadTypes.map(b => b.category))];
+  const categories = [...new Set([...breadTypes.map(b => b.category), ...extraCategories])];
 
   return (
     <div style={{ padding: "2.5rem 3rem", maxWidth: 860 }}>
@@ -460,27 +465,54 @@ export default function ReceptenPage() {
       {showCatManager && isOwner && (
         <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
           <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Categorieën</h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
             {categories.map(cat => {
               const count = breadTypes.filter(b => b.category === cat).length;
+              const isRenaming = renamingCat === cat;
               return (
-                <div key={cat} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px" }}>
-                  <span style={{ fontSize: 13 }}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>({count})</span>
-                  {count === 0 && (
-                    <button
-                      onClick={async () => { /* categories auto-disappear when empty */ }}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 14, padding: 0 }}
-                      title="Categorie is al leeg — verdwijnt automatisch"
-                    >×</button>
+                <div key={cat} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+                  {isRenaming ? (
+                    <>
+                      <input value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
+                        style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", fontSize: 13, flex: 1 }}
+                        onKeyDown={e => { if (e.key === "Enter") renameCategory(cat, renameValue); if (e.key === "Escape") setRenamingCat(null); }} />
+                      <button onClick={() => renameCategory(cat, renameValue)} className="btn-primary" style={{ fontSize: 12, padding: "4px 10px" }}>OK</button>
+                      <button onClick={() => setRenamingCat(null)} className="btn-secondary" style={{ fontSize: 12 }}>✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 13, flex: 1 }}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>{count} broodsoorten</span>
+                      <button onClick={() => { setRenamingCat(cat); setRenameValue(cat); }}
+                        style={{ fontSize: 12, padding: "3px 9px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", cursor: "pointer" }}>
+                        Naam aanpassen
+                      </button>
+                      {count === 0 && (
+                        <button onClick={() => saveExtraCategories(extraCategories.filter(c => c !== cat))}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 16, padding: "0 2px" }}>×</button>
+                      )}
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
-          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-            Categorieën verdwijnen automatisch als alle broodsoorten erin verwijderd zijn.
-          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
+              placeholder="Nieuwe categorie naam…"
+              style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px", fontSize: 13, flex: 1 }}
+              onKeyDown={e => {
+                if (e.key === "Enter" && newCatName.trim()) {
+                  const slug = newCatName.trim().toLowerCase();
+                  if (!categories.includes(slug)) saveExtraCategories([...extraCategories, slug]);
+                  setNewCatName("");
+                }
+              }} />
+            <button className="btn-primary" style={{ fontSize: 13 }} onClick={() => {
+              const slug = newCatName.trim().toLowerCase();
+              if (slug && !categories.includes(slug)) { saveExtraCategories([...extraCategories, slug]); setNewCatName(""); }
+            }}>Toevoegen</button>
+          </div>
         </div>
       )}
 

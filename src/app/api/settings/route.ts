@@ -19,8 +19,10 @@ export async function GET(req: Request) {
       .split(",").filter(Boolean).map(Number);
     const basketTypes = ((tenant as any)?.basketTypes ?? "750 gram,rond,1 kg,1,5 kg")
       .split("|").filter(Boolean);
+    const extraCategories = ((tenant as any)?.extraCategories ?? "")
+      .split("|").filter(Boolean);
 
-    return Response.json({ closedWeekdays, basketTypes });
+    return Response.json({ closedWeekdays, basketTypes, extraCategories });
   } catch (e) {
     return toResponse(e);
   }
@@ -29,6 +31,7 @@ export async function GET(req: Request) {
 const UpdateSettingsSchema = z.object({
   closedWeekdays: z.array(z.number().int().min(1).max(7)).optional(),
   basketTypes: z.array(z.string().min(1)).optional(),
+  extraCategories: z.array(z.string().min(1)).optional(),
 });
 
 export async function POST(req: Request) {
@@ -42,6 +45,7 @@ export async function POST(req: Request) {
     const data: Record<string, string> = {};
     if (input.closedWeekdays) data.closedWeekdays = input.closedWeekdays.join(",");
     if (input.basketTypes) (data as any).basketTypes = input.basketTypes.join("|");
+    if (input.extraCategories !== undefined) (data as any).extraCategories = input.extraCategories.join("|");
     await prisma.tenant.update({ where: { id: tid }, data });
 
     return Response.json({ ok: true });

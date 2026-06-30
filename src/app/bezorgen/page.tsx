@@ -71,6 +71,8 @@ export default function BezorgenPage() {
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  // Pakbon send state: customerId -> "idle"|"sending"|"sent"|"error"
+  const [pakbonState, setPakbonState] = useState<Record<string, string>>({});
 
   function loadNotes(d: string) {
     fetch(`/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
@@ -189,6 +191,20 @@ export default function BezorgenPage() {
       return arr;
     });
     setDragging(null); setDragOver(null);
+  }
+
+  async function sendPakbon(customerId: string) {
+    setPakbonState(s => ({ ...s, [customerId]: "sending" }));
+    try {
+      const res = await fetch("/api/bezorgen/pakbon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-role": role ?? "" },
+        body: JSON.stringify({ customerId, date }),
+      });
+      setPakbonState(s => ({ ...s, [customerId]: res.ok ? "sent" : "error" }));
+    } catch {
+      setPakbonState(s => ({ ...s, [customerId]: "error" }));
+    }
   }
 
   async function saveNote() {
@@ -414,6 +430,18 @@ export default function BezorgenPage() {
                             {new Date(deliveredTimes[row.customerId]).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         )}
+                        {(() => {
+                          const ps = pakbonState[row.customerId] ?? "idle";
+                          return (
+                            <button
+                              onClick={() => sendPakbon(row.customerId)}
+                              disabled={ps === "sending" || ps === "sent"}
+                              style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "1px solid var(--border-strong)", background: ps === "sent" ? "var(--success)" : "var(--surface)", color: ps === "sent" ? "white" : "var(--text-subtle)", cursor: ps === "sent" ? "default" : "pointer", flexShrink: 0 }}
+                              title="Stuur pakbon per e-mail">
+                              {ps === "sending" ? "..." : ps === "sent" ? "✓ Verzonden" : ps === "error" ? "Fout - opnieuw" : "Stuur pakbon"}
+                            </button>
+                          );
+                        })()}
                       </div>
                     ))}
                     {deliveredCount === rows.length && (

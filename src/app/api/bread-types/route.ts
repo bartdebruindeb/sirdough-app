@@ -92,6 +92,19 @@ export async function PATCH(req: Request) {
   } catch (e) { return toResponse(e); }
 }
 
+// PUT: bulk rename category (from → to)
+export async function PUT(req: Request) {
+  try {
+    const { tenantId, tenantSlug } = getTenantFromRequest(req);
+    const role = await getRoleFromRequest(req);
+    requirePermission(role, "recipes:write");
+    const tid = await resolveTenantId({ tenantId, tenantSlug });
+    const { from, to } = await parseJson(req, z.object({ from: z.string().min(1), to: z.string().min(1) }));
+    await prisma.breadType.updateMany({ where: { tenantId: tid, category: from }, data: { category: to } });
+    return Response.json({ ok: true });
+  } catch (e) { return toResponse(e); }
+}
+
 export async function DELETE(req: Request) {
   try {
     const { tenantId, tenantSlug } = getTenantFromRequest(req);
