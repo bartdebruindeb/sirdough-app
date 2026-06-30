@@ -80,8 +80,10 @@ export async function sendPakbon({
       <table style="width:100%;border-collapse:collapse;font-size:13px">${devRows}</table>
       <p style="margin:8px 0 0;font-size:12px;color:#92400e">De factuur is aangepast op basis van het werkelijk geleverde aantal.</p>
     </div>` : "";
+  const logoUrl = `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/logo.jpg`;
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
+      <img src="${logoUrl}" alt="${tenantName}" style="height:48px;max-width:200px;object-fit:contain;margin-bottom:8px">
       <p style="font-size:20px;font-weight:600;margin-bottom:4px">${tenantName}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
       <p>Beste ${customerName},</p>

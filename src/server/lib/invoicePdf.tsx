@@ -8,12 +8,11 @@ import { prisma } from "@/server/config/db";
 
 function loadLogo(): string | null {
   try {
-    const p = path.join(process.cwd(), "public", "logo.jpeg");
+    const p = path.join(process.cwd(), "public", "logo.jpg");
     if (!fs.existsSync(p)) return null;
     return "data:image/jpeg;base64," + fs.readFileSync(p).toString("base64");
   } catch { return null; }
 }
-const LOGO_DATA = loadLogo();
 
 // Use Helvetica (built-in, no external font needed)
 
@@ -123,6 +122,7 @@ function fmt(n: number) { return n.toFixed(2).replace(".", ","); }
 function InvoiceDoc({ d }: { d: PdfInvoiceData }) {
   const vat = d.totalExcl * (d.vatPercent / 100);
   const total = d.totalExcl + vat;
+  const LOGO_DATA = loadLogo();
 
   return (
     <Document>

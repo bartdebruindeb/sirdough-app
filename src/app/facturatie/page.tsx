@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import { useRole } from "@/lib/role-context";
 
 type InvoiceLine = { name: string; quantity: number; unitPrice: number; lineTotal: number; date: string };
 type CustomerRow = { customerId: string; customerName: string; customerEmail: string | null; discountPercent: number; lines: InvoiceLine[]; total: number; orderIds: string[] };
@@ -21,9 +22,44 @@ function currentWeek() {
 
 const inp: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 12, background: "var(--surface)", width: "100%" };
 
+function LogoUpload({ isOwner, role }: { isOwner: boolean; role: string | null }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [ts, setTs] = useState(() => Date.now());
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const form = new FormData();
+    form.append("file", file);
+    await fetch("/api/instellingen/logo", { method: "POST", headers: { "x-role": role ?? "" }, body: form }).catch(() => {});
+    setUploading(false);
+    setTs(Date.now());
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`/logo.jpg?t=${ts}`} alt="logo" style={{ height: 52, width: 52, objectFit: "contain", borderRadius: 8 }} onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+      {isOwner && (
+        <>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>
+            {uploading ? "…" : "Logo wijzigen"}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function FacturatiePage() {
   const searchParams = useSearchParams();
   const exactParam = searchParams.get("exact");
+  const { role } = useRole();
+  const isOwner = role === "OWNER";
 
   const [week, setWeek] = useState(() => prevWeek(currentWeek()));
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -157,8 +193,7 @@ export default function FacturatiePage() {
       {/* ── Header ─────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpeg" alt="logo" style={{ height: 52, width: 52, objectFit: "contain", borderRadius: 8 }} onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <LogoUpload isOwner={isOwner} role={role} />
           <div>
             <h1 style={{ fontSize: 26, margin: 0 }}>Facturatie</h1>
             <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
