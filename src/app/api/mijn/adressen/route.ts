@@ -21,6 +21,13 @@ const AddressSchema = z.object({
   isDefault:  z.boolean().default(false),
 });
 
+async function syncDefaultAddressToCustomer(customerId: string, addr: { street: string; postalCode: string; city: string }) {
+  await prisma.customer.update({
+    where: { id: customerId },
+    data: { address: addr.street, postalCode: addr.postalCode, city: addr.city },
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -31,6 +38,7 @@ export async function POST(req: Request) {
       await (prisma as any).customerAddress.updateMany({ where: { customerId }, data: { isDefault: false } });
     }
     const addr = await (prisma as any).customerAddress.create({ data: { customerId, ...input } });
+    if (input.isDefault) await syncDefaultAddressToCustomer(customerId, input);
     return Response.json(addr, { status: 201 });
   } catch (e) { return toResponse(e); }
 }
@@ -47,8 +55,13 @@ export async function PATCH(req: Request) {
     if (input.isDefault) {
       await (prisma as any).customerAddress.updateMany({ where: { customerId }, data: { isDefault: false } });
     }
-    const addr = await (prisma as any).customerAddress.updateMany({ where: { id, customerId }, data: input });
-    return Response.json(addr);
+    await (prisma as any).customerAddress.updateMany({ where: { id, customerId }, data: input });
+
+    // Sync to Customer record if this address is (or became) the default
+    const updated = await (prisma as any).customerAddress.findFirst({ where: { id, customerId } });
+    if (updated?.isDefault) await syncDefaultAddressToCustomer(customerId, updated);
+
+    return Response.json(updated);
   } catch (e) { return toResponse(e); }
 }
 

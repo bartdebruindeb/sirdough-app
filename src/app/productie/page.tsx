@@ -879,21 +879,35 @@ export default function ProductiePage() {
                       </div>
                       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
                         <p style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Gewicht per mixer (kg)</p>
-                        {weightsKg.map((wKg, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ color: "var(--text-muted)" }}>Mixer {i + 1}</span>
-                            <input type="number" step="0.1" min="0" value={wKg}
-                              onChange={e => {
-                                const v = parseFloat(e.target.value) || 0;
-                                setMixerWeights(w => {
-                                  const arr = [...(w[mg.group] ?? weightsKg)];
-                                  arr[i] = v;
-                                  return { ...w, [mg.group]: arr };
-                                });
-                              }}
-                              style={{ width: 70, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 6px", fontSize: 13, textAlign: "right" }} />
-                          </div>
-                        ))}
+                        {weightsKg.map((wKg, i) => {
+                          const isLast = i === weightsKg.length - 1;
+                          const othersSum = weightsKg.reduce((s, w, j) => j !== i ? s + w : s, 0);
+                          const fillKg = Number(Math.max(0, mg.totalDoughNoFillingsKg - othersSum).toFixed(2));
+                          return (
+                            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 4 }}>
+                              <span style={{ color: "var(--text-muted)" }}>Mixer {i + 1}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <input type="number" step="0.1" min="0" max={400} value={wKg}
+                                  onChange={e => {
+                                    const v = Math.min(400, parseFloat(e.target.value) || 0);
+                                    setMixerWeights(w => {
+                                      const arr = [...(w[mg.group] ?? weightsKg)];
+                                      arr[i] = v;
+                                      return { ...w, [mg.group]: arr };
+                                    });
+                                  }}
+                                  style={{ width: 70, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 6px", fontSize: 13, textAlign: "right" }} />
+                                {isLast && count >= 2 && (
+                                  <button
+                                    onClick={() => setMixerWeights(w => { const arr = [...(w[mg.group] ?? weightsKg)]; arr[i] = fillKg; return { ...w, [mg.group]: arr }; })}
+                                    title={`Vul aan tot ${fillKg.toFixed(2)} kg (totaal − mixers 1–${count - 1})`}
+                                    style={{ fontSize: 11, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 5, background: "var(--surface-2)", cursor: "pointer", color: "var(--text-muted)", whiteSpace: "nowrap" }}
+                                  >→ {fillKg.toFixed(1)}</button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
                           <span style={{ color: "var(--text-muted)" }}>Totaal ingevoerd</span>
                           <strong style={{ color: weightWarn ? "var(--warn)" : "inherit" }}>

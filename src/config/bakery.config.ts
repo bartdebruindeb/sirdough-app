@@ -29,9 +29,9 @@ export const bakeryConfig = {
    * a matching `name` so winkel templates and facturatie can link to it.
    */
   shops: [
-    { name: "Winkel Rotterdam", lat: 51.9225, lon: 4.4792 },
     { name: "Winkel Delft",     lat: 52.0021, lon: 4.3698 },  // Delfgauwseweg 67
     { name: "Winkel Den Haag",  lat: 52.0798, lon: 4.3127 },  // Herengracht 16
+    { name: "Winkel Rotterdam", lat: 51.9225, lon: 4.4792 },
   ] as ShopConfig[],
 
   /**
