@@ -1,6 +1,7 @@
 "use client";
 import { useRole } from "@/lib/role-context";
 import { useEffect, useRef, useState } from "react";
+import { breadImageUrls } from "@/lib/breadImage";
 
 
 type RecipeFlour  = { id?: string; name: string; percentage: number; sortOrder?: number };
@@ -441,13 +442,16 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
   }
 
   const [ts, setTs] = useState(() => Date.now());
-  // Always try the ID-based URL; show placeholder on error
-  const imgSrc = `/brood/${bt.id}.jpg?t=${ts}`;
+  const [imgPrimary, imgFallback] = breadImageUrls(bt);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 1rem" }}>
-      <img src={imgSrc} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }}
-        onError={e => { (e.target as HTMLImageElement).style.opacity = "0"; }} />
+      <img src={`${imgPrimary}?t=${ts}`} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }}
+        onError={e => {
+          const el = e.target as HTMLImageElement;
+          if (imgFallback && el.src !== window.location.origin + imgFallback) { el.src = imgFallback; }
+          else { el.style.opacity = "0"; }
+        }} />
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
       <button
         onClick={() => fileRef.current?.click()}
@@ -455,7 +459,7 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
         className="btn-secondary"
         style={{ fontSize: 11, padding: "4px 10px" }}
       >
-        {uploading ? "…" : imgSrc ? "Wijzig foto" : "Foto uploaden"}
+        {uploading ? "…" : "Wijzig foto"}
       </button>
     </div>
   );
@@ -866,14 +870,23 @@ export default function ReceptenPage() {
               {bts.map(bt => {
                 const isOpen = expanded === bt.id;
                 const isEditing = editMode[bt.id];
+                const [imgPrimary, imgFallback] = breadImageUrls(bt);
                 return (
                   <div key={bt.id} className="card" style={{ overflow: "hidden" }}>
                     <div style={{ display: "flex", alignItems: "center" }}>
                       <button onClick={() => setExpanded(isOpen ? null : bt.id)} style={{
-                        flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+                        flex: 1, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between",
                         padding: "1rem 1.25rem", background: "none", border: "none", cursor: "pointer", textAlign: "left",
                       }}>
-                        <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{bt.name}</span>
+                        <img src={imgPrimary} alt=""
+                          style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb", flexShrink: 0 }}
+                          onError={e => {
+                            const el = e.target as HTMLImageElement;
+                            if (imgFallback && el.src !== window.location.origin + imgFallback) { el.src = imgFallback; }
+                            else { el.style.visibility = "hidden"; }
+                          }}
+                        />
+                        <span style={{ fontFamily: "var(--font-display)", fontSize: 16, flex: 1 }}>{bt.name}</span>
                         {bt.basketType && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 8 }}>🧺 {bt.basketType}</span>}
                         {bt.basketStyle && <span style={{ fontSize: 11, color: "#7c3aed", background: "#ede9fe", padding: "2px 7px", borderRadius: 8 }}>{bt.basketStyle}</span>}
                         {bt.showInProduction === false && <span style={{ fontSize: 11, color: "#b45309", background: "#fef3c7", padding: "2px 7px", borderRadius: 8 }}>niet in productie</span>}
