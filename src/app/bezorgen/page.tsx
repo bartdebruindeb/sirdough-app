@@ -210,9 +210,12 @@ export default function BezorgenPage() {
     const unpinnedRows = busOrder.filter(id => !pinned[id]).map(id => rowMap.get(id)).filter(Boolean) as DeliveryRow[];
 
     let curLat: number = bakeryConfig.bakeryLat, curLng: number = bakeryConfig.bakeryLng;
-    if (pinnedIds.length > 0) {
-      const lastPinned = rowMap.get(pinnedIds[pinnedIds.length - 1]);
-      if (lastPinned?.lat != null && lastPinned?.lng != null) { curLat = lastPinned.lat; curLng = lastPinned.lng; }
+    // Use the last pinned stop that actually has coordinates (search backward), not blindly
+    // the last one — a pinned stop without coordinates would otherwise silently fall back to
+    // the bakery, making the "rest" appear to start from Rotterdam instead of the real stop.
+    for (let i = pinnedIds.length - 1; i >= 0; i--) {
+      const p = rowMap.get(pinnedIds[i]);
+      if (p?.lat != null && p?.lng != null) { curLat = p.lat; curLng = p.lng; break; }
     }
 
     const withCoords = unpinnedRows.filter(r => r.lat != null && r.lng != null);

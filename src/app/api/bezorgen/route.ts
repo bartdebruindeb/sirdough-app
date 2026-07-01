@@ -38,8 +38,16 @@ export async function GET(req: Request) {
     // Pre-load shop customers for pickup address resolution
     const shopNames = bakeryConfig.shops.map(s => s.name);
     const shopCustomerRows = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
+    // Shop Customer records aren't always geocoded — bakeryConfig.shops already has
+    // reliable coordinates (used for weather lookups), so fall back to those.
+    const shopCoords: Record<string, { lat: number; lng: number }> = {};
+    for (const s of bakeryConfig.shops) shopCoords[s.name] = { lat: s.lat, lng: s.lon };
     const shopCustomers = new Map(shopCustomerRows.map(sc => [
-      sc.name, { city: sc.city ?? sc.name, address: sc.address ?? sc.name, lat: sc.lat, lng: sc.lng, id: sc.id },
+      sc.name, {
+        city: sc.city ?? sc.name, address: sc.address ?? sc.name, id: sc.id,
+        lat: sc.lat ?? shopCoords[sc.name]?.lat ?? null,
+        lng: sc.lng ?? shopCoords[sc.name]?.lng ?? null,
+      },
     ]));
 
     // Merge into per-customer delivery rows
