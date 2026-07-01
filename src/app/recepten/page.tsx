@@ -259,6 +259,15 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
             </tr>
           </tbody>
         </table>
+        {(() => {
+          const toppingTotal = toppings.reduce((s, t) => s + (t.gramsPerLoaf || 0), 0);
+          const total = doughWeight + toppingTotal;
+          return (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0" }}>
+              Totaal gewicht (deeg {kg(doughWeight)} + vulling {kg(toppingTotal)}) = <strong style={{ color: "var(--text)" }}>{kg(total)}</strong> per brood
+            </p>
+          );
+        })()}
       </div>
 
       <div style={{ marginBottom: 12 }}>
