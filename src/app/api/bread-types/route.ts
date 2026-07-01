@@ -77,6 +77,7 @@ const PatchBreadTypeSchema = z.object({
   showInProduction: z.boolean().optional(),
   mixerGroup: z.string().optional().nullable(),
   imageFile: z.string().optional().nullable(),
+  doughTypeId: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request) {

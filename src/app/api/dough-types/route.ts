@@ -59,3 +59,19 @@ export async function POST(req: Request) {
     return Response.json(dt, { status: 201 });
   } catch (e) { return toResponse(e); }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { tenantId, tenantSlug } = getTenantFromRequest(req);
+    const role = await getRoleFromRequest(req);
+    requirePermission(role, "recipes:write");
+    const tid = await resolveTenantId({ tenantId, tenantSlug });
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
+    if (!id) return Response.json({ error: "id required" }, { status: 400 });
+    const inUse = await prisma.breadType.count({ where: { doughTypeId: id } });
+    if (inUse > 0) return Response.json({ error: "IN_USE", message: `${inUse} broodsoort(en) gebruiken dit basisrecept` }, { status: 409 });
+    await prisma.doughType.deleteMany({ where: { id, tenantId: tid } });
+    return new Response(null, { status: 204 });
+  } catch (e) { return toResponse(e); }
+}

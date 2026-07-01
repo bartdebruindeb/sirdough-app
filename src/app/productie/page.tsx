@@ -817,6 +817,17 @@ export default function ProductiePage() {
                       </td>
                     </tr>
                   ))}
+                  <tr style={{ borderTop: "2px solid var(--border)" }}>
+                    <td style={{ padding: "10px 20px", fontWeight: 600 }}>Totaal</td>
+                    <td style={{ padding: "10px 10px" }}></td>
+                    <td style={{ padding: "10px 10px" }}></td>
+                    <td style={{ padding: "10px 10px" }}></td>
+                    <td style={{ padding: "10px 20px", textAlign: "right" }}>
+                      <span style={{ fontWeight: 800, fontSize: 16, color: "var(--accent)" }}>
+                        {planLines.filter(l => l.totalQty > 0).reduce((s, l) => s + l.totalQty, 0)}
+                      </span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

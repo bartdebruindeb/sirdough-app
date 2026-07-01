@@ -15,17 +15,21 @@ export async function GET(req: Request) {
 
     const resolvedTenantId = await resolveTenantId({ tenantId, tenantSlug });
 
-    const breadTypes = await prisma.breadType.findMany({
-      where: { tenantId: resolvedTenantId, active: true },
-      include: {
-        recipe: {
-          include: { flourLines: { orderBy: { sortOrder: "asc" } }, toppings: { orderBy: { sortOrder: "asc" } } },
+    const [breadTypes, doughTypes] = await Promise.all([
+      prisma.breadType.findMany({
+        where: { tenantId: resolvedTenantId, active: true },
+        include: {
+          recipe: {
+            include: { flourLines: { orderBy: { sortOrder: "asc" } }, toppings: { orderBy: { sortOrder: "asc" } } },
+          },
+          doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } } } },
         },
-      },
-      orderBy: { sortOrder: "asc" },
-    });
+        orderBy: { sortOrder: "asc" },
+      }),
+      prisma.doughType.findMany({ where: { tenantId: resolvedTenantId }, orderBy: { name: "asc" } }),
+    ]);
 
-    return Response.json({ breadTypes, role });
+    return Response.json({ breadTypes, doughTypes, role });
   } catch (e) {
     return toResponse(e);
   }
