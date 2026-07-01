@@ -88,7 +88,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
     await fetch("/api/bread-types", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-      body: JSON.stringify({ id: bt.id, customerOrderable: !bt.customerOrderable }),
+      body: JSON.stringify({ id: bt.id, winkelOrderable: !bt.winkelOrderable }),
     });
     setSaving(null);
     onChanged();
@@ -96,24 +96,24 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Beheer broodtypen</h3>
+      <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Beheer broodtypen (winkel)</h3>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {breadTypes.map(bt => (
           <button key={bt.id} onClick={() => toggle(bt)} disabled={saving === bt.id} style={{
             padding: "6px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer",
             border: "1px solid",
-            borderColor: bt.customerOrderable ? "var(--accent)" : "var(--border)",
-            background: bt.customerOrderable ? "var(--accent-light)" : "var(--surface-2)",
-            color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
+            borderColor: bt.winkelOrderable ? "var(--accent)" : "var(--border)",
+            background: bt.winkelOrderable ? "var(--accent-light)" : "var(--surface-2)",
+            color: bt.winkelOrderable ? "var(--accent)" : "var(--text-subtle)",
             fontFamily: "var(--font-body)",
             opacity: saving === bt.id ? 0.6 : 1,
           }}>
-            {bt.customerOrderable ? "✓" : "+"} {bt.name}
+            {bt.winkelOrderable ? "✓" : "+"} {bt.name}
           </button>
         ))}
       </div>
       <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-        Klik op een broodsoort om te wisselen. Goudkleurig = bestelbaar voor klanten.
+        Klik op een broodsoort om te wisselen. Goudkleurig = beschikbaar in de winkel(s).
       </p>
     </div>
   );

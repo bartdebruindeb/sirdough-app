@@ -50,7 +50,7 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
 
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, marginBottom: "1rem" }}>Beschikbaarheid broodsoorten</h3>
+      <h3 style={{ fontSize: 14, marginBottom: "1rem" }}>Beschikbaarheid broodsoorten (klantportaal)</h3>
 
       {/* Table-style layout */}
       <div style={{ overflowX: "auto" }}>
@@ -59,7 +59,6 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
             <tr style={{ borderBottom: "1px solid var(--border)" }}>
               <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Brood</th>
               <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Klant&shy;portal</th>
-              <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Winkel</th>
               <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Beschikbare dagen</th>
             </tr>
           </thead>
@@ -78,16 +77,6 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
                         color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
                       }}>
                       {bt.customerOrderable ? "✓" : ""}
-                    </button>
-                  </td>
-                  <td style={{ textAlign: "center", padding: "6px 8px" }}>
-                    <button onClick={() => patch(bt.id, { winkelOrderable: !bt.winkelOrderable })} disabled={saving === bt.id}
-                      style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 14,
-                        borderColor: bt.winkelOrderable ? "#d97706" : "var(--border)",
-                        background: bt.winkelOrderable ? "#fef3c7" : "var(--surface)",
-                        color: bt.winkelOrderable ? "#92400e" : "var(--text-subtle)",
-                      }}>
-                      {bt.winkelOrderable ? "✓" : ""}
                     </button>
                   </td>
                   <td style={{ padding: "6px 8px" }}>
