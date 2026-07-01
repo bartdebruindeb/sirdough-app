@@ -3,6 +3,7 @@ import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
+import { geocodeAddress } from "@/server/lib/geocode";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -22,9 +23,15 @@ const AddressSchema = z.object({
 });
 
 async function syncDefaultAddressToCustomer(customerId: string, addr: { street: string; postalCode: string; city: string }) {
+  // Geocode in the background so the route map / distance sorting stays accurate
+  // without the owner having to manually click "Locatie" in Klanten afterwards.
+  const coords = await geocodeAddress(addr.street, addr.postalCode, addr.city);
   await prisma.customer.update({
     where: { id: customerId },
-    data: { address: addr.street, postalCode: addr.postalCode, city: addr.city },
+    data: {
+      address: addr.street, postalCode: addr.postalCode, city: addr.city,
+      ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+    },
   });
 }
 

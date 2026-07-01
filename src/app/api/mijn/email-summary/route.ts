@@ -16,27 +16,37 @@ export async function POST() {
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer?.email) return Response.json({ ok: false });
 
-    const orders = await prisma.oneOffOrder.findMany({
-      where: {
-        customerId,
-        deliveryDate: { gte: new Date() },
-      },
-      include: { lines: { include: { breadType: true } } },
-      orderBy: { deliveryDate: "asc" },
-    });
+    const [orders, recurring] = await Promise.all([
+      prisma.oneOffOrder.findMany({
+        where: { customerId, deliveryDate: { gte: new Date() } },
+        include: { lines: { include: { breadType: true } } },
+        orderBy: { deliveryDate: "asc" },
+      }),
+      prisma.recurringOrder.findMany({
+        where: { customerId, active: true },
+        include: { lines: { include: { breadType: true } } },
+        orderBy: { weekday: "asc" },
+      }),
+    ]);
 
-    if (orders.length === 0) return Response.json({ ok: true, sent: false });
+    const WEEKDAYS = ["", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
 
-    // Build combined lines summary (all upcoming orders)
-    const allLines = orders.flatMap(o => {
+    // Recurring orders first (the standing weekly picture), then upcoming one-off orders
+    const recurringLines = recurring.flatMap(r =>
+      r.lines.filter(l => l.quantity > 0).map(l => ({ name: `Elke ${WEEKDAYS[r.weekday]}: ${l.breadType.name}`, quantity: l.quantity }))
+    );
+    const oneOffLines = orders.flatMap(o => {
       const dateLabel = o.deliveryDate.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
-      return o.lines.map(l => ({ name: `${dateLabel}: ${l.breadType.name}`, quantity: l.quantity }));
+      return o.lines.filter(l => l.quantity > 0).map(l => ({ name: `${dateLabel}: ${l.breadType.name}`, quantity: l.quantity }));
     });
+    const allLines = [...recurringLines, ...oneOffLines];
+
+    if (allLines.length === 0) return Response.json({ ok: true, sent: false });
 
     await sendOrderConfirmation({
       to: customer.email,
       customerName: customer.name,
-      deliveryDate: "komende bestellingen",
+      deliveryDate: "uw bestellingen",
       lines: allLines,
       action: "updated",
     });

@@ -1,6 +1,8 @@
 "use client";
 import { useRole } from "@/lib/role-context";
 import { useEffect, useState } from "react";
+import { bakeryConfig } from "@/config/bakery.config";
+import { haversineKm } from "@/lib/geo";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -31,8 +33,9 @@ function getWeekday(date: string) {
 function buildMapsUrl(rows: DeliveryRow[]): string {
   const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(r.address));
   if (addresses.length === 0) return "";
-  const destination = addresses[addresses.length - 1];
-  const waypoints = addresses.slice(0, -1).join("|");
+  // Last stop is always back at the bakery
+  const destination = encodeURIComponent(bakeryConfig.bakeryAddress);
+  const waypoints = addresses.join("|");
   let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
   if (waypoints) url += `&waypoints=${waypoints}`;
   url += "&travelmode=driving";
@@ -70,6 +73,9 @@ export default function BezorgenPage() {
   const [deliveredTimes, setDeliveredTimes] = useState<Record<string, string>>({});
   // Pakbon sent — once true, delivery status can't be reverted
   const [pakbonSent, setPakbonSent] = useState<Record<string, boolean>>({});
+  // Pinned stops always go first in route order (e.g. shops in the morning), in their current relative order
+  const [pinned, setPinned] = useState<Record<string, boolean>>({});
+  const [optimizing, setOptimizing] = useState(false);
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -94,7 +100,7 @@ export default function BezorgenPage() {
 
   function load(d: string) {
     setLoading(true); setError("");
-    setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({}); setPakbonSent({});
+    setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({}); setPakbonSent({}); setPinned({});
 
     Promise.all([
       fetch(`/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
@@ -126,11 +132,17 @@ export default function BezorgenPage() {
         }
         if (s.pakbonSentAt) pakbonMap[s.customerId] = true;
       }
+      // Shops are pinned first by default (e.g. delivered in the morning)
+      const shopIds = new Set<string>((delivData.rows ?? []).filter((r: DeliveryRow) => r.isShop).map((r: DeliveryRow) => r.customerId));
+      const pinnedMap: Record<string, boolean> = {};
+      for (const id of busIds) if (shopIds.has(id)) pinnedMap[id] = true;
+
       setBusOrder(busIds);
       setDelivered(deliveredMap);
       setInBusTimes(inBusMap);
       setDeliveredTimes(delivTimesMap);
       setPakbonSent(pakbonMap);
+      setPinned(pinnedMap);
       setLoading(false);
     }).catch(e => { setError(String(e)); setLoading(false); });
 
@@ -145,12 +157,26 @@ export default function BezorgenPage() {
     setDate(d.toISOString().slice(0, 10));
   }
 
-  async function postStatus(customerId: string, action: string) {
+  async function postStatus(customerId: string, action: string, at?: string) {
     await fetch("/api/delivery-status", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-      body: JSON.stringify({ date, customerId, action }),
+      body: JSON.stringify({ date, customerId, action, at }),
     }).catch(() => {});
+  }
+
+  // Writes an explicit, evenly-spaced inBusAt per stop so the given order survives a reload
+  // (bus order is reconstructed from inBusAt timestamps, not stored as an explicit sequence).
+  function persistBusOrder(order: string[]) {
+    setBusOrder(order);
+    const base = Date.now();
+    const newTimes: Record<string, string> = {};
+    order.forEach((id, i) => {
+      const at = new Date(base + i * 1000).toISOString();
+      newTimes[id] = at;
+      postStatus(id, "in_bus", at);
+    });
+    setInBusTimes(t => ({ ...t, ...newTimes }));
   }
 
   function addToBus(id: string) {
@@ -159,12 +185,55 @@ export default function BezorgenPage() {
     setBusOrder(prev => [...prev, id]);
     setInBusTimes(t => ({ ...t, [id]: now }));
     postStatus(id, "in_bus");
+    const row = rowMap.get(id);
+    if (row?.isShop) setPinned(p => ({ ...p, [id]: true }));
   }
 
   function removeFromBus(id: string) {
     setBusOrder(prev => prev.filter(x => x !== id));
     setInBusTimes(t => { const n = { ...t }; delete n[id]; return n; });
+    setPinned(p => { const n = { ...p }; delete n[id]; return n; });
     postStatus(id, "removed_from_bus");
+  }
+
+  function togglePin(id: string) {
+    setPinned(p => ({ ...p, [id]: !p[id] }));
+  }
+
+  // Nearest-neighbor route: pinned stops keep their current order and go first (e.g. shops
+  // in the morning), then the rest is greedily ordered by straight-line distance starting
+  // from the last pinned stop (or the bakery if nothing is pinned). Always ends back at the
+  // bakery (De Weegbreestraat, Rotterdam) — handled by buildMapsUrl, not part of the bus list itself.
+  function optimizeRoute() {
+    setOptimizing(true);
+    const pinnedIds = busOrder.filter(id => pinned[id]);
+    const unpinnedRows = busOrder.filter(id => !pinned[id]).map(id => rowMap.get(id)).filter(Boolean) as DeliveryRow[];
+
+    let curLat: number = bakeryConfig.bakeryLat, curLng: number = bakeryConfig.bakeryLng;
+    if (pinnedIds.length > 0) {
+      const lastPinned = rowMap.get(pinnedIds[pinnedIds.length - 1]);
+      if (lastPinned?.lat != null && lastPinned?.lng != null) { curLat = lastPinned.lat; curLng = lastPinned.lng; }
+    }
+
+    const withCoords = unpinnedRows.filter(r => r.lat != null && r.lng != null);
+    const withoutCoords = unpinnedRows.filter(r => r.lat == null || r.lng == null);
+
+    const remaining = [...withCoords];
+    const ordered: DeliveryRow[] = [];
+    while (remaining.length > 0) {
+      let bestIdx = 0, bestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = haversineKm(curLat, curLng, remaining[i].lat!, remaining[i].lng!);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      const next = remaining.splice(bestIdx, 1)[0];
+      ordered.push(next);
+      curLat = next.lat!; curLng = next.lng!;
+    }
+
+    const newOrder = [...pinnedIds, ...ordered.map(r => r.customerId), ...withoutCoords.map(r => r.customerId)];
+    persistBusOrder(newOrder);
+    setOptimizing(false);
   }
 
   function toggleDelivered(id: string) {
@@ -190,14 +259,12 @@ export default function BezorgenPage() {
   function onDragOver(e: React.DragEvent, id: string) { e.preventDefault(); setDragOver(id); }
   function onDrop(targetId: string) {
     if (!dragging || dragging === targetId) { setDragging(null); setDragOver(null); return; }
-    setBusOrder(prev => {
-      const arr = [...prev];
-      const from = arr.indexOf(dragging);
-      const to = arr.indexOf(targetId);
-      arr.splice(from, 1);
-      arr.splice(to, 0, dragging);
-      return arr;
-    });
+    const arr = [...busOrder];
+    const from = arr.indexOf(dragging);
+    const to = arr.indexOf(targetId);
+    arr.splice(from, 1);
+    arr.splice(to, 0, dragging);
+    persistBusOrder(arr);
     setDragging(null); setDragOver(null);
   }
 
@@ -317,9 +384,16 @@ export default function BezorgenPage() {
                     {busRows.length} stops
                   </span>
                 )}
+                {busRows.length > 1 && (
+                  <button onClick={optimizeRoute} disabled={optimizing}
+                    title="Vaste stops (📌) blijven voorop staan; de rest wordt op afstand gesorteerd vanaf de laatste vaste stop"
+                    style={{ marginLeft: "auto", fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", color: "var(--text)" }}>
+                    🧭 {optimizing ? "Bezig…" : "Optimaliseer route"}
+                  </button>
+                )}
                 {mapsUrl && (
                   <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5,
+                    style={{ marginLeft: busRows.length > 1 ? 0 : "auto", display: "inline-flex", alignItems: "center", gap: 5,
                       fontSize: 12, padding: "4px 10px", borderRadius: 7,
                       background: "#1a73e8", color: "white", textDecoration: "none", fontWeight: 500,
                       fontFamily: "var(--font-body)" }}>
@@ -347,6 +421,11 @@ export default function BezorgenPage() {
                       }}>
                       <span style={{ color: "var(--border-strong)", fontSize: 14, cursor: "grab", flexShrink: 0 }}>⠿</span>
                       <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#6366f1", color: "white", fontSize: 11, fontWeight: 700, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
+                      <button onClick={() => togglePin(row.customerId)}
+                        title={pinned[row.customerId] ? "Vaste stop — gaat altijd eerst. Klik om los te maken." : "Zet vast als eerste stop (bijv. winkels 's ochtends)"}
+                        style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, border: "1px solid var(--border)", background: pinned[row.customerId] ? "var(--accent-light)" : "var(--surface)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", opacity: pinned[row.customerId] ? 1 : 0.4 }}>
+                        📌
+                      </button>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 13, fontWeight: 500 }}>{row.name}</span>
                         {row.pickupLocation ? (

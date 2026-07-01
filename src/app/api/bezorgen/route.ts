@@ -146,10 +146,12 @@ export async function GET(req: Request) {
       }
     }
 
-    // Sort: shops first (by city order), then horeca by city order, then name
+    // Sort: shops first, then by city order (configured CityRoute, else alphabetical city), then name
     const rows = Array.from(deliveryMap.values()).sort((a, b) => {
       if (a.isShop !== b.isShop) return a.isShop ? -1 : 1;
       if (a.cityOrder !== b.cityOrder) return a.cityOrder - b.cityOrder;
+      const cityCmp = a.city.localeCompare(b.city);
+      if (cityCmp !== 0) return cityCmp;
       return a.name.localeCompare(b.name);
     });
 

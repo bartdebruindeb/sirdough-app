@@ -44,6 +44,7 @@ const ActionSchema = z.object({
   date:       z.string(),
   customerId: z.string(),
   action:     z.enum(["in_bus", "removed_from_bus", "delivered", "undelivered"]),
+  at:         z.string().optional(), // explicit inBusAt override, used to persist a specific bus order/sequence
 });
 
 export async function POST(req: Request) {
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     const data: { inBusAt?: Date | null; deliveredAt?: Date | null } = {};
-    if (input.action === "in_bus")            { data.inBusAt = now; }
+    if (input.action === "in_bus")            { data.inBusAt = input.at ? new Date(input.at) : now; }
     if (input.action === "removed_from_bus")  { data.inBusAt = null; data.deliveredAt = null; }
     if (input.action === "delivered")         { data.deliveredAt = now; }
     if (input.action === "undelivered")       { data.deliveredAt = null; }

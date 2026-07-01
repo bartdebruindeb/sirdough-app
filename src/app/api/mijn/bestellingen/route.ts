@@ -3,11 +3,8 @@ import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
-import { sendOrderConfirmation, sendRecurringOrderConfirmation } from "@/server/lib/email";
 import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
-
-const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
 export const dynamic = "force-dynamic";
 
@@ -164,15 +161,9 @@ export async function POST(req: Request) {
       include: { lines: { include: { breadType: true } } },
     });
 
-    const dateLabel = deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
-    sendOrderConfirmation({
-      to: customer.email!,
-      customerName: customer.name,
-      deliveryDate: dateLabel,
-      lines: order.lines.map((l: any) => ({ name: l.breadType.name, quantity: l.quantity })),
-      action: "placed",
-    }).catch(() => {});
-
+    // No immediate confirmation email — the client schedules a debounced summary
+    // email (/api/mijn/email-summary) instead, so multiple edits in a session
+    // result in one email rather than one per change.
     return Response.json({ ...order, deliveryDate: toDateStr(order.deliveryDate) }, { status: 201 });
   } catch (e) { return toResponse(e); }
 }
@@ -288,17 +279,7 @@ export async function PATCH(req: Request) {
         await (prisma as any).recurringOrder.update({ where: { id: order.id }, data: { pickupLocation: input.pickupLocation } });
       }
 
-      const updated = await prisma.recurringOrder.findFirst({
-        where: { id: input.recurringOrderId },
-        include: { lines: { include: { breadType: true } } },
-      });
-      sendRecurringOrderConfirmation({
-        to: customer.email!,
-        customerName: customer.name,
-        weekday: WEEKDAYS[order.weekday],
-        lines: (updated?.lines ?? []).filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
-      }).catch(() => {});
-
+      // No immediate confirmation email — the client schedules a debounced summary instead.
       return Response.json({ ok: true, appliesFrom });
     }
 
@@ -318,15 +299,7 @@ export async function PATCH(req: Request) {
       include: { lines: { include: { breadType: true } } },
     });
 
-    const dateLabel = order.deliveryDate.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
-    sendOrderConfirmation({
-      to: customer.email!,
-      customerName: customer.name,
-      deliveryDate: dateLabel,
-      lines: updated.lines.map((l: any) => ({ name: l.breadType.name, quantity: l.quantity })),
-      action: "updated",
-    }).catch(() => {});
-
+    // No immediate confirmation email — the client schedules a debounced summary instead.
     return Response.json({ ...updated, deliveryDate: toDateStr(updated.deliveryDate) });
   } catch (e) { return toResponse(e); }
 }
