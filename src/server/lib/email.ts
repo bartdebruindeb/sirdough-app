@@ -104,6 +104,28 @@ export async function sendPakbon({
   await resend.emails.send({ from: FROM, to, subject: `Pakbon bezorging ${deliveryDate}`, html });
 }
 
+export async function sendPasswordReset({
+  to, resetUrl,
+}: {
+  to: string;
+  resetUrl: string;
+}) {
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
+      <p style="font-size:20px;font-weight:600;margin-bottom:4px">Wachtwoord opnieuw instellen</p>
+      <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+      <p>Klik op de onderstaande knop om een nieuw wachtwoord in te stellen. De link is 1 uur geldig.</p>
+      <a href="${resetUrl}" style="display:inline-block;margin:16px 0;padding:11px 24px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:15px;font-weight:600">
+        Wachtwoord instellen
+      </a>
+      <p style="font-size:12px;color:#999">Heeft u dit niet aangevraagd? Dan kunt u deze e-mail negeren.</p>
+      <p style="font-size:11px;color:#bbb;word-break:break-all">Of kopieer deze link: ${resetUrl}</p>
+    </div>`;
+  const resend = getResend();
+  if (!resend) return;
+  await resend.emails.send({ from: FROM, to, subject: "Wachtwoord opnieuw instellen", html });
+}
+
 export async function sendRecurringOrderConfirmation({
   to, customerName, weekday, lines,
 }: {

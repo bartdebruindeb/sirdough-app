@@ -24,9 +24,14 @@ function toDateStr(d: Date): string {
 }
 
 function isCutoffPassed(deliveryDate: Date): boolean {
-  const cutoff = new Date(deliveryDate);
-  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
-  cutoff.setUTCHours(bakeryConfig.orderCutoffHour, 0, 0, 0);
+  // Cutoff = orderCutoffHour Amsterdam time on day before delivery (DST-safe)
+  const prev = new Date(deliveryDate);
+  prev.setUTCDate(prev.getUTCDate() - 1);
+  prev.setUTCHours(12, 0, 0, 0); // midday for stable DST probe
+  const fmt = (tz: string) => parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(prev));
+  const offsetHours = fmt("Europe/Amsterdam") - fmt("UTC");
+  const cutoff = new Date(prev);
+  cutoff.setUTCHours(bakeryConfig.orderCutoffHour - offsetHours, 0, 0, 0);
   return new Date() >= cutoff;
 }
 

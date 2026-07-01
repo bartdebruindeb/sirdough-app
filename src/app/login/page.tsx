@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { bakeryConfig } from "@/config/bakery.config";
 
 export default function LoginPage() {
@@ -85,9 +86,14 @@ export default function LoginPage() {
           {loading ? "Inloggen…" : "Inloggen"}
         </button>
 
-        <p style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", margin: 0 }}>
-          Geen account? Neem contact op met de bakkerij.
-        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+          <Link href="/login/forgot-password" style={{ fontSize: 12, color: "var(--accent)" }}>
+            Wachtwoord vergeten?
+          </Link>
+          <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
+            Geen account? Neem contact op met de bakkerij.
+          </p>
+        </div>
       </div>
     </div>
   );

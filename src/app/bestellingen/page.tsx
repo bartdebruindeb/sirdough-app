@@ -61,7 +61,6 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
               <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Klant&shy;portal</th>
               <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Winkel</th>
               <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Beschikbare dagen</th>
-              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -110,19 +109,6 @@ function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; 
                         </button>
                       )}
                     </div>
-                  </td>
-                  <td style={{ padding: "6px 8px" }}>
-                    <select
-                      value={bt.imageFile ?? ""}
-                      onChange={e => patch(bt.id, { imageFile: e.target.value || null })}
-                      disabled={saving === bt.id}
-                      style={{ fontSize: 11, padding: "3px 6px", border: "1px solid var(--border)", borderRadius: 5, background: "var(--surface)", color: "var(--text)", maxWidth: 140 }}
-                    >
-                      <option value="">— geen foto —</option>
-                      {["Baguette-Kaas-Peper.jpg","Baquette.jpg","Boeren-1kg.jpg","Choco-koek.jpg","Gekiemde-Rogge.jpg","Kaneel-Bun.jpg","Kardemon-Bun.jpg","Morning-Buns.jpg","Olijf.jpg","Rozijn.jpg","Sesam.jpg","Spelt.jpg","Volkoren.jpg","Zaden.jpg"].map(f => (
-                        <option key={f} value={f}>{f.replace(/-/g," ").replace(/\.jpg$/i,"")}</option>
-                      ))}
-                    </select>
                   </td>
                 </tr>
               );
@@ -431,6 +417,13 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
               {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
             </select>
           </div>
+          {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
+          {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
+          {customerId && (
+            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13, marginBottom:16 }}>
+              {saving?"Opslaan…":"Vaste bestellingen opslaan"}
+            </button>
+          )}
           {customerId && (
             <div style={{ overflowX:"auto", marginBottom:16 }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
@@ -461,13 +454,6 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
                 </tbody>
               </table>
             </div>
-          )}
-          {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
-          {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
-          {customerId && (
-            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
-              {saving?"Opslaan…":"Vaste bestellingen opslaan"}
-            </button>
           )}
         </>
       )}

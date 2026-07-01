@@ -295,7 +295,7 @@ export default function FacturatiePage() {
                       : <span style={{ fontSize: 12, color: "#f97316" }}>⚠ geen e-mail</span>}
                     {c.discountPercent > 0 && <span style={{ fontSize: 11, background: "#eff6ff", color: "#1d4ed8", padding: "1px 7px", borderRadius: 6 }}>{c.discountPercent}% korting</span>}
                   </div>
-                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.orderIds.length} bestelling{c.orderIds.length !== 1 ? "en" : ""} · € {c.total.toFixed(2)} excl. BTW</span>
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.orderIds.length} bestelling{c.orderIds.length !== 1 ? "en" : ""} · € {(c.total * 1.09).toFixed(2)} incl. BTW</span>
                 </button>
                 <button onClick={() => requestGenerate(c)} disabled={generating === c.customerId} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px", marginLeft: 12, flexShrink: 0 }}>
                   {generating === c.customerId ? "Genereren…" : "Genereer factuur"}

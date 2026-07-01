@@ -34,10 +34,14 @@ function calcOrderTotal(order: OneOffOrder, discountPercent: number): number | n
   return hasPrice ? total : null;
 }
 
-// Cutoff = orderCutoffHour UTC on the day BEFORE delivery
+// Cutoff = orderCutoffHour Amsterdam time on the day BEFORE delivery (DST-safe)
 function cutoffDate(deliveryDateStr: string): Date {
-  const d = new Date(deliveryDateStr + `T${String(bakeryConfig.orderCutoffHour).padStart(2,"0")}:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
+  const prev = new Date(deliveryDateStr + "T12:00:00Z");
+  prev.setUTCDate(prev.getUTCDate() - 1);
+  const fmt = (tz: string) => parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(prev));
+  const offsetHours = fmt("Europe/Amsterdam") - fmt("UTC");
+  const d = new Date(prev);
+  d.setUTCHours(bakeryConfig.orderCutoffHour - offsetHours, 0, 0, 0);
   return d;
 }
 function isEditable(deliveryDateStr: string): boolean {
@@ -404,6 +408,11 @@ export default function MijnBestellingenPage() {
                             : <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>🚚 bezorgen</span>
                           }
                           {hasPrice && total > 0 && <span style={{ fontSize: 11, fontWeight: 500 }}>€ {total.toFixed(2).replace(".",",")} excl. BTW</span>}
+                          {!item.pickup && minDeliveryAmount != null && hasPrice && total > 0 && total < minDeliveryAmount && (
+                            <span style={{ fontSize: 10, color: "#b45309", background: "#fef3c7", padding: "1px 6px", borderRadius: 6 }}>
+                              ⚠ min. € {minDeliveryAmount.toFixed(2)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

@@ -418,6 +418,18 @@ model InviteToken {
   @@index([tenantId, customerId])
 }
 
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
 model RecurringOrderException {
   id               String   @id @default(cuid())
   recurringOrderId String
