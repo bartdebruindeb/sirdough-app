@@ -202,7 +202,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
                     style={{ ...inputStyle, width: "160px" }} />
                 </td>
                 <td style={{ padding: "7px 0", textAlign: "right" }}>
-                  <input type="number" min={0} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                  <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
                     style={inputStyle} />
                 </td>
               </tr>
@@ -223,7 +223,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
               <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
                 <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{label}</td>
                 <td style={{ padding: "7px 0", textAlign: "right" }}>
-                  <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(parseFloat(e.target.value)||0)} style={inputStyle} />
+                  <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(Math.min(999,parseFloat(e.target.value)||0))} style={inputStyle} />
                 </td>
               </tr>
             ))}
@@ -253,8 +253,8 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
                     placeholder="bijv. Sesam" style={{ ...inputStyle, width: "130px" }} />
                 </td>
                 <td style={{ padding: "5px 4px" }}>
-                  <input type="number" min={0} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={t.gramsPerLoaf}
-                    onChange={e => setToppings(ts => ts.map((x,j) => j===i ? {...x,gramsPerLoaf:parseFloat(e.target.value)||0} : x))}
+                  <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={t.gramsPerLoaf}
+                    onChange={e => setToppings(ts => ts.map((x,j) => j===i ? {...x,gramsPerLoaf:Math.min(999,parseFloat(e.target.value)||0)} : x))}
                     style={{ ...inputStyle, width: "70px" }} title="Gram per brood" />
                 </td>
                 <td style={{ padding: "5px 4px", fontSize: 11, color: "var(--text-subtle)" }}>g/brood</td>
@@ -463,6 +463,7 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
 
 // ─── Dough type (shared base recipe) editor ─────────────────────────────────
 function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: () => void; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState(dt.name);
   const [waterPct, setWater] = useState(dt.waterPct);
   const [desemPct, setDesem] = useState(dt.desemPct);
@@ -476,6 +477,7 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [savedFlash, setSavedFlash] = useState(false);
 
   const flourSum = flourLines.reduce((s, f) => s + f.percentage, 0);
   const inputStyle = { border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--surface)", width: "80px" };
@@ -492,6 +494,8 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
       }),
     });
     setSaving(false);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2500);
     onSaved();
   }
 
@@ -503,7 +507,16 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
   }
 
   return (
-    <div className="card" style={{ padding: "1rem 1.25rem", marginBottom: 10 }}>
+    <div className="card" style={{ marginBottom: 10, overflow: "hidden" }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0.85rem 1.25rem", background: "none", border: "none", cursor: "pointer", textAlign: "left",
+      }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{name}</span>
+        <span style={{ color: "var(--text-subtle)", fontSize: 13, transform: open ? "rotate(180deg)" : "none", transition: "0.2s" }}>↓</span>
+      </button>
+      {open && (
+      <div style={{ padding: "0 1.25rem 1.25rem" }}>
       <input value={name} onChange={e => setName(e.target.value)}
         style={{ ...inputStyle, width: "100%", fontWeight: 600, fontSize: 14, marginBottom: 10 }} />
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
@@ -515,8 +528,8 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
                   style={{ ...inputStyle, width: "160px" }} />
               </td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" min={0} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage}
-                  onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage}
+                  onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
                   style={inputStyle} />
               </td>
               <td style={{ padding: "6px 0 6px 4px", textAlign: "right" }}>
@@ -541,7 +554,7 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
             <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "6px 0", color: "var(--text-muted)" }}>{label}</td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(parseFloat(e.target.value)||0)} style={inputStyle} />
+                <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(Math.min(999,parseFloat(e.target.value)||0))} style={inputStyle} />
               </td>
               <td />
             </tr>
@@ -550,11 +563,11 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
             <tr key={`extra-${i}`} style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "6px 4px 6px 0" }}>
                 <input value={ex.name} onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,name:e.target.value} : x))}
-                  placeholder="bijv. Bier" style={{ ...inputStyle, width: "160px" }} />
+                  placeholder="bijv. Boter" style={{ ...inputStyle, width: "160px" }} />
               </td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={ex.percentage}
-                  onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={ex.percentage}
+                  onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
                   style={inputStyle} />
               </td>
               <td style={{ padding: "6px 0 6px 4px", textAlign: "right" }}>
@@ -569,20 +582,25 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
                 style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "var(--text-muted)" }}>
                 + Extra ingrediënt toevoegen
               </button>
-              <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 8 }}>bijv. Bier — % van bloemgewicht</span>
+              <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 8 }}>bijv. Boter — % van bloemgewicht</span>
             </td>
           </tr>
         </tbody>
       </table>
       {error && <p style={{ color: "var(--danger)", fontSize: 12, margin: "0 0 8px" }}>{error}</p>}
-      <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
+      <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={del} style={{ fontSize: 12, padding: "6px 12px", background: "none", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", color: "var(--danger)" }}>
           Verwijderen
         </button>
-        <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13 }}>
-          {saving ? "Opslaan…" : "Basisrecept opslaan"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {savedFlash && <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 500 }}>✓ Wijzigingen opgeslagen</span>}
+          <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13 }}>
+            {saving ? "Opslaan…" : "Basisrecept opslaan"}
+          </button>
+        </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }
@@ -885,7 +903,7 @@ export default function ReceptenPage() {
                     {isOpen && (
                       <div style={{ borderTop: "1px solid var(--border)", padding: "1rem 1.25rem", background: "var(--surface-2)" }}>
                         {isOwner && isEditing
-                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} allBreadTypes={breadTypes} basketTypeOptions={basketTypes} doughTypes={doughTypes} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); load(); }} />
+                          ? <RecipeOwnerEdit bt={bt} allCategories={categories} allBreadTypes={breadTypes} basketTypeOptions={basketTypes} doughTypes={doughTypes} onSaved={() => { setEditMode(m => ({ ...m, [bt.id]: false })); setDeleteMsg("✓ Wijzigingen opgeslagen."); setTimeout(() => setDeleteMsg(null), 4000); load(); }} />
                           : <RecipeWorkerView bt={bt} qty={qty} />
                         }
                       </div>

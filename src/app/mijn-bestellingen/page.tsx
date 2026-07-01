@@ -5,7 +5,10 @@ import { bakeryConfig } from "@/config/bakery.config";
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
-const PICKUP_LOCATIONS = bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") }));
+const PICKUP_LOCATIONS = [
+  ...bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") })),
+  { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
+];
 
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };

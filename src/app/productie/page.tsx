@@ -238,18 +238,29 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 // ─── MixerGroupCard ───────────────────────────────────────────────────────────
 // Renders one standalone card per mixer (e.g. "Boerenmix 1", "Boerenmix 2", ...)
 // instead of stacking mixers inside a single shared card.
-function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[] }) {
+function MixerGroupCard({ mg, weightsKg, assignment }: { mg: MixerGroup; weightsKg: number[]; assignment: Record<string, number> }) {
   const mixers = weightsKg.length || 1;
   return (
     <>
       {weightsKg.map((wKg, i) => {
+        const batchNum = i + 1;
         const frac = mg.totalDoughNoFillingsKg > 0 ? wKg / mg.totalDoughNoFillingsKg : 0;
-        const mixerLines = mg.lines.map(l => ({
-          ...l,
-          totalQty: Math.round(l.totalQty * frac),
-          doughWeightTotal: l.doughWeightTotal * frac,
-          flourWeightTotal: l.flourWeightTotal * frac,
-        }));
+        const mixerLines = mg.lines.map(l => {
+          // Additives (sesam/zaden/olijf/rozijn) are explicitly assigned to one mixer via
+          // "Verdeel vullingen" — that mixer gets the FULL amount, others get none. Only
+          // regular dough lines are split proportionally by mixer weight.
+          if (DISTRIBUTE_SLUGS.has(l.slug)) {
+            const assignedTo = assignment[l.breadTypeId] ?? 1;
+            if (assignedTo !== batchNum) return { ...l, totalQty: 0, doughWeightTotal: 0, flourWeightTotal: 0 };
+            return l;
+          }
+          return {
+            ...l,
+            totalQty: Math.round(l.totalQty * frac),
+            doughWeightTotal: l.doughWeightTotal * frac,
+            flourWeightTotal: l.flourWeightTotal * frac,
+          };
+        });
         const fillingsKg = mg.totalDoughKg - mg.totalDoughNoFillingsKg;
         const virtualMg: MixerGroup = {
           ...mg,
@@ -1065,7 +1076,7 @@ export default function ProductiePage() {
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughNoFillingsKg]} />)}
+                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughNoFillingsKg]} assignment={additiveAssignment[mg.group] ?? {}} />)}
               </div>
             </section>
           )}

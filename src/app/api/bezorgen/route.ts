@@ -67,29 +67,48 @@ export async function GET(req: Request) {
     };
 
     for (const ro of recurring) {
-      addOrder(
-        ro.customerId,
-        ro.customerId, ro.customer.name, ro.customer.city ?? "",
-        ro.customer.address ?? "", ro.notes ?? "", false,
-        ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
-        null,
-        ro.customer.lat, ro.customer.lng,
-      );
+      const pickup = (ro as any).pickupLocation as string | null;
+      if (pickup) {
+        const shop = shopCustomers.get(pickup);
+        const isBakeryPickup = pickup === "Ophalen Rotterdam";
+        const shopCity = shop?.city ?? (isBakeryPickup ? "Rotterdam" : pickup);
+        const key = ro.customerId + "@" + pickup;
+        addOrder(
+          key,
+          ro.customerId, ro.customer.name, shopCity,
+          shop?.address ?? (isBakeryPickup ? bakeryConfig.bakeryAddress : pickup), ro.notes ?? "", false,
+          ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+          pickup,
+          shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
+          shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
+        );
+      } else {
+        addOrder(
+          ro.customerId,
+          ro.customerId, ro.customer.name, ro.customer.city ?? "",
+          ro.customer.address ?? "", ro.notes ?? "", false,
+          ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
+          null,
+          ro.customer.lat, ro.customer.lng,
+        );
+      }
     }
     for (const oo of oneOff) {
       const pickup = (oo as any).pickupLocation as string | null;
       if (pickup) {
         // Pickup order: delivery destination is the shop, show with customer name + pickup badge
         const shop = shopCustomers.get(pickup);
-        const shopCity = shop?.city ?? pickup;
+        const isBakeryPickup = pickup === "Ophalen Rotterdam";
+        const shopCity = shop?.city ?? (isBakeryPickup ? "Rotterdam" : pickup);
         const key = oo.customerId + "@" + pickup;
         addOrder(
           key,
           oo.customerId, oo.customer.name, shopCity,
-          shop?.address ?? pickup, oo.notes ?? "", false,
+          shop?.address ?? (isBakeryPickup ? bakeryConfig.bakeryAddress : pickup), oo.notes ?? "", false,
           oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
           pickup,
-          shop?.lat, shop?.lng,
+          shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
+          shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
         );
       } else {
         addOrder(

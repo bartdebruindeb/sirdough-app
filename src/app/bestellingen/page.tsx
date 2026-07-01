@@ -26,7 +26,10 @@ function colName(name: string) {
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
-const SHOP_PICKUP = bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") }));
+const SHOP_PICKUP = [
+  ...bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") })),
+  { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
+];
 
 function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
   const { role } = useRole();
