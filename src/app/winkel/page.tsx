@@ -6,6 +6,7 @@ import { useUndoStack } from "@/hooks/useUndoStack";
 import { isCutoffPassed } from "@/lib/cutoff";
 
 const SHOPS = SHOP_NAMES;
+const MAX_WEEKS_AHEAD = 4;
 const WEEKDAYS_SHORT = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
 const WEEKDAYS_FULL  = ["", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
 
@@ -288,12 +289,10 @@ export default function WinkelPage() {
             <button onClick={() => setWeekOffset(0)} className="btn-secondary" style={{ fontSize: 13 }}>
               {weekOffset === 0 ? "▸ Deze week" : "Terug naar deze week"}
             </button>
-            {weekOffset <= 0 && (
-              <button onClick={() => setWeekOffset(w => w + 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>Volgende week →</button>
-            )}
-            {weekOffset > 0 && (
-              <button onClick={() => setWeekOffset(w => w - 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>← Vorige week</button>
-            )}
+            <button onClick={() => setWeekOffset(w => Math.min(MAX_WEEKS_AHEAD, w + 1))} disabled={weekOffset >= MAX_WEEKS_AHEAD}
+              className="btn-secondary" style={{ padding: "7px 12px", opacity: weekOffset >= MAX_WEEKS_AHEAD ? 0.5 : 1 }}>
+              Volgende week →
+            </button>
             <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
               {formatDay(weekDays[0])} – {formatDay(weekDays[4])}
             </span>
