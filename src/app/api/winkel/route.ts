@@ -100,11 +100,6 @@ export async function POST(req: Request) {
     }
     const date = new Date(input.date + "T12:00:00Z");
 
-    // Fetch before upsert so we can compute the delta for next-week propagation
-    const existingLog = await prisma.winkelLog.findUnique({
-      where: { tenantId_shopName_date: { tenantId: tid, shopName: input.shopName, date } },
-    });
-
     const log = await prisma.winkelLog.upsert({
       where: { tenantId_shopName_date: { tenantId: tid, shopName: input.shopName, date } },
       create: {
@@ -121,43 +116,6 @@ export async function POST(req: Request) {
         weatherCode: input.weatherCode,
       },
     });
-
-    // Propagate delta to next week's same day when updating an existing log
-    if (existingLog) {
-      const oldQty = existingLog.quantities as Record<string, number>;
-      const newQty = input.quantities as Record<string, number>;
-      const delta: Record<string, number> = {};
-      let hasDelta = false;
-      for (const slug of Object.keys(newQty)) {
-        const d = (newQty[slug] ?? 0) - (oldQty[slug] ?? 0);
-        if (d !== 0) { delta[slug] = d; hasDelta = true; }
-      }
-      if (hasDelta) {
-        const nextDate = new Date(date);
-        nextDate.setUTCDate(nextDate.getUTCDate() + 7);
-        const wd = nextDate.getUTCDay() === 0 ? 7 : nextDate.getUTCDay();
-
-        const [nextLog, templates] = await Promise.all([
-          prisma.winkelLog.findUnique({ where: { tenantId_shopName_date: { tenantId: tid, shopName: input.shopName, date: nextDate } } }),
-          prisma.winkelTemplate.findMany({ where: { tenantId: tid, shopName: input.shopName, weekday: wd }, include: { breadType: { select: { slug: true } } } }),
-        ]);
-
-        const templateQty: Record<string, number> = {};
-        for (const t of templates) templateQty[t.breadType.slug] = t.quantity;
-
-        const baseQty: Record<string, number> = nextLog ? { ...(nextLog.quantities as Record<string, number>) } : { ...templateQty };
-        const nextQty: Record<string, number> = { ...baseQty };
-        for (const slug of Object.keys(delta)) {
-          nextQty[slug] = Math.max(0, (nextQty[slug] ?? 0) + delta[slug]);
-        }
-
-        await prisma.winkelLog.upsert({
-          where: { tenantId_shopName_date: { tenantId: tid, shopName: input.shopName, date: nextDate } },
-          create: { tenantId: tid, shopName: input.shopName, date: nextDate, quantities: nextQty },
-          update: { quantities: nextQty },
-        });
-      }
-    }
 
     return Response.json(log, { status: 201 });
   } catch (e) {

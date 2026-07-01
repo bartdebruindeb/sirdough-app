@@ -189,6 +189,20 @@ export default function WinkelPage() {
     setSavingAll(false);
   }
 
+  // ── Copy last week's quantities into the currently viewed week (unsaved until "Alles opslaan") ──
+  function copyLastWeek() {
+    const prevWeekDays = getWeekDays(weekOffset - 1);
+    setEditQtys(prev => {
+      const next = { ...prev };
+      weekDays.forEach((date, i) => {
+        if (isCutoffPassed(date)) return;
+        const prevLog = shopData?.logs.find(l => l.date === prevWeekDays[i]);
+        if (prevLog) next[date] = { ...(prevLog.quantities as Record<string, number>) };
+      });
+      return next;
+    });
+  }
+
   // ── Active bread types ────────────────────────────────────────────────────
   const allBreadTypes = shopData?.breadTypes ?? [];
   const activeBreadTypes = allBreadTypes.filter(bt =>
@@ -258,6 +272,10 @@ export default function WinkelPage() {
             <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
               {formatDay(weekDays[0])} – {formatDay(weekDays[4])}
             </span>
+            <button onClick={copyLastWeek} className="btn-secondary" style={{ fontSize: 12, padding: "7px 12px", marginLeft: "auto" }}
+              title="Vult de aantallen van vorige week in — pas daarna aan en klik Alles opslaan">
+              📋 Kopieer planning van vorige week
+            </button>
           </div>
 
           {/* ── Week table ── */}
