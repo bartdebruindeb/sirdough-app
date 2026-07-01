@@ -140,4 +140,8 @@ input, select, textarea, button { font-family: var(--font-body); }
     white-space: normal !important;
     word-break: break-word;
   }
+
+  /* Customer portal top nav: collapse into hamburger + dropdown */
+  .customer-nav-desktop, .customer-user-desktop { display: none !important; }
+  .customer-mobile-toggle { display: block !important; }
 }

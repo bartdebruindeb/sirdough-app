@@ -129,8 +129,8 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 
   for (const line of mg.lines) {
     if (line.toppings.length === 0 || line.totalQty === 0) continue;
-    const key   = line.slug.replace("-15kg", "");
-    const label = line.name.replace(" 1,5 KG","").replace(" 1.5 KG","").trim();
+    const key   = line.slug;
+    const label = line.name.trim();
     const doughPerLoaf  = line.totalQty > 0 ? (line.doughWeightTotal / line.totalQty) - line.toppingWeightPerLoaf : 0;
     const pureDough     = Math.max(0, doughPerLoaf) * line.totalQty;
     const totalFilling  = line.toppings.reduce((s, t) => s + t.gramsPerLoaf * line.totalQty, 0);
@@ -228,21 +228,49 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 }
 
 // ─── MixerGroupCard ───────────────────────────────────────────────────────────
+// Renders one standalone card per mixer (e.g. "Boerenmix 1", "Boerenmix 2", ...)
+// instead of stacking mixers inside a single shared card.
 function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[] }) {
   const mixers = weightsKg.length || 1;
+  return (
+    <>
+      {weightsKg.map((wKg, i) => {
+        const frac = mg.totalDoughNoFillingsKg > 0 ? wKg / mg.totalDoughNoFillingsKg : 0;
+        const mixerLines = mg.lines.map(l => ({
+          ...l,
+          totalQty: Math.round(l.totalQty * frac),
+          doughWeightTotal: l.doughWeightTotal * frac,
+          flourWeightTotal: l.flourWeightTotal * frac,
+        }));
+        const fillingsKg = mg.totalDoughKg - mg.totalDoughNoFillingsKg;
+        const virtualMg: MixerGroup = {
+          ...mg,
+          lines: mixerLines,
+          totalDoughNoFillingsKg: wKg,
+          totalDoughKg: wKg + fillingsKg * frac,
+        };
+        const label = mixers > 1 ? `${mg.label} ${i + 1}` : mg.label;
+        return <MixerCard key={i} label={label} virtualMg={virtualMg} />;
+      })}
+    </>
+  );
+}
+
+function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup }) {
   const [showDetails, setShowDetails] = useState(false);
+  const loaves = virtualMg.lines.filter(l => l.doughWeightTotal > 0).reduce((s, l) => s + l.totalQty, 0);
   return (
     <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-        <h3 style={{ fontSize: 17 }}>{mg.label}</h3>
-        <span className="badge badge-amber">{mg.totalLoaves} st.</span>
+        <h3 style={{ fontSize: 17 }}>{label}</h3>
+        <span className="badge badge-amber">{loaves} st.</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 13, marginBottom: 10 }}>
         <span style={{ color: "var(--text-muted)" }}>Totaal deeg:</span>
-        <span style={{ fontWeight: 500, textAlign: "right" }}>{mg.totalDoughKg.toFixed(2)} kg</span>
-        {mg.totalDoughNoFillingsKg !== mg.totalDoughKg && (<>
+        <span style={{ fontWeight: 500, textAlign: "right" }}>{virtualMg.totalDoughKg.toFixed(2)} kg</span>
+        {virtualMg.totalDoughNoFillingsKg !== virtualMg.totalDoughKg && (<>
           <span style={{ color: "var(--text-muted)" }}>Zonder vullingen:</span>
-          <span style={{ fontWeight: 500, textAlign: "right" }}>{mg.totalDoughNoFillingsKg.toFixed(2)} kg</span>
+          <span style={{ fontWeight: 500, textAlign: "right" }}>{virtualMg.totalDoughNoFillingsKg.toFixed(2)} kg</span>
         </>)}
       </div>
       <button onClick={() => setShowDetails(!showDetails)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--text-subtle)", padding: 0, display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
@@ -260,7 +288,7 @@ function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[]
             </tr>
           </thead>
           <tbody>
-            {mg.lines.filter(l => l.totalQty > 0).map(l => (
+            {virtualMg.lines.filter(l => l.totalQty > 0).map(l => (
               <tr key={l.breadTypeId} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td style={{ padding: "6px 0" }}>{l.name}</td>
                 <td style={{ padding: "6px 8px", textAlign: "right", color: "var(--text-muted)" }}>{l.totalQty}</td>
@@ -271,33 +299,8 @@ function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[]
           </tbody>
         </table>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
-        <span style={{ fontSize: 15, fontWeight: 700, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 10px", borderRadius: 8 }}>{mixers}×</span>
-      </div>
-      {weightsKg.map((wKg, i) => {
-        const frac = mg.totalDoughNoFillingsKg > 0 ? wKg / mg.totalDoughNoFillingsKg : 0;
-        const mixerLines = mg.lines.map(l => ({
-          ...l,
-          totalQty: Math.round(l.totalQty * frac),
-          doughWeightTotal: l.doughWeightTotal * frac,
-          flourWeightTotal: l.flourWeightTotal * frac,
-        }));
-        const fillingsKg = mg.totalDoughKg - mg.totalDoughNoFillingsKg;
-        const virtualMg: MixerGroup = {
-          ...mg,
-          lines: mixerLines,
-          totalDoughNoFillingsKg: wKg,
-          totalDoughKg: wKg + fillingsKg * frac,
-        };
-        return (
-          <div key={i} style={{ marginTop: i > 0 ? 18 : 0, paddingTop: i > 0 ? 16 : 0, borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-            <p style={{ fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>Mixer {i + 1} — {wKg.toFixed(2)} kg</p>
-            <MixerIngredients mg={virtualMg} mixers={1} />
-            <VullingenCalculator mg={{ ...mg, totalDoughNoFillingsKg: wKg }} mixers={1} />
-          </div>
-        );
-      })}
+      <MixerIngredients mg={virtualMg} mixers={1} />
+      <VullingenCalculator mg={virtualMg} mixers={1} />
     </div>
   );
 }
@@ -849,18 +852,8 @@ export default function ProductiePage() {
                   const weightSum = weightsKg.reduce((s, v) => s + v, 0);
                   const weightWarn = Math.abs(weightSum - mg.totalDoughNoFillingsKg) > 0.05;
                   const additiveLinesInGroup = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug) && l.totalQty > 0);
-                  // Merge lines where mixerGroup references another slug (e.g. sesam-15kg → sesam)
-                  const additiveLinesDisplay = (() => {
-                    const merged = new Map<string, { line: typeof additiveLinesInGroup[0]; qty: number }>();
-                    for (const l of additiveLinesInGroup) {
-                      const targetSlug = l.mixerGroup && additiveLinesInGroup.some(x => x.slug === l.mixerGroup) ? l.mixerGroup : l.slug;
-                      const targetLine = additiveLinesInGroup.find(x => x.slug === targetSlug) ?? l;
-                      const key = targetLine.breadTypeId;
-                      if (!merged.has(key)) merged.set(key, { line: targetLine, qty: 0 });
-                      merged.get(key)!.qty += l.totalQty;
-                    }
-                    return Array.from(merged.values()).map(({ line, qty }) => ({ ...line, totalQty: qty }));
-                  })();
+                  // Each product (incl. size variants like sesam / sesam-15kg) gets its own row
+                  const additiveLinesDisplay = additiveLinesInGroup;
                   const assignment = additiveAssignment[mg.group] ?? {};
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
