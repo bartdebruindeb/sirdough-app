@@ -161,7 +161,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
           <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px" }}>Percentages van basisrecept "{selectedDoughType.name}" (bewerk via Basisrecepten):</p>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
-              {selectedDoughType.flourLines.map((f, i) => (
+              {(selectedDoughType.flourLines ?? []).map((f, i) => (
                 <tr key={i}><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>{f.name}</td><td style={{ padding: "3px 0", textAlign: "right" }}>{f.percentage}%</td></tr>
               ))}
               <tr><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>Water</td><td style={{ padding: "3px 0", textAlign: "right" }}>{selectedDoughType.waterPct}%</td></tr>
@@ -454,7 +454,7 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
   const [zoutPct,  setZout]  = useState(dt.zoutPct);
   const [inwasPct, setInwas] = useState(dt.inwasPct);
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
-    dt.flourLines.length > 0 ? dt.flourLines.map(f => ({ name: f.name, percentage: f.percentage })) : [{ name: "Tarwebloem", percentage: 100 }]
+    (dt.flourLines ?? []).length > 0 ? dt.flourLines.map(f => ({ name: f.name, percentage: f.percentage })) : [{ name: "Tarwebloem", percentage: 100 }]
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

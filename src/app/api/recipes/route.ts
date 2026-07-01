@@ -26,7 +26,11 @@ export async function GET(req: Request) {
         },
         orderBy: { sortOrder: "asc" },
       }),
-      prisma.doughType.findMany({ where: { tenantId: resolvedTenantId }, orderBy: { name: "asc" } }),
+      prisma.doughType.findMany({
+        where: { tenantId: resolvedTenantId },
+        include: { flourLines: { orderBy: { sortOrder: "asc" } } },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
     return Response.json({ breadTypes, doughTypes, role });
