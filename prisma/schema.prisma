@@ -112,6 +112,7 @@ model DoughType {
 
   tenant     Tenant        @relation(fields: [tenantId], references: [id])
   flourLines DoughFlour[]
+  extras     DoughExtra[]
   breadTypes BreadType[]
 
   @@unique([tenantId, slug])
@@ -119,6 +120,18 @@ model DoughType {
 }
 
 model DoughFlour {
+  id          String @id @default(cuid())
+  doughTypeId String
+  name        String
+  percentage  Float
+  sortOrder   Int    @default(0)
+
+  doughType DoughType @relation(fields: [doughTypeId], references: [id], onDelete: Cascade)
+}
+
+// Optional extra ingredients (e.g. "Bier") — a % of flour weight, additive alongside
+// water/desem/zout/inwas. Unlike those 4 fixed fields, extras are freely added/removed.
+model DoughExtra {
   id          String @id @default(cuid())
   doughTypeId String
   name        String

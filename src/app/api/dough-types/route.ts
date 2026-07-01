@@ -18,6 +18,7 @@ export async function GET(req: Request) {
       where: { tenantId: tid },
       include: {
         flourLines: { orderBy: { sortOrder: "asc" } },
+        extras: { orderBy: { sortOrder: "asc" } },
         breadTypes: { where: { active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, slug: true } },
       },
       orderBy: { name: "asc" },
@@ -36,6 +37,7 @@ const UpsertDoughSchema = z.object({
   zoutPct: z.number(),
   inwasPct: z.number(),
   flourLines: z.array(z.object({ name: z.string(), percentage: z.number(), sortOrder: z.number().default(0) })),
+  extras: z.array(z.object({ name: z.string(), percentage: z.number(), sortOrder: z.number().default(0) })).default([]),
 });
 
 export async function POST(req: Request) {
@@ -53,6 +55,8 @@ export async function POST(req: Request) {
         : await tx.doughType.create({ data: { tenantId: tid, name: input.name, slug: input.slug, notes: input.notes, waterPct: input.waterPct, desemPct: input.desemPct, zoutPct: input.zoutPct, inwasPct: input.inwasPct } });
       await tx.doughFlour.deleteMany({ where: { doughTypeId: d.id } });
       await tx.doughFlour.createMany({ data: input.flourLines.map(f => ({ doughTypeId: d.id, ...f })) });
+      await tx.doughExtra.deleteMany({ where: { doughTypeId: d.id } });
+      if (input.extras?.length) await tx.doughExtra.createMany({ data: input.extras.map(e => ({ doughTypeId: d.id, ...e })) });
       return d;
     });
 

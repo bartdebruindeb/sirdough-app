@@ -13,7 +13,7 @@ type Recipe = {
 type DoughType = {
   id: string; name: string; slug: string; notes?: string | null;
   waterPct: number; desemPct: number; zoutPct: number; inwasPct: number;
-  flourLines: RecipeFlour[];
+  flourLines: RecipeFlour[]; extras: RecipeFlour[];
 };
 type BreadType = {
   id: string; name: string; slug: string; category: string; sortOrder: number; weightGrams: number;
@@ -29,13 +29,19 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
   if (!r) return <p style={{ color: "var(--text-subtle)", fontSize: 13, fontStyle: "italic" }}>Geen recept</p>;
   const dt = bt.doughType;
   const n = qty || 1;
-  const totalDough = n * r.doughWeightPerLoaf;
+  // doughWeightPerLoaf is the TOTAL loaf weight including fillings — the dough
+  // actually mixed is that total minus the toppings/vullingen weight.
+  const toppingTotal = r.toppings.reduce((s, t) => s + t.gramsPerLoaf, 0);
+  const pureDough = Math.max(0, r.doughWeightPerLoaf - toppingTotal);
+  const totalDough = n * pureDough;
   const waterPct = dt?.waterPct ?? r.waterPct;
   const desemPct = dt?.desemPct ?? r.desemPct;
   const zoutPct  = dt?.zoutPct  ?? r.zoutPct;
   const inwasPct = dt?.inwasPct ?? r.inwasPct;
   const flourLines = dt?.flourLines ?? r.flourLines;
-  const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct;
+  const extras = dt?.extras ?? [];
+  const extrasPct = extras.reduce((s, e) => s + e.percentage, 0);
+  const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct + extrasPct;
   const flourTotal = (totalDough / totalPct) * 100;
 
   return (
@@ -71,6 +77,12 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
               <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * inwasPct / 100)}</td>
             </tr>
           )}
+          {extras.map((e, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{e.name}</td>
+              <td style={{ padding: "7px 0", textAlign: "right", fontWeight: 500 }}>{kg(flourTotal * e.percentage / 100)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
       {r.toppings.length > 0 && (
@@ -168,6 +180,9 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
               <tr><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>Desem</td><td style={{ padding: "3px 0", textAlign: "right" }}>{selectedDoughType.desemPct}%</td></tr>
               <tr><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>Zout</td><td style={{ padding: "3px 0", textAlign: "right" }}>{selectedDoughType.zoutPct}%</td></tr>
               <tr><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>Inwas</td><td style={{ padding: "3px 0", textAlign: "right" }}>{selectedDoughType.inwasPct}%</td></tr>
+              {(selectedDoughType.extras ?? []).map((e, i) => (
+                <tr key={`extra-${i}`}><td style={{ padding: "3px 0", color: "var(--text-muted)" }}>{e.name}</td><td style={{ padding: "3px 0", textAlign: "right" }}>{e.percentage}%</td></tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -218,7 +233,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
         <div>
-          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Deeggewicht / brood (g)</label>
+          <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Totaalgewicht / brood (g, incl. vulling)</label>
           <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={doughWeight} onChange={e => setDough(parseFloat(e.target.value)||0)} style={{ ...inputStyle, width: "100%" }} />
         </div>
         <div>
@@ -261,10 +276,10 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
         </table>
         {(() => {
           const toppingTotal = toppings.reduce((s, t) => s + (t.gramsPerLoaf || 0), 0);
-          const total = doughWeight + toppingTotal;
+          const pureDough = Math.max(0, doughWeight - toppingTotal);
           return (
             <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0" }}>
-              Totaal gewicht (deeg {kg(doughWeight)} + vulling {kg(toppingTotal)}) = <strong style={{ color: "var(--text)" }}>{kg(total)}</strong> per brood
+              Totaal gewicht (deeg {kg(pureDough)} + vulling {kg(toppingTotal)}) = <strong style={{ color: "var(--text)" }}>{kg(doughWeight)}</strong> per brood
             </p>
           );
         })()}
@@ -456,6 +471,9 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
   const [flourLines, setFlourLines] = useState<{name:string;percentage:number}[]>(
     (dt.flourLines ?? []).length > 0 ? dt.flourLines.map(f => ({ name: f.name, percentage: f.percentage })) : [{ name: "Tarwebloem", percentage: 100 }]
   );
+  const [extras, setExtras] = useState<{name:string;percentage:number}[]>(
+    (dt.extras ?? []).map(e => ({ name: e.name, percentage: e.percentage }))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -467,7 +485,11 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
     await fetch("/api/dough-types", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-      body: JSON.stringify({ id: dt.id, name, slug: dt.slug, waterPct, desemPct, zoutPct, inwasPct, flourLines: flourLines.map((f, i) => ({ ...f, sortOrder: i })) }),
+      body: JSON.stringify({
+        id: dt.id, name, slug: dt.slug, waterPct, desemPct, zoutPct, inwasPct,
+        flourLines: flourLines.map((f, i) => ({ ...f, sortOrder: i })),
+        extras: extras.map((e, i) => ({ ...e, sortOrder: i })),
+      }),
     });
     setSaving(false);
     onSaved();
@@ -524,6 +546,32 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
               <td />
             </tr>
           ))}
+          {extras.map((ex, i) => (
+            <tr key={`extra-${i}`} style={{ borderTop: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 4px 6px 0" }}>
+                <input value={ex.name} onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,name:e.target.value} : x))}
+                  placeholder="bijv. Bier" style={{ ...inputStyle, width: "160px" }} />
+              </td>
+              <td style={{ padding: "6px 0", textAlign: "right" }}>
+                <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={ex.percentage}
+                  onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,percentage:parseFloat(e.target.value)||0} : x))}
+                  style={inputStyle} />
+              </td>
+              <td style={{ padding: "6px 0 6px 4px", textAlign: "right" }}>
+                <button onClick={() => setExtras(xs => xs.filter((_,j) => j!==i))}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 16, padding: "0 4px" }}>×</button>
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <td colSpan={3} style={{ padding: "6px 0" }}>
+              <button onClick={() => setExtras(xs => [...xs, { name: "", percentage: 0 }])}
+                style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "var(--text-muted)" }}>
+                + Extra ingrediënt toevoegen
+              </button>
+              <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 8 }}>bijv. Bier — % van bloemgewicht</span>
+            </td>
+          </tr>
         </tbody>
       </table>
       {error && <p style={{ color: "var(--danger)", fontSize: 12, margin: "0 0 8px" }}>{error}</p>}

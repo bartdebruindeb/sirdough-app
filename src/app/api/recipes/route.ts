@@ -22,13 +22,13 @@ export async function GET(req: Request) {
           recipe: {
             include: { flourLines: { orderBy: { sortOrder: "asc" } }, toppings: { orderBy: { sortOrder: "asc" } } },
           },
-          doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } } } },
+          doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } }, extras: { orderBy: { sortOrder: "asc" } } } },
         },
         orderBy: { sortOrder: "asc" },
       }),
       prisma.doughType.findMany({
         where: { tenantId: resolvedTenantId },
-        include: { flourLines: { orderBy: { sortOrder: "asc" } } },
+        include: { flourLines: { orderBy: { sortOrder: "asc" } }, extras: { orderBy: { sortOrder: "asc" } } },
         orderBy: { name: "asc" },
       }),
     ]);

@@ -7,7 +7,7 @@ const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zater
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Topping   = { name: string; gramsPerLoaf: number; waterRatio?: number | null };
 type FlourLine = { name: string; percentage: number };
-type RecipeInfo = { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; flourLines: FlourLine[] };
+type RecipeInfo = { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; flourLines: FlourLine[]; extras?: FlourLine[] };
 type BreadLine = {
   breadTypeId: string; slug: string; name: string; category: string;
   mixerGroup?: string | null; basketType?: string | null; basketStyle?: string | null;
@@ -72,8 +72,10 @@ function applyAdj(groups: MixerGroup[], adj: Record<string, number>): MixerGroup
 function MixerIngredients({ mg, mixers }: { mg: MixerGroup; mixers: number }) {
   const r = mg.recipe;
   if (!r || mg.totalDoughNoFillingsKg === 0) return null;
+  const extras = r.extras ?? [];
+  const extrasPct = extras.reduce((s, e) => s + e.percentage, 0);
   const baseDough  = (mg.totalDoughNoFillingsKg * 1000) / mixers;
-  const totalPct   = 100 + r.waterPct + r.desemPct + r.zoutPct + r.inwasPct;
+  const totalPct   = 100 + r.waterPct + r.desemPct + r.zoutPct + r.inwasPct + extrasPct;
   const flour      = (baseDough / totalPct) * 100;
   return (
     <div style={{ marginTop: 12 }}>
@@ -107,6 +109,12 @@ function MixerIngredients({ mg, mixers }: { mg: MixerGroup; mixers: number }) {
                 <td style={{ padding: "3px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * r.inwasPct / 100)}</td>
               </tr>
             )}
+            {extras.map(e => (
+              <tr key={e.name}>
+                <td style={{ padding: "3px 0", color: "var(--text-muted)" }}>{e.name}</td>
+                <td style={{ padding: "3px 0", textAlign: "right", fontWeight: 600 }}>{g(flour * e.percentage / 100)}</td>
+              </tr>
+            ))}
             <tr style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "4px 0", fontSize: 11, color: "var(--text-subtle)" }}>Totaal deeg</td>
               <td style={{ padding: "4px 0", textAlign: "right", fontSize: 11, color: "var(--text-subtle)" }}>{g(baseDough)}</td>

@@ -28,6 +28,7 @@ export type BreadLine = {
 export type RecipeInfo = {
   waterPct: number; desemPct: number; zoutPct: number; inwasPct: number;
   flourLines: FlourComponent[];
+  extras: FlourComponent[];
 };
 
 export type MixerGroup = {
@@ -68,7 +69,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
   const breadTypes = await prisma.breadType.findMany({
     where: { tenantId, active: true, showInProduction: true },
     include: {
-      doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } } } },
+      doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } }, extras: { orderBy: { sortOrder: "asc" } } } },
       recipe: {
         include: {
           flourLines: { orderBy: { sortOrder: "asc" } },
@@ -187,14 +188,18 @@ export async function getProductionPlan(tenantId: string, productionDate: string
     const desemPct = pctSource?.desemPct ?? 15;
     const zoutPct  = pctSource?.zoutPct  ?? 2;
     const inwasPct = pctSource?.inwasPct ?? 6;
+    // Extras (e.g. "Bier") only exist on shared dough types, not on per-bread recipes
+    const extrasPct = (bt.doughType?.extras ?? []).reduce((s, e) => s + e.percentage, 0);
 
     // Use recipe's doughWeightPerLoaf (set per bread: 758 for KL, 1010 for GR, 1515 for 1.5kg, 500 for baguette etc.)
-    // Fall back to weightGrams if no recipe
+    // Fall back to weightGrams if no recipe. This is the TOTAL loaf weight including fillings —
+    // the actual dough that gets mixed is doughWeightPerLoaf minus the topping weight.
     const doughWeightPerLoaf = recipe?.doughWeightPerLoaf ?? bt.weightGrams;
     const toppingWeightPerLoaf = recipe?.toppings.reduce((s, t) => s + t.gramsPerLoaf, 0) ?? 0;
+    const pureDoughWeightPerLoaf = Math.max(0, doughWeightPerLoaf - toppingWeightPerLoaf);
     const doughWeightTotal = totalQty * doughWeightPerLoaf;
-    const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct;
-    const flourWeightTotal = totalQty > 0 ? (doughWeightTotal / totalPct) * 100 : 0;
+    const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct + extrasPct;
+    const flourWeightTotal = totalQty > 0 ? ((totalQty * pureDoughWeightPerLoaf) / totalPct) * 100 : 0;
 
     // Flour lines: prefer doughType's, else recipe's
     const flourLines = bt.doughType?.flourLines ?? recipe?.flourLines ?? [];
@@ -258,6 +263,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
         zoutPct:    dt?.zoutPct   ?? r?.zoutPct   ?? 2,
         inwasPct:   dt?.inwasPct  ?? r?.inwasPct  ?? 6,
         flourLines: (dt?.flourLines ?? r?.flourLines ?? []).map(f => ({ name: f.name, percentage: f.percentage })),
+        extras: (dt?.extras ?? []).map(e => ({ name: e.name, percentage: e.percentage })),
       } : null;
       groupMap.set(group, { lines: [], recipe: recipeInfo });
     }
