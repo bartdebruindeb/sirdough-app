@@ -187,6 +187,7 @@ const UpdateOneOffSchema = z.object({
 const UpdateRecurringSchema = z.object({
   recurringOrderId: z.string(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
+  pickupLocation: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -226,6 +227,7 @@ export async function PATCH(req: Request) {
       const input = UpdateRecurringSchema.parse(body);
       const order = await prisma.recurringOrder.findFirst({
         where: { id: input.recurringOrderId, customerId: customer.id },
+        include: { lines: true },
       });
       if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
 
@@ -234,8 +236,39 @@ export async function PATCH(req: Request) {
       const nextDate = new Date(now);
       nextDate.setDate(nextDate.getDate() + dayDiff);
       nextDate.setHours(12, 0, 0, 0);
+
+      // If this week's occurrence is already past its deadline, freeze it exactly as it
+      // currently is (via a one-off substitute + skip exception) so it stays unaffected,
+      // then apply the requested changes to the template starting the week after.
+      let appliesFrom: string | null = null;
       if (isCutoffPassed(nextDate)) {
-        return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
+        const alreadyFrozen = await prisma.recurringOrderException.findUnique({
+          where: { recurringOrderId_date: { recurringOrderId: order.id, date: nextDate } },
+        });
+        if (!alreadyFrozen) {
+          const currentLines = order.lines.filter(l => l.quantity > 0).map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity }));
+          if (currentLines.length > 0) {
+            const existingOneOff = await prisma.oneOffOrder.findFirst({
+              where: { tenantId: customer.tenantId, customerId: customer.id, deliveryDate: nextDate },
+            });
+            if (!existingOneOff) {
+              await (prisma as any).oneOffOrder.create({
+                data: {
+                  tenantId: customer.tenantId, customerId: customer.id, deliveryDate: nextDate,
+                  notes: "Vaste bestelling (behouden — aanpassing geldt vanaf volgende week)",
+                  pickupLocation: (order as any).pickupLocation ?? null,
+                  lines: { create: currentLines },
+                },
+              });
+            }
+          }
+          await prisma.recurringOrderException.upsert({
+            where: { recurringOrderId_date: { recurringOrderId: order.id, date: nextDate } },
+            create: { recurringOrderId: order.id, date: nextDate, active: false },
+            update: { active: false },
+          });
+        }
+        appliesFrom = toDateStr(nextDate);
       }
 
       for (const line of input.lines) {
@@ -251,6 +284,9 @@ export async function PATCH(req: Request) {
           });
         }
       }
+      if (input.pickupLocation !== undefined) {
+        await (prisma as any).recurringOrder.update({ where: { id: order.id }, data: { pickupLocation: input.pickupLocation } });
+      }
 
       const updated = await prisma.recurringOrder.findFirst({
         where: { id: input.recurringOrderId },
@@ -263,7 +299,7 @@ export async function PATCH(req: Request) {
         lines: (updated?.lines ?? []).filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity })),
       }).catch(() => {});
 
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, appliesFrom });
     }
 
     // One-off order edit
@@ -298,6 +334,7 @@ export async function PATCH(req: Request) {
 const CreateRecurringSchema = z.object({
   weekday: z.number().int().min(1).max(7),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
+  pickupLocation: z.string().optional(),
 });
 
 // PUT /api/mijn/bestellingen — create a new recurring order for a weekday
@@ -312,12 +349,13 @@ export async function PUT(req: Request) {
     });
     if (existing) return Response.json({ error: "CONFLICT", message: "Er bestaat al een vaste bestelling voor deze dag." }, { status: 409 });
 
-    const order = await prisma.recurringOrder.create({
+    const order = await (prisma as any).recurringOrder.create({
       data: {
         tenantId: customer.tenantId,
         customerId: customer.id,
         weekday: input.weekday,
         active: true,
+        pickupLocation: input.pickupLocation ?? null,
         lines: {
           create: input.lines.filter(l => l.quantity > 0),
         },

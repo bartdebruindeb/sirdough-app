@@ -10,7 +10,7 @@ const PICKUP_LOCATIONS = bakeryConfig.shops.map(s => ({ id: s.name, label: s.nam
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
-type RecurringOrder = { id: string; weekday: number; active: boolean; lines: RecurringLine[]; exceptions: RecurringException[] };
+type RecurringOrder = { id: string; weekday: number; active: boolean; pickupLocation?: string | null; lines: RecurringLine[]; exceptions: RecurringException[] };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null; pickupLocation?: string | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
@@ -174,12 +174,15 @@ export default function MijnBestellingenPage() {
   // Recurring edit
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [editRecQty, setEditRecQty]     = useState<Record<string,number>>({});
+  const [editRecPickup, setEditRecPickup] = useState<string>("");
   const [savingRec, setSavingRec]       = useState(false);
+  const [savedRecAppliesFrom, setSavedRecAppliesFrom] = useState<string | null>(null);
 
   // New recurring
   const [showNewRec, setShowNewRec]     = useState(false);
   const [newRecWeekday, setNewRecWeekday] = useState(1);
   const [newRecQty, setNewRecQty]       = useState<Record<string,number>>({});
+  const [newRecPickup, setNewRecPickup] = useState<string>("");
   const [savingNewRec, setSavingNewRec] = useState(false);
 
   // One-off edit
@@ -236,15 +239,24 @@ export default function MijnBestellingenPage() {
   function startEditRec(o: RecurringOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditRecQty(q); setEditingRecId(o.id);
+    setEditRecQty(q); setEditRecPickup(o.pickupLocation ?? ""); setEditingRecId(o.id);
   }
   async function saveRec(o: RecurringOrder) {
     setSavingRec(true);
-    await fetch("/api/mijn/bestellingen", {
+    const res = await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recurringOrderId: o.id, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecQty[bt.id] ?? 0 })) }),
+      body: JSON.stringify({
+        recurringOrderId: o.id,
+        lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecQty[bt.id] ?? 0 })),
+        pickupLocation: editRecPickup || null,
+      }),
     });
+    const data = await res.json().catch(() => ({}));
     setSavingRec(false); setEditingRecId(null); scheduleEmail(); load();
+    if (data.appliesFrom) {
+      setSavedRecAppliesFrom(data.appliesFrom);
+      setTimeout(() => setSavedRecAppliesFrom(null), 8000);
+    }
   }
   async function toggleRecActive(o: RecurringOrder) {
     await fetch("/api/mijn/bestellingen", {
@@ -269,9 +281,13 @@ export default function MijnBestellingenPage() {
     setSavingNewRec(true);
     await fetch("/api/mijn/bestellingen", {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weekday: newRecWeekday, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: newRecQty[bt.id] ?? 0 })) }),
+      body: JSON.stringify({
+        weekday: newRecWeekday,
+        lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: newRecQty[bt.id] ?? 0 })),
+        pickupLocation: newRecPickup || undefined,
+      }),
     });
-    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); scheduleEmail(); load();
+    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); scheduleEmail(); load();
   }
 
   // One-off
@@ -451,6 +467,12 @@ export default function MijnBestellingenPage() {
               )}
             </div>
 
+            {savedRecAppliesFrom && (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8, margin: "0 0 0.75rem" }}>
+                ✓ Opgeslagen. De eerstvolgende bezorging was al vergrendeld en blijft ongewijzigd — de aanpassing gaat in vanaf {new Date(savedRecAppliesFrom+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"})}.
+              </p>
+            )}
+
             {recurring.length === 0 && !showNewRec && (
               <div className="card" style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-subtle)", fontSize: 13 }}>
                 Nog geen vaste bestellingen. Klik op "Dag toevoegen" om te starten.
@@ -476,21 +498,16 @@ export default function MijnBestellingenPage() {
                         <span style={{ fontWeight: 500, fontSize: 15 }}>{WEEKDAYS[order.weekday]}</span>
                         {!order.active && <span style={{ fontSize: 11, background: "var(--danger-bg)", color: "var(--danger)", padding: "2px 8px", borderRadius: 8 }}>Gepauzeerd</span>}
                         {order.active && editable && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeUntilCutoff(next)}</span>}
-                        {order.active && !editable && <span style={{ fontSize: 11, color: "var(--danger)" }}>Aanpassen niet meer mogelijk</span>}
+                        {order.active && !editable && <span style={{ fontSize: 11, color: "#b45309" }}>Wijzigingen gelden vanaf volgende week</span>}
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {order.active && !isEditing && editable && (
+                        {order.active && !isEditing && (
                           <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
                         {isEditing && (
                           <>
-                            {thisWeekLocked && nextEditable && (
-                              <span style={{ fontSize: 10, color: "var(--text-subtle)", alignSelf: "center" }}>
-                                geldt vanaf {new Date(nextEditable+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"})}
-                              </span>
-                            )}
                             <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                            <button onClick={() => saveRec(order)} disabled={savingRec || (minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
+                            <button onClick={() => saveRec(order)} disabled={savingRec || (!editRecPickup && minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
                           </>
                         )}
                         {editable && (
@@ -514,10 +531,13 @@ export default function MijnBestellingenPage() {
                           </span>
                         ))}
                         {order.lines.length === 0 && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Geen producten</span>}
+                        {order.pickupLocation && (
+                          <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 6 }}>🏪 {order.pickupLocation.replace("Winkel ","")}</span>
+                        )}
                         {(() => {
                           const t = order.lines.filter(l => l.quantity > 0).reduce((s, l) => l.breadType.price != null ? s + l.breadType.price * l.quantity * (1 - discountPercent/100) : s, 0);
                           const hasPrice = order.lines.some(l => l.breadType.price != null);
-                          const belowMin = hasPrice && t > 0 && minDeliveryAmount !== null && t < minDeliveryAmount;
+                          const belowMin = !order.pickupLocation && hasPrice && t > 0 && minDeliveryAmount !== null && t < minDeliveryAmount;
                           return hasPrice && t > 0 ? <>
                             <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {t.toFixed(2).replace(".",",")}</span>
                             {belowMin && <span style={{ fontSize: 10, color: "#b45309", background: "#fef3c7", padding: "1px 6px", borderRadius: 6 }}>⚠ min. € {minDeliveryAmount!.toFixed(2)}</span>}
@@ -528,19 +548,39 @@ export default function MijnBestellingenPage() {
 
                     {isEditing && <>
                       <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                      <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
+                            const active = editRecPickup === loc.id;
+                            return (
+                              <button key={loc.id} type="button" onClick={() => setEditRecPickup(loc.id)}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12,
+                                  border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                                  background: active ? "var(--accent-light)" : "var(--surface-2)",
+                                  color: active ? "var(--accent)" : "var(--text)",
+                                }}>
+                                <span>{loc.icon}</span> {loc.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                       {(() => {
                         const t = calcBasketTotal(editRecQty, breadTypes, discountPercent);
-                        return minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
-                          ? <p style={{ fontSize: 12, color: "var(--danger)", margin: "4px 0 0" }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe of neem contact op met de bakkerij.</p>
+                        const isPickup = !!editRecPickup;
+                        return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
+                          ? <p style={{ fontSize: 12, color: "var(--danger)", margin: "8px 0 0" }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
                           : null;
                       })()}
+                      {thisWeekLocked && (
+                        <p style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "8px 10px", borderRadius: 6, margin: "8px 0 0" }}>
+                          De deadline voor de eerstvolgende bezorging ({new Date(next+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"})}) is al verstreken — die bezorging blijft ongewijzigd.
+                          Deze wijziging gaat in vanaf {nextEditable ? new Date(nextEditable+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"}) : "volgende week"}.
+                        </p>
+                      )}
                     </>}
-
-                    {order.active && !editable && !isEditing && (
-                      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "4px 0 8px", background: "var(--surface)", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
-                        Aanpassingen voor de eerstvolgende bezorging zijn niet meer mogelijk. Neem contact op met de bakker voor spoedbezorging.
-                      </p>
-                    )}
 
                     {/* Upcoming 2 weeks skip planning */}
                     {order.active && upcomingDates.length > 0 && !isEditing && (
@@ -582,15 +622,35 @@ export default function MijnBestellingenPage() {
                     </select>
                   </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
+                        const active = newRecPickup === loc.id;
+                        return (
+                          <button key={loc.id} type="button" onClick={() => setNewRecPickup(loc.id)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12,
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                              background: active ? "var(--accent-light)" : "var(--surface-2)",
+                              color: active ? "var(--accent)" : "var(--text)",
+                            }}>
+                            <span>{loc.icon}</span> {loc.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   {(() => {
                     const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
-                    return minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
-                      ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe of neem contact op met de bakkerij.</p>
+                    const isPickup = !!newRecPickup;
+                    return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
+                      ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
                       : null;
                   })()}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setShowNewRec(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                    <button onClick={createRec} disabled={savingNewRec || (minDeliveryAmount !== null && calcBasketTotal(newRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
+                    <button onClick={() => { setShowNewRec(false); setNewRecPickup(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                    <button onClick={createRec} disabled={savingNewRec || (!newRecPickup && minDeliveryAmount !== null && calcBasketTotal(newRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
                   </div>
                 </div>
               )}
