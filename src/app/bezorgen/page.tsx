@@ -19,7 +19,7 @@ type DeliveryData = {
 };
 type DeliveryStatus = {
   customerId: string; customerName: string; customerCity: string | null;
-  inBusAt: string | null; deliveredAt: string | null;
+  inBusAt: string | null; deliveredAt: string | null; pakbonSentAt: string | null;
 };
 
 function getWeekday(date: string) {
@@ -68,6 +68,8 @@ export default function BezorgenPage() {
   // Timestamps
   const [inBusTimes, setInBusTimes]       = useState<Record<string, string>>({});
   const [deliveredTimes, setDeliveredTimes] = useState<Record<string, string>>({});
+  // Pakbon sent — once true, delivery status can't be reverted
+  const [pakbonSent, setPakbonSent] = useState<Record<string, boolean>>({});
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export default function BezorgenPage() {
 
   function load(d: string) {
     setLoading(true); setError("");
-    setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({});
+    setBusOrder([]); setDelivered({}); setInBusTimes({}); setDeliveredTimes({}); setPakbonSent({});
 
     Promise.all([
       fetch(`/api/bezorgen?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json()),
@@ -107,6 +109,7 @@ export default function BezorgenPage() {
       const deliveredMap: Record<string, boolean> = {};
       const inBusMap: Record<string, string> = {};
       const delivTimesMap: Record<string, string> = {};
+      const pakbonMap: Record<string, boolean> = {};
 
       // Sort by inBusAt to preserve bus order
       const withBus = statuses.filter(s => s.inBusAt && !s.deliveredAt)
@@ -121,11 +124,13 @@ export default function BezorgenPage() {
           delivTimesMap[s.customerId] = s.deliveredAt;
           if (s.inBusAt) inBusMap[s.customerId] = s.inBusAt;
         }
+        if (s.pakbonSentAt) pakbonMap[s.customerId] = true;
       }
       setBusOrder(busIds);
       setDelivered(deliveredMap);
       setInBusTimes(inBusMap);
       setDeliveredTimes(delivTimesMap);
+      setPakbonSent(pakbonMap);
       setLoading(false);
     }).catch(e => { setError(String(e)); setLoading(false); });
 
@@ -164,6 +169,7 @@ export default function BezorgenPage() {
 
   function toggleDelivered(id: string) {
     const isDone = delivered[id];
+    if (isDone && pakbonSent[id]) return; // pakbon sent — status is final
     if (!isDone) {
       // Mark as delivered
       const now = new Date().toISOString();
@@ -215,12 +221,12 @@ export default function BezorgenPage() {
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId: pakbonModal.customerId, date, deliveredLines: pakbonModal.lines }),
     }).catch(() => {});
-    // Mark as delivered
+    // Mark as delivered — pakbon sent means this is now final
     const now = new Date().toISOString();
     setDelivered(d => ({ ...d, [pakbonModal.customerId]: true }));
     setDeliveredTimes(t => ({ ...t, [pakbonModal.customerId]: now }));
+    setPakbonSent(p => ({ ...p, [pakbonModal.customerId]: true }));
     setBusOrder(prev => prev.filter(x => x !== pakbonModal.customerId));
-    postStatus(pakbonModal.customerId, "delivered");
     setSendingPakbon(false);
     setPakbonModal(null);
   }
@@ -434,11 +440,15 @@ export default function BezorgenPage() {
                     <span style={{ fontSize: 12, fontFamily: "var(--font-body)", fontWeight: 400 }}>{deliveredCount}/{rows.length}</span>
                   </h2>
                   <div className="card" style={{ overflow: "hidden" }}>
-                    {rows.filter(r => delivered[r.customerId]).map((row, i) => (
+                    {rows.filter(r => delivered[r.customerId]).map((row, i) => {
+                      const locked = pakbonSent[row.customerId];
+                      return (
                       <div key={row.customerId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: i > 0 ? "1px solid var(--border)" : "none", background: "var(--success-bg)" }}>
                         <button onClick={() => toggleDelivered(row.customerId)}
-                          style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--success)", background: "var(--success)", cursor: "pointer", fontSize: 13, color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}
-                          title="Ongedaan maken">✓</button>
+                          disabled={locked}
+                          title={locked ? "Pakbon verstuurd — kan niet meer worden teruggezet" : "Ongedaan maken"}
+                          style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--success)", background: "var(--success)", cursor: locked ? "default" : "pointer", fontSize: 13, color: "white", display: "flex", alignItems: "center", justifyContent: "center", opacity: locked ? 0.7 : 1 }}
+                          >{locked ? "🔒" : "✓"}</button>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ fontSize: 13, fontWeight: 500, textDecoration: "line-through", color: "var(--text-muted)" }}>{row.name}</span>
                           <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
@@ -448,9 +458,10 @@ export default function BezorgenPage() {
                             {new Date(deliveredTimes[row.customerId]).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         )}
-                        <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 500 }}>Pakbon verzonden</span>
+                        {locked && <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 500 }}>Pakbon verzonden</span>}
                       </div>
-                    ))}
+                      );
+                    })}
                     {deliveredCount === rows.length && (
                       <div style={{ padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--success)", borderTop: "1px solid var(--border)" }}>
                         🎉 Alles bezorgd!

@@ -120,5 +120,14 @@ export async function POST(req: Request) {
 
   await sendPakbon({ to: email, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines, deviations });
 
+  // Pakbon sent = delivery is final; can no longer be reverted (see /api/delivery-status)
+  const statusDate = new Date(date + "T12:00:00Z");
+  const now = new Date();
+  await prisma.deliveryStatus.upsert({
+    where: { tenantId_date_customerId: { tenantId: tid, date: statusDate, customerId } },
+    create: { tenantId: tid, date: statusDate, customerId, deliveredAt: now, pakbonSentAt: now },
+    update: { deliveredAt: now, pakbonSentAt: now },
+  });
+
   return Response.json({ ok: true });
 }

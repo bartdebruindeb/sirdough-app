@@ -504,22 +504,35 @@ export default function KlantenPage() {
                     {c.city && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.city}</span>}
                     {!c.active && <span style={{ fontSize: 11, color: "var(--danger)", background: "var(--danger-bg)", padding: "1px 7px", borderRadius: 10 }}>Inactief</span>}
                   </div>
-                  <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
-                    {c.address && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📍 {c.address}</span>}
-                    {c.email && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>✉ {c.email}</span>}
-                    {c.phone && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📞 {c.phone}</span>}
-                    {c.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontStyle: "italic" }}>{c.notes}</span>}
-                    {c.preferredBread && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "1px 7px", borderRadius: 8 }}>🍞 {c.preferredBread}</span>}
-                  </div>
-                  {c.deliveryAddresses?.length > 0 && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                      {c.deliveryAddresses.map(a => (
-                        <span key={a.id} style={{ fontSize: 11, color: "var(--text-subtle)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 8px" }}>
-                          {a.isDefault ? "⭐ " : ""}{a.label}: {a.street}, {a.postalCode} {a.city}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    // Show a single address: the customer's own default address if they've set
+                    // one (more likely to be current), otherwise the owner-entered c.address.
+                    const defaultAddr = c.deliveryAddresses?.find(a => a.isDefault);
+                    const displayAddress = defaultAddr
+                      ? `${defaultAddr.street}, ${defaultAddr.postalCode} ${defaultAddr.city}`
+                      : c.address;
+                    const extraAddresses = c.deliveryAddresses?.filter(a => !a.isDefault) ?? [];
+                    return (
+                      <>
+                        <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
+                          {displayAddress && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📍 {displayAddress}</span>}
+                          {c.email && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>✉ {c.email}</span>}
+                          {c.phone && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📞 {c.phone}</span>}
+                          {c.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontStyle: "italic" }}>{c.notes}</span>}
+                          {c.preferredBread && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "1px 7px", borderRadius: 8 }}>🍞 {c.preferredBread}</span>}
+                        </div>
+                        {extraAddresses.length > 0 && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                            {extraAddresses.map(a => (
+                              <span key={a.id} style={{ fontSize: 11, color: "var(--text-subtle)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 8px" }}>
+                                {a.label}: {a.street}, {a.postalCode} {a.city}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Customer number */}
@@ -576,7 +589,13 @@ export default function KlantenPage() {
                       ✉ Stuur uitnodiging
                     </button>
                   ) : (
-                    <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Geen e-mail</span>
+                    <button
+                      onClick={() => setEditing(c.id)}
+                      title="Voeg eerst een e-mailadres toe om deze klant te kunnen uitnodigen"
+                      style={{ fontSize: 11, color: "var(--text-subtle)", background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                    >
+                      + E-mail toevoegen
+                    </button>
                   )}
                 </div>
 

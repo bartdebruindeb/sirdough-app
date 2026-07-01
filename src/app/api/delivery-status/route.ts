@@ -32,8 +32,9 @@ export async function GET(req: Request) {
         customerId: s.customerId,
         customerName: s.customer.name,
         customerCity: s.customer.city,
-        inBusAt:     s.inBusAt?.toISOString()     ?? null,
-        deliveredAt: s.deliveredAt?.toISOString() ?? null,
+        inBusAt:      s.inBusAt?.toISOString()      ?? null,
+        deliveredAt:  s.deliveredAt?.toISOString()  ?? null,
+        pakbonSentAt: s.pakbonSentAt?.toISOString() ?? null,
       })),
     });
   } catch (e) { return toResponse(e); }
@@ -55,6 +56,15 @@ export async function POST(req: Request) {
     const input = await parseJson(req, ActionSchema);
     const date = new Date(input.date + "T12:00:00Z");
     const now = new Date();
+
+    if (input.action === "removed_from_bus" || input.action === "undelivered") {
+      const existing = await prisma.deliveryStatus.findUnique({
+        where: { tenantId_date_customerId: { tenantId: tid, date, customerId: input.customerId } },
+      });
+      if (existing?.pakbonSentAt) {
+        return Response.json({ error: "PAKBON_SENT", message: "Pakbon is al verstuurd — de bezorgstatus kan niet meer worden teruggezet." }, { status: 403 });
+      }
+    }
 
     const data: { inBusAt?: Date | null; deliveredAt?: Date | null } = {};
     if (input.action === "in_bus")            { data.inBusAt = now; }

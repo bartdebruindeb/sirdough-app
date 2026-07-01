@@ -473,14 +473,15 @@ model DeliveryNote {
 
 // Tracks per-customer delivery timestamps per day
 model DeliveryStatus {
-  id          String    @id @default(cuid())
-  tenantId    String
-  date        DateTime
-  customerId  String
-  inBusAt     DateTime?
-  deliveredAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  tenantId      String
+  date          DateTime
+  customerId    String
+  inBusAt       DateTime?
+  deliveredAt   DateTime?
+  pakbonSentAt  DateTime? // once set, delivery status is final and can no longer be reverted
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
