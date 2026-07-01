@@ -19,6 +19,7 @@ function UitnodigingContent() {
   const [status, setStatus]     = useState<"loading"|"valid"|"invalid"|"done">("loading");
   const [message, setMessage]   = useState("");
   const [email, setEmail]       = useState("");
+  const [type, setType]         = useState<"customer"|"worker">("customer");
   const [name, setName]         = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -34,6 +35,7 @@ function UitnodigingContent() {
           setStatus("valid");
           setEmail(d.email ?? "");
           setName(d.name ?? "");
+          setType(d.type === "worker" ? "worker" : "customer");
         } else {
           setStatus("invalid");
           setMessage(d.message ?? "Ongeldige link.");
@@ -46,6 +48,7 @@ function UitnodigingContent() {
   }, [token]);
 
   async function setWachtwoord() {
+    if (type === "customer" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Vul een geldig e-mailadres in."); return; }
     if (password.length < 8) { setError("Minimaal 8 tekens."); return; }
     if (password !== password2) { setError("Wachtwoorden komen niet overeen."); return; }
     setSaving(true); setError("");
@@ -53,7 +56,7 @@ function UitnodigingContent() {
     const res = await fetch("/api/invite", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ token, password, email: type === "customer" ? email.trim().toLowerCase() : undefined }),
     });
     const data = await res.json();
     setSaving(false);
@@ -112,8 +115,18 @@ function UitnodigingContent() {
         {status === "valid" && (
           <>
             <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
-              Welkom{name ? `, ${name}` : ""}! Kies een wachtwoord voor uw account ({email}).
+              Welkom{name ? `, ${name}` : ""}! {type === "customer"
+                ? "Vul uw e-mailadres in en kies een wachtwoord om uw account te activeren."
+                : `Kies een wachtwoord voor uw account (${email}).`}
             </p>
+            {type === "customer" && (
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+                  E-mailadres (wordt uw inlognaam)
+                </label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inp} placeholder="naam@voorbeeld.nl" autoFocus />
+              </div>
+            )}
             <div>
               <label style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
                 Nieuw wachtwoord

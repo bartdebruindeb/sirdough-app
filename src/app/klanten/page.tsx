@@ -247,8 +247,8 @@ function InviteModal({ customer, onClose }: { customer: Customer; onClose: () =>
         </div>
 
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-          Genereer een uitnodigingslink voor <strong>{customer.name}</strong> ({customer.email}).
-          De klant klikt op de link en kiest zelf een wachtwoord.
+          Genereer een uitnodigingslink voor <strong>{customer.name}</strong>.
+          De klant klikt op de link en vult zelf e-mailadres en wachtwoord in.
         </p>
 
         {!inviteUrl && (
@@ -263,20 +263,22 @@ function InviteModal({ customer, onClose }: { customer: Customer; onClose: () =>
         {inviteUrl && (
           <>
             <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
-              <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px", textTransform: "uppercase" }}>Uitnodigingslink (7 dagen geldig)</p>
+              <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px", textTransform: "uppercase" }}>Uitnodigingslink (48 uur geldig)</p>
               <p style={{ fontSize: 12, wordBreak: "break-all", margin: 0, color: "var(--text)" }}>{inviteUrl}</p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={copy} className="btn-primary" style={{ flex: 1 }}>
                 {copied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
               </button>
-              <a href={`mailto:${customer.email}?subject=Uitnodiging%20Digital%20Bakery&body=Beste%20${customer.name},%0A%0AKlik%20op%20deze%20link%20om%20uw%20account%20te%20activeren:%0A${encodeURIComponent(inviteUrl)}`}
-                className="btn-secondary" style={{ textDecoration: "none", padding: "9px 14px", fontSize: 13 }}>
-                ✉ Stuur e-mail
-              </a>
+              {customer.email && (
+                <a href={`mailto:${customer.email}?subject=Uitnodiging%20Digital%20Bakery&body=Beste%20${customer.name},%0A%0AKlik%20op%20deze%20link%20om%20uw%20account%20te%20activeren:%0A${encodeURIComponent(inviteUrl)}`}
+                  className="btn-secondary" style={{ textDecoration: "none", padding: "9px 14px", fontSize: 13 }}>
+                  ✉ Stuur e-mail
+                </a>
+              )}
             </div>
             <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
-              Stuur deze link naar {customer.email}. Ze kunnen hem maar één keer gebruiken.
+              Stuur deze link naar {customer.name}. Ze kunnen hem maar één keer gebruiken en vullen zelf hun e-mailadres in.
             </p>
           </>
         )}
@@ -581,46 +583,30 @@ export default function KlantenPage() {
                     <span style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: 4 }}>
                       <span>✓</span> Account actief
                     </span>
-                  ) : c.email ? (
+                  ) : (
                     <button
                       onClick={() => setAccountModal(c)}
                       style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
                     >
                       ✉ Stuur uitnodiging
                     </button>
-                  ) : (
-                    <button
-                      onClick={() => setEditing(c.id)}
-                      title="Voeg eerst een e-mailadres toe om deze klant te kunnen uitnodigen"
-                      style={{ fontSize: 11, color: "var(--text-subtle)", background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
-                    >
-                      + E-mail toevoegen
-                    </button>
                   )}
                 </div>
 
                 {/* Actions */}
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  {/* Location pin — green if stored, button if missing */}
+                  {/* Location lookup — no "verified" implication: postal code + house number
+                      auto-matching can still be wrong, so this is always a neutral re-check,
+                      not a confirmed/verified state. */}
                   {c.address && (
-                    c.lat && c.lng ? (
-                      <button
-                        onClick={() => geocodeCustomer(c)}
-                        title={`Locatie opgeslagen (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}). Klik om opnieuw te geocoderen.`}
-                        style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid #86efac", background: "var(--success-bg)", color: "var(--success)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-                      >
-                        {geocodingId === c.id ? "…" : "📍✓"}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => geocodeCustomer(c)}
-                        disabled={geocodingId === c.id}
-                        title="Sla geografische locatie op voor de routekaart"
-                        style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer" }}
-                      >
-                        {geocodingId === c.id ? "Zoeken…" : "📍 Locatie"}
-                      </button>
-                    )
+                    <button
+                      onClick={() => geocodeCustomer(c)}
+                      disabled={geocodingId === c.id}
+                      title="Zoek/herzoek geografische locatie voor de routekaart (automatisch, niet geverifieerd)"
+                      style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer" }}
+                    >
+                      {geocodingId === c.id ? "Zoeken…" : "📍 Locatie"}
+                    </button>
                   )}
                   <button onClick={() => setEditing(c.id)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                     Bewerken

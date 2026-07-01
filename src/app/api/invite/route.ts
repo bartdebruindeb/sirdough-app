@@ -22,7 +22,8 @@ export async function POST(req: Request) {
     const { customerId } = await parseJson(req, GenerateSchema);
     const customer = await prisma.customer.findFirst({ where: { id: customerId, tenantId: tid } });
     if (!customer) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
-    if (!customer.email) return Response.json({ error: "BAD_REQUEST", message: "Klant heeft geen e-mailadres." }, { status: 400 });
+
+    // No email required — the customer fills in their own email (as their login) when they open the link.
 
     // Invalidate old tokens for this customer
     await prisma.inviteToken.deleteMany({ where: { tenantId: tid, customerId } });
@@ -44,9 +45,9 @@ export async function POST(req: Request) {
   }
 }
 
-const AcceptSchema = z.object({ token: z.string(), password: z.string().min(8) });
+const AcceptSchema = z.object({ token: z.string(), password: z.string().min(8), email: z.string().email().optional() });
 
-// PUT /api/invite — set password (works for customers and workers)
+// PUT /api/invite — set password (+ email for customers) (works for customers and workers)
 export async function PUT(req: Request) {
   try {
     const input = await parseJson(req, AcceptSchema);
@@ -66,21 +67,31 @@ export async function PUT(req: Request) {
       return Response.json({ ok: true, email: workerUser.email });
     }
 
-    // Customer invite
+    // Customer invite — email may not have been known when the invite was generated;
+    // the customer states it themselves here and it becomes their login username.
     const customer = await prisma.customer.findFirst({ where: { id: invite.customerId } });
-    if (!customer?.email) return Response.json({ error: "NO_EMAIL" }, { status: 400 });
+    if (!customer) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
 
-    let user = await prisma.user.findFirst({ where: { tenantId: invite.tenantId, email: customer.email } });
-    if (user) {
-      user = await prisma.user.update({ where: { id: user.id }, data: { passwordHash, active: true, role: "CUSTOMER" } });
-    } else {
-      user = await prisma.user.create({
-        data: { tenantId: invite.tenantId, email: customer.email, name: customer.name, role: "CUSTOMER", passwordHash, active: true },
-      });
+    const email = (input.email ?? customer.email ?? "").trim().toLowerCase();
+    if (!email) return Response.json({ error: "NO_EMAIL", message: "Vul een e-mailadres in." }, { status: 400 });
+
+    const existingUser = await prisma.user.findFirst({ where: { tenantId: invite.tenantId, email } });
+    if (existingUser) {
+      const existingCustomer = await prisma.customer.findFirst({ where: { userId: existingUser.id } });
+      if (existingCustomer && existingCustomer.id !== customer.id) {
+        return Response.json({ error: "EMAIL_IN_USE", message: "Dit e-mailadres is al in gebruik door een andere klant." }, { status: 409 });
+      }
     }
-    await prisma.customer.update({ where: { id: customer.id }, data: { userId: user.id } });
+
+    const user = existingUser
+      ? await prisma.user.update({ where: { id: existingUser.id }, data: { passwordHash, active: true, role: "CUSTOMER", name: customer.name } })
+      : await prisma.user.create({
+          data: { tenantId: invite.tenantId, email, name: customer.name, role: "CUSTOMER", passwordHash, active: true },
+        });
+
+    await prisma.customer.update({ where: { id: customer.id }, data: { userId: user.id, email } });
     await prisma.inviteToken.update({ where: { token: input.token }, data: { usedAt: new Date() } });
-    return Response.json({ ok: true, email: customer.email });
+    return Response.json({ ok: true, email });
   } catch (e) {
     return toResponse(e);
   }
