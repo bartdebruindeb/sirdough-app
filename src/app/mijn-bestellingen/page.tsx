@@ -490,7 +490,7 @@ export default function MijnBestellingenPage() {
                               </span>
                             )}
                             <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                            <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
+                            <button onClick={() => saveRec(order)} disabled={savingRec || (minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
                           </>
                         )}
                         {editable && (
@@ -517,12 +517,24 @@ export default function MijnBestellingenPage() {
                         {(() => {
                           const t = order.lines.filter(l => l.quantity > 0).reduce((s, l) => l.breadType.price != null ? s + l.breadType.price * l.quantity * (1 - discountPercent/100) : s, 0);
                           const hasPrice = order.lines.some(l => l.breadType.price != null);
-                          return hasPrice && t > 0 ? <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {t.toFixed(2).replace(".",",")}</span> : null;
+                          const belowMin = hasPrice && t > 0 && minDeliveryAmount !== null && t < minDeliveryAmount;
+                          return hasPrice && t > 0 ? <>
+                            <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>€ {t.toFixed(2).replace(".",",")}</span>
+                            {belowMin && <span style={{ fontSize: 10, color: "#b45309", background: "#fef3c7", padding: "1px 6px", borderRadius: 6 }}>⚠ min. € {minDeliveryAmount!.toFixed(2)}</span>}
+                          </> : null;
                         })()}
                       </div>
                     )}
 
-                    {isEditing && <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />}
+                    {isEditing && <>
+                      <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                      {(() => {
+                        const t = calcBasketTotal(editRecQty, breadTypes, discountPercent);
+                        return minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
+                          ? <p style={{ fontSize: 12, color: "var(--danger)", margin: "4px 0 0" }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe of neem contact op met de bakkerij.</p>
+                          : null;
+                      })()}
+                    </>}
 
                     {order.active && !editable && !isEditing && (
                       <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "4px 0 8px", background: "var(--surface)", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
@@ -570,9 +582,15 @@ export default function MijnBestellingenPage() {
                     </select>
                   </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                  {(() => {
+                    const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
+                    return minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
+                      ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe of neem contact op met de bakkerij.</p>
+                      : null;
+                  })()}
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => setShowNewRec(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                    <button onClick={createRec} disabled={savingNewRec} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
+                    <button onClick={createRec} disabled={savingNewRec || (minDeliveryAmount !== null && calcBasketTotal(newRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
                   </div>
                 </div>
               )}

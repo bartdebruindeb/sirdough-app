@@ -294,7 +294,7 @@ function MixerGroupCard({ mg, weightsKg }: { mg: MixerGroup; weightsKg: number[]
           <div key={i} style={{ marginTop: i > 0 ? 18 : 0, paddingTop: i > 0 ? 16 : 0, borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
             <p style={{ fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>Mixer {i + 1} — {wKg.toFixed(2)} kg</p>
             <MixerIngredients mg={virtualMg} mixers={1} />
-            <VullingenCalculator mg={virtualMg} mixers={1} />
+            <VullingenCalculator mg={{ ...mg, totalDoughNoFillingsKg: wKg }} mixers={1} />
           </div>
         );
       })}
