@@ -4,6 +4,7 @@ import { bakeryConfig, SHOP_NAMES } from "@/config/bakery.config";
 import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
 import { isCutoffPassed } from "@/lib/cutoff";
+import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailabilityManager";
 
 const SHOPS = SHOP_NAMES;
 const MAX_WEEKS_AHEAD = 4;
@@ -13,7 +14,7 @@ const WEEKDAYS_FULL  = ["", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrij
 const SHOP_COORDS: Record<string, { lat: number; lon: number }> =
   Object.fromEntries(bakeryConfig.shops.map(s => [s.name, { lat: s.lat, lon: s.lon }]));
 
-type BreadType = { id: string; slug: string; name: string; hasRecipe?: boolean; customerOrderable?: boolean; winkelOrderable?: boolean };
+type BreadType = { id: string; slug: string; name: string; hasRecipe?: boolean; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
 type LogEntry  = {
   id: string; date: string;
   quantities: Record<string, number>;
@@ -78,45 +79,6 @@ function shortName(name: string) {
   return name.replace("Boeren ", "B.").replace(" KG", "kg")
     .replace("Baguette 0.5 kg", "Baguette").replace("Baguette Kaas/Peper", "B.Kaas/P")
     .replace("Gekiemde Rogge", "G.Rogge").replace("Morning buns", "Buns");
-}
-
-function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; onChanged: () => void }) {
-  const [saving, setSaving] = useState<string|null>(null);
-
-  async function toggle(bt: BreadType) {
-    setSaving(bt.id);
-    await fetch("/api/bread-types", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-      body: JSON.stringify({ id: bt.id, winkelOrderable: !bt.winkelOrderable }),
-    });
-    setSaving(null);
-    onChanged();
-  }
-
-  return (
-    <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, marginBottom: "0.75rem" }}>Beheer broodtypen (winkel)</h3>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {breadTypes.map(bt => (
-          <button key={bt.id} onClick={() => toggle(bt)} disabled={saving === bt.id} style={{
-            padding: "6px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer",
-            border: "1px solid",
-            borderColor: bt.winkelOrderable ? "var(--accent)" : "var(--border)",
-            background: bt.winkelOrderable ? "var(--accent-light)" : "var(--surface-2)",
-            color: bt.winkelOrderable ? "var(--accent)" : "var(--text-subtle)",
-            fontFamily: "var(--font-body)",
-            opacity: saving === bt.id ? 0.6 : 1,
-          }}>
-            {bt.winkelOrderable ? "✓" : "+"} {bt.name}
-          </button>
-        ))}
-      </div>
-      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-        Klik op een broodsoort om te wisselen. Goudkleurig = beschikbaar in de winkel(s).
-      </p>
-    </div>
-  );
 }
 
 function formatDay(date: string) {
@@ -279,7 +241,7 @@ export default function WinkelPage() {
               <button onClick={() => setShowBreadMgr(v => !v)} className="btn-secondary" style={{ fontSize: 12, alignSelf: "flex-start" }}>
                 {showBreadMgr ? "▲ Verberg broodsoorten" : "▼ Beheer broodsoorten"}
               </button>
-              {showBreadMgr && <BreadTypeManager breadTypes={allBreadTypes} onChanged={load} />}
+              {showBreadMgr && <BreadTypeAvailabilityManager breadTypes={allBreadTypes} onChanged={load} />}
             </>
           )}
 

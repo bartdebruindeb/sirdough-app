@@ -3,6 +3,7 @@ import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
 import { bakeryConfig } from "@/config/bakery.config";
+import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailabilityManager";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -22,94 +23,6 @@ function colName(name: string) {
   return name.replace("Boeren ","B. ").replace(" KG","kg")
     .replace("Baguette 0.5 kg","Baguette").replace("Baguette Kaas/Peper","Kaas/P")
     .replace("Gekiemde Rogge","G.Rogge").replace("Morning buns","Buns");
-}
-
-const DAYS_NL = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
-
-// ── Bread type manager ────────────────────────────────────────────────────────
-function BreadTypeManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; onChanged: () => void }) {
-  const [saving, setSaving] = useState<string|null>(null);
-  const [expandedDays, setExpandedDays] = useState<string|null>(null);
-
-  async function patch(id: string, data: object) {
-    setSaving(id);
-    await fetch("/api/bread-types", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-      body: JSON.stringify({ id, ...data }),
-    });
-    setSaving(null);
-    onChanged();
-  }
-
-  function toggleDayForBread(bt: BreadType, day: number) {
-    const current = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
-    const updated = current.includes(day) ? current.filter(d => d !== day) : [...current, day].sort();
-    patch(bt.id, { availableWeekdays: updated.length > 0 && updated.length < 7 ? updated.join(",") : null });
-  }
-
-  return (
-    <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, marginBottom: "1rem" }}>Beschikbaarheid broodsoorten (klantportaal)</h3>
-
-      {/* Table-style layout */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border)" }}>
-              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Brood</th>
-              <th style={{ textAlign: "center", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Klant&shy;portal</th>
-              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "var(--text-subtle)" }}>Beschikbare dagen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {breadTypes.map(bt => {
-              const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
-              const allDays = days.length === 0;
-              return (
-                <tr key={bt.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>{bt.name}</td>
-                  <td style={{ textAlign: "center", padding: "6px 8px" }}>
-                    <button onClick={() => patch(bt.id, { customerOrderable: !bt.customerOrderable })} disabled={saving === bt.id}
-                      style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 14,
-                        borderColor: bt.customerOrderable ? "var(--accent)" : "var(--border)",
-                        background: bt.customerOrderable ? "var(--accent-light)" : "var(--surface)",
-                        color: bt.customerOrderable ? "var(--accent)" : "var(--text-subtle)",
-                      }}>
-                      {bt.customerOrderable ? "✓" : ""}
-                    </button>
-                  </td>
-                  <td style={{ padding: "6px 8px" }}>
-                    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                      {[1,2,3,4,5,6,7].map(d => (
-                        <button key={d} onClick={() => toggleDayForBread(bt, d)} disabled={saving === bt.id}
-                          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 11,
-                            borderColor: (allDays || days.includes(d)) ? "var(--success)" : "var(--border)",
-                            background: (allDays || days.includes(d)) ? "var(--success-bg)" : "var(--surface)",
-                            color: (allDays || days.includes(d)) ? "var(--success)" : "var(--text-subtle)",
-                          }}>
-                          {DAYS_NL[d]}
-                        </button>
-                      ))}
-                      {!allDays && (
-                        <button onClick={() => patch(bt.id, { availableWeekdays: null })} disabled={saving === bt.id}
-                          style={{ fontSize: 10, padding: "2px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "none", cursor: "pointer", color: "var(--text-subtle)" }}>
-                          Alle
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "10px 0 0" }}>
-        Groene dagen = beschikbaar. Klik op een dag om te wisselen. "Alle" = geen beperking.
-      </p>
-    </div>
-  );
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
@@ -915,7 +828,7 @@ export default function BestellingenPage() {
               )}
               {showManage && isOwner && (
                 <>
-                  <BreadTypeManager breadTypes={breadTypes} onChanged={()=>{ loadOneOff(); }} />
+                  <BreadTypeAvailabilityManager breadTypes={breadTypes} onChanged={()=>{ loadOneOff(); }} />
                   <div className="card" style={{ padding:"1.25rem 1.5rem", marginBottom:0 }}>
                     <h3 style={{ fontSize:14, marginBottom:"0.75rem" }}>Gesloten dagen</h3>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:8 }}>
@@ -1101,7 +1014,7 @@ export default function BestellingenPage() {
               <button onClick={() => setShowVastManage(v => !v)} className="btn-secondary" style={{ fontSize: 12, alignSelf: "flex-start" }}>
                 {showVastManage ? "▲ Verberg broodsoorten" : "▼ Beheer broodsoorten"}
               </button>
-              {showVastManage && <BreadTypeManager breadTypes={breadTypes} onChanged={loadOneOff} />}
+              {showVastManage && <BreadTypeAvailabilityManager breadTypes={breadTypes} onChanged={loadOneOff} />}
             </>
           )}
           {canWriteRecurring && (
