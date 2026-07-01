@@ -3,6 +3,7 @@ import { useRole } from "@/lib/role-context";
 import { bakeryConfig, SHOP_NAMES } from "@/config/bakery.config";
 import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
+import { isCutoffPassed } from "@/lib/cutoff";
 
 const SHOPS = SHOP_NAMES;
 const WEEKDAYS_SHORT = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
@@ -199,6 +200,7 @@ export default function WinkelPage() {
 
   // ── Save a single day ─────────────────────────────────────────────────────
   async function saveDay(date: string) {
+    if (isCutoffPassed(date)) return;
     const qty = editQtys[date] ?? {};
     const w   = weathers[date];
     setSaving(date);
@@ -309,15 +311,16 @@ export default function WinkelPage() {
                     const wd = getWeekday(date);
                     const isToday = date === today;
                     const w = weathers[date];
+                    const locked = isCutoffPassed(date);
                     return (
                       <th key={date} style={{
                         textAlign: "center", padding: "8px 10px",
-                        color: isToday ? "var(--accent)" : "var(--text-subtle)",
+                        color: locked ? "var(--text-subtle)" : isToday ? "var(--accent)" : "var(--text-subtle)",
                         fontWeight: isToday ? 700 : 500,
                         fontSize: 12, minWidth: 100,
                         borderLeft: "1px solid var(--border)",
                       }}>
-                        <div>{WEEKDAYS_SHORT[wd]} {formatDay(date)}</div>
+                        <div>{WEEKDAYS_SHORT[wd]} {formatDay(date)} {locked && <span title="Deadline verstreken — vergrendeld">🔒</span>}</div>
                         {w && <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2 }}>{w.icon} {w.temp}°</div>}
                       </th>
                     );
@@ -332,10 +335,12 @@ export default function WinkelPage() {
                     </td>
                     {weekDays.map(date => {
                       const qty = editQtys[date]?.[bt.slug] ?? 0;
+                      const locked = isCutoffPassed(date);
                       return (
                         <td key={date} style={{ padding: "4px 6px", borderLeft: "1px solid var(--border)", textAlign: "right" }}>
                           <input
                             type="number"
+                            disabled={locked}
                             onKeyDown={e => { if (["e","E","-","+",","].includes(e.key)) e.preventDefault(); }}
                             min={0} max={999}
                             value={qty || ""}
@@ -351,7 +356,9 @@ export default function WinkelPage() {
                               width: "100%", minWidth: 60,
                               border: "1px solid var(--border)", borderRadius: 5,
                               padding: "4px 6px", fontSize: 13, fontWeight: 600,
-                              background: "var(--surface)", textAlign: "right",
+                              background: locked ? "var(--surface-2)" : "var(--surface)", textAlign: "right",
+                              color: locked ? "var(--text-subtle)" : "inherit",
+                              cursor: locked ? "not-allowed" : "text",
                             }}
                           />
                         </td>
@@ -386,6 +393,9 @@ export default function WinkelPage() {
             </button>
             {savedDates.length > 0 && !savingAll && (
               <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
+            )}
+            {weekDays.some(d => isCutoffPassed(d)) && (
+              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>🔒 Dagen na de besteldeadline zijn vergrendeld en worden niet opgeslagen.</span>
             )}
           </div>
 

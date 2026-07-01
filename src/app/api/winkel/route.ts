@@ -4,6 +4,7 @@ import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz
 import { prisma } from "@/server/config/db";
 import { z } from "zod";
 import { parseJson } from "@/server/lib/validation";
+import { isCutoffPassed } from "@/lib/cutoff";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,9 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, SaveSchema);
+    if (isCutoffPassed(input.date)) {
+      return Response.json({ error: "CUTOFF_PASSED", message: "De besteldeadline voor deze dag is al verstreken — aanpassen kan niet meer." }, { status: 403 });
+    }
     const date = new Date(input.date + "T12:00:00Z");
 
     // Fetch before upsert so we can compute the delta for next-week propagation
