@@ -58,20 +58,13 @@ export async function POST(req: Request) {
     const date = new Date(input.date + "T12:00:00Z");
     const now = new Date();
 
-    if (input.action === "removed_from_bus" || input.action === "undelivered") {
-      const existing = await prisma.deliveryStatus.findUnique({
-        where: { tenantId_date_customerId: { tenantId: tid, date, customerId: input.customerId } },
-      });
-      if (existing?.pakbonSentAt) {
-        return Response.json({ error: "PAKBON_SENT", message: "Pakbon is al verstuurd — de bezorgstatus kan niet meer worden teruggezet." }, { status: 403 });
-      }
-    }
-
-    const data: { inBusAt?: Date | null; deliveredAt?: Date | null } = {};
+    // Reverting after pakbon was sent is allowed (the client confirms with the driver first),
+    // but resets pakbonSentAt so a corrected re-delivery goes through the pakbon flow again.
+    const data: { inBusAt?: Date | null; deliveredAt?: Date | null; pakbonSentAt?: Date | null } = {};
     if (input.action === "in_bus")            { data.inBusAt = input.at ? new Date(input.at) : now; }
-    if (input.action === "removed_from_bus")  { data.inBusAt = null; data.deliveredAt = null; }
+    if (input.action === "removed_from_bus")  { data.inBusAt = null; data.deliveredAt = null; data.pakbonSentAt = null; }
     if (input.action === "delivered")         { data.deliveredAt = now; }
-    if (input.action === "undelivered")       { data.deliveredAt = null; }
+    if (input.action === "undelivered")       { data.deliveredAt = null; data.pakbonSentAt = null; }
 
     await prisma.deliveryStatus.upsert({
       where: { tenantId_date_customerId: { tenantId: tid, date, customerId: input.customerId } },

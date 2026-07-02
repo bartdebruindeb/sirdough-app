@@ -325,18 +325,6 @@ export default function KlantenPage() {
     return true;
   }
 
-  async function geocodeCustomer(c: Customer) {
-    if (!c.address) { showToast("Vul eerst een adres in."); return; }
-    setGeocodingId(c.id);
-    try {
-      const ok = await geocodeSingle(c);
-      if (!ok) { showToast(`Adres niet gevonden voor ${c.name}.`); return; }
-      showToast(`✓ Locatie opgeslagen voor ${c.name}.`);
-      load();
-    } catch { showToast("Geocoding mislukt."); }
-    finally { setGeocodingId(null); }
-  }
-
   async function geocodeAll() {
     const missing = customers.filter(c => c.address && (!c.lat || !c.lng));
     if (missing.length === 0) { showToast("Alle adressen hebben al een locatie."); return; }
@@ -595,19 +583,6 @@ export default function KlantenPage() {
 
                 {/* Actions */}
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  {/* Location lookup — no "verified" implication: postal code + house number
-                      auto-matching can still be wrong, so this is always a neutral re-check,
-                      not a confirmed/verified state. */}
-                  {c.address && (
-                    <button
-                      onClick={() => geocodeCustomer(c)}
-                      disabled={geocodingId === c.id}
-                      title="Zoek/herzoek geografische locatie voor de routekaart (automatisch, niet geverifieerd)"
-                      style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer" }}
-                    >
-                      {geocodingId === c.id ? "Zoeken…" : "📍 Locatie"}
-                    </button>
-                  )}
                   <button onClick={() => setEditing(c.id)} className="btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }}>
                     Bewerken
                   </button>

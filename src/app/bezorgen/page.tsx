@@ -241,7 +241,6 @@ export default function BezorgenPage() {
 
   function toggleDelivered(id: string) {
     const isDone = delivered[id];
-    if (isDone && pakbonSent[id]) return; // pakbon sent — status is final
     if (!isDone) {
       // Mark as delivered
       const now = new Date().toISOString();
@@ -250,9 +249,13 @@ export default function BezorgenPage() {
       setBusOrder(prev => prev.filter(x => x !== id));
       postStatus(id, "delivered");
     } else {
-      // Unmark
+      // Unmark — if a pakbon was already sent, confirm first since this resets that status
+      if (pakbonSent[id] && !confirm("De pakbon voor deze bezorging is al verstuurd. Weet je zeker dat je de bezorgstatus wilt terugzetten naar 'nog te bezorgen'?")) {
+        return;
+      }
       setDelivered(d => ({ ...d, [id]: false }));
       setDeliveredTimes(t => { const n = { ...t }; delete n[id]; return n; });
+      setPakbonSent(p => { const n = { ...p }; delete n[id]; return n; });
       postStatus(id, "undelivered");
     }
   }
@@ -285,6 +288,16 @@ export default function BezorgenPage() {
 
   async function confirmPakbon() {
     if (!pakbonModal) return;
+    const hasDeviation = pakbonModal.lines.some(l => l.deliveredQty !== l.orderedQty);
+    if (hasDeviation) {
+      const summary = pakbonModal.lines
+        .filter(l => l.deliveredQty !== l.orderedQty)
+        .map(l => `${l.name}: besteld ${l.orderedQty} → geleverd ${l.deliveredQty}`)
+        .join("\n");
+      if (!confirm(`Je hebt de geleverde hoeveelheid aangepast t.o.v. de bestelling:\n\n${summary}\n\nWeet je zeker dat dit klopt? Dit wordt vermeld op de pakbon en verwerkt in de factuur.`)) {
+        return;
+      }
+    }
     setSendingPakbon(true);
     await fetch("/api/bezorgen/pakbon", {
       method: "POST",
@@ -527,10 +540,9 @@ export default function BezorgenPage() {
                       return (
                       <div key={row.customerId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: i > 0 ? "1px solid var(--border)" : "none", background: "var(--success-bg)" }}>
                         <button onClick={() => toggleDelivered(row.customerId)}
-                          disabled={locked}
-                          title={locked ? "Pakbon verstuurd — kan niet meer worden teruggezet" : "Ongedaan maken"}
-                          style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--success)", background: "var(--success)", cursor: locked ? "default" : "pointer", fontSize: 13, color: "white", display: "flex", alignItems: "center", justifyContent: "center", opacity: locked ? 0.7 : 1 }}
-                          >{locked ? "🔒" : "✓"}</button>
+                          title={locked ? "Pakbon is al verstuurd — klik om alsnog terug te zetten (met bevestiging)" : "Ongedaan maken"}
+                          style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--success)", background: "var(--success)", cursor: "pointer", fontSize: 13, color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          >✓</button>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ fontSize: 13, fontWeight: 500, textDecoration: "line-through", color: "var(--text-muted)" }}>{row.name}</span>
                           <span style={{ fontSize: 11, color: "var(--text-subtle)", marginLeft: 6 }}>{row.city}</span>
