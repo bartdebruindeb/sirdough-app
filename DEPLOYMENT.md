@@ -53,6 +53,13 @@ Edit `.env`:
 - `NEXTAUTH_URL` → `https://<newbakery>.jouwdomein.nl/digitalbakery`
 - `TENANT_SLUG` → must match the `slug` you'll use in the seed script (step 5)
 - `PORT` → pick an unused port, e.g. `3001`
+- `CRON_SECRET` → generate a NEW one (`openssl rand -base64 32`), used by the daily reminder cron (see step 9 below)
+- `RESEND_API_KEY` → your Resend account's API key (can be shared across bakeries — Resend keys aren't domain-locked)
+- `RESEND_FROM` → e.g. `"<Bakery name> <noreply@<newbakery>.jouwdomein.nl>"` — **must be unique per bakery** so emails carry the right sender name/domain
+- `EXACT_CLIENT_ID` / `EXACT_CLIENT_SECRET` → from the Exact Online app registration (only needed if this bakery connects Exact — see facturatie page)
+- `EXACT_REDIRECT_URI` → `https://<newbakery>.jouwdomein.nl/api/exact/callback` — **must be unique per bakery** and registered as a redirect URI in the Exact app (Exact validates it exactly)
+
+Missing any of `RESEND_*` or `EXACT_*` doesn't crash the app — those features just silently no-op (no emails sent / "Koppel Exact" fails) — so double-check them explicitly rather than relying on an error to catch a typo.
 
 ### 4. Edit `src/config/bakery.config.ts`
 
@@ -135,7 +142,23 @@ Then get a certificate:
 sudo certbot --nginx -d <newbakery>.jouwdomein.nl
 ```
 
-### 9. Backups
+### 9. Daily reminder cron
+
+The order-reminder email (sent 2 days before delivery) is triggered by a VPS
+cron hitting this bakery's own URL — it does **not** run automatically per
+deployment, so add one crontab entry per bakery:
+
+```bash
+crontab -e
+```
+```
+0 0 * * * curl -s -H "x-cron-secret: <this bakery's CRON_SECRET>" https://<newbakery>.jouwdomein.nl/api/cron/order-reminder
+```
+
+Use the exact `CRON_SECRET` value from this bakery's `.env` and the exact
+subdomain — hitting the wrong port/subdomain sends no reminders and fails silently.
+
+### 10. Backups
 
 Add the new database to the backup script (see backup notes from the main
 setup) — same `pg_dump` approach, just another database name in the loop.
@@ -163,7 +186,12 @@ zero to "usable" in one step. Day-to-day changes happen in the UI.
 | Codebase | ✅ same source, copied per deployment | — |
 | Database | ❌ never | ✅ separate Postgres DB |
 | Config (`bakery.config.ts`) | — | ✅ edited per copy |
-| Secrets (`NEXTAUTH_SECRET`, DB password) | ❌ never reuse | ✅ unique per bakery |
+| `NEXTAUTH_SECRET`, DB password, `CRON_SECRET` | ❌ never reuse | ✅ unique per bakery |
+| `NEXTAUTH_URL`, `EXACT_REDIRECT_URI`, `RESEND_FROM` | ❌ never reuse | ✅ unique per bakery (each is tied to that bakery's own subdomain) |
+| `RESEND_API_KEY` | ✅ can be shared (not domain-locked) | — |
+| Public folder (`public/logo.jpg`, `public/brood/`) | ❌ never | ✅ separate per deployment directory — safe automatically since each copy has its own `public/` |
+| Login sessions | ❌ never | ✅ browser cookies are host-scoped to the exact subdomain; a session on one bakery's subdomain is never sent to another |
+| Cron job (daily reminder) | — | ✅ one crontab entry per bakery, pointing at that bakery's own URL (step 9) |
 | User accounts, orders, recipes | ❌ never | ✅ fully isolated |
 
 If a bug fix or new feature is built for one bakery and should apply to all,

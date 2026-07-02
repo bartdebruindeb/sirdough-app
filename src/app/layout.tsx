@@ -15,14 +15,20 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Reject unknown subdomains: compare incoming host to the subdomain in NEXTAUTH_URL.
-  // e.g. NEXTAUTH_URL=https://meneerleffers.sirdough.com → only that subdomain is valid.
+  // Reject any host that doesn't match this deployment's own subdomain (NEXTAUTH_URL).
+  // e.g. NEXTAUTH_URL=https://meneerleffers.sirdough.com → only that host is valid.
+  // With multiple bakeries as separate deployments on the same VPS, this is what stops
+  // a misconfigured nginx route (or someone hitting the port directly) from serving one
+  // bakery's app/data under another bakery's — or the bare — domain.
   const nextAuthUrl = process.env.NEXTAUTH_URL;
   if (nextAuthUrl) {
     const validHost = new URL(nextAuthUrl).hostname; // "meneerleffers.sirdough.com"
     const incomingHost = (headers().get("host") ?? "").split(":")[0]; // strip port if any
-    const isSubdomain = incomingHost.split(".").length >= 3;
-    if (isSubdomain && incomingHost !== validHost) {
+    // Allow bare localhost/loopback through — internal health checks and nginx's own
+    // proxy_pass to 127.0.0.1:<port> shouldn't be blocked; real traffic always arrives
+    // with the actual Host header set (see nginx proxy_set_header Host $host).
+    const isLocal = incomingHost === "" || incomingHost === "localhost" || incomingHost === "127.0.0.1";
+    if (!isLocal && incomingHost !== validHost) {
       redirect("https://sirdough.com");
     }
   }
