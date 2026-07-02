@@ -23,6 +23,7 @@ export function exactAuthUrl(state: string) {
     redirect_uri: REDIRECT_URI,
     response_type: "code",
     force_login: "0",
+    state,
   });
   return `${BASE}/api/oauth2/auth?${p}`;
 }
@@ -107,6 +108,7 @@ export interface ExactInvoiceResult {
 export async function createExactInvoice(
   tenantId: string,
   opts: {
+    customerId: string;
     customerName: string;
     customerEmail: string;
     invoiceDate: string; // "YYYY-MM-DD"
@@ -126,8 +128,20 @@ export async function createExactInvoice(
     await (prisma as any).exactToken.update({ where: { tenantId }, data: { division } });
   }
 
-  // Find or create the debtor (account) in Exact by email
-  const accountGuid = await findOrCreateAccount(auth.token, division, opts.customerName, opts.customerEmail);
+  // Reuse the cached Exact account if we've already linked this customer — avoids a
+  // fresh email search (and possible mismatch/duplicate) on every single invoice.
+  const customer = await prisma.customer.findUnique({ where: { id: opts.customerId } });
+  let accountGuid: string;
+  if (customer?.exactAccountId) {
+    accountGuid = customer.exactAccountId;
+  } else {
+    const account = await findOrCreateAccount(auth.token, division, opts.customerName, opts.customerEmail);
+    accountGuid = account.guid;
+    await prisma.customer.update({
+      where: { id: opts.customerId },
+      data: { exactAccountId: account.guid, exactCustomerCode: account.code },
+    });
+  }
 
   const body = {
     d: {
@@ -168,15 +182,15 @@ export async function createExactInvoice(
   };
 }
 
-async function findOrCreateAccount(token: string, division: number, name: string, email: string): Promise<string> {
+async function findOrCreateAccount(token: string, division: number, name: string, email: string): Promise<{ guid: string; code: string | null }> {
   // Search by email
   const search = await fetch(
-    `${BASE}/api/v1/${division}/crm/Accounts?$filter=Email eq '${encodeURIComponent(email)}'&$select=ID`,
+    `${BASE}/api/v1/${division}/crm/Accounts?$filter=Email eq '${encodeURIComponent(email)}'&$select=ID,Code`,
     { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
   );
   const sdata = await search.json();
   const existing = sdata.d?.results?.[0];
-  if (existing) return existing.ID;
+  if (existing) return { guid: existing.ID, code: existing.Code ?? null };
 
   // Create new account
   const create = await fetch(`${BASE}/api/v1/${division}/crm/Accounts`, {
@@ -189,5 +203,5 @@ async function findOrCreateAccount(token: string, division: number, name: string
     body: JSON.stringify({ d: { Name: name, Email: email, IsCustomer: true } }),
   });
   const cdata = await create.json();
-  return cdata.d.ID;
+  return { guid: cdata.d.ID, code: cdata.d.Code ?? null };
 }

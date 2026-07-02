@@ -139,6 +139,7 @@ export async function POST(req: Request) {
 
     // Try Exact Online to get invoice number
     const exact = await createExactInvoice(tid, {
+      customerId: input.customerId,
       customerName: pdfData.customerName,
       customerEmail: pdfData.customerEmail ?? "",
       invoiceDate: end.toISOString().slice(0, 10),

@@ -14,6 +14,7 @@ type Customer = {
   active: boolean; userId: string | null; user: User;
   discountPercent: number;
   customerNumber: number | null;
+  exactCustomerCode: string | null;
   deliveryAddresses: DeliveryAddress[];
 };
 
@@ -510,6 +511,7 @@ export default function KlantenPage() {
                           {c.phone && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>📞 {c.phone}</span>}
                           {c.notes && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontStyle: "italic" }}>{c.notes}</span>}
                           {c.preferredBread && <span style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-light)", padding: "1px 7px", borderRadius: 8 }}>🍞 {c.preferredBread}</span>}
+                          {c.exactCustomerCode && <span title="Exact Online klantnummer" style={{ fontSize: 11, color: "#1d4ed8", background: "#eff6ff", padding: "1px 7px", borderRadius: 8 }}>Exact #{c.exactCustomerCode}</span>}
                         </div>
                         {extraAddresses.length > 0 && (
                           <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>

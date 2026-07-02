@@ -266,6 +266,8 @@ model Customer {
   active    Boolean @default(true)
   discountPercent Int @default(0) // 0, 5, 10, 15 or 20 percent discount
   customerNumber  Int?    // human-readable number, editable by owner
+  exactAccountId   String? // Exact Online Account GUID — cached so invoice sync doesn't re-search by email each time
+  exactCustomerCode String? // Exact Online's own customer/relatienummer (Code field), for display only
   userId    String? @unique  // linked User account for customer portal
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id])
