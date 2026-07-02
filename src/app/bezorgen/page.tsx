@@ -1,6 +1,6 @@
 "use client";
 import { useRole } from "@/lib/role-context";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { bakeryConfig } from "@/config/bakery.config";
 import { haversineKm } from "@/lib/geo";
 
@@ -11,6 +11,7 @@ type DeliveryRow = {
   customerId: string; name: string; city: string; address: string;
   cityOrder: number; notes: string; isShop: boolean;
   lat: number | null; lng: number | null;
+  postalCode: string | null; email: string | null; phone: string | null;
   quantities: Record<string, number>;
   pickupLocation: string | null;
 };
@@ -48,6 +49,25 @@ function shortName(name: string) {
     .replace("Gekiemde Rogge", "G.Rogge").replace("Volkoren", "Volk.");
 }
 
+// Small contact-info dropdown: postal code, phone (tel: link), email (mailto: link) —
+// so the driver can look up the address or call/mail the customer without leaving the page.
+function ContactInfoPanel({ row }: { row: DeliveryRow }) {
+  if (!row.postalCode && !row.phone && !row.email) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 12 }}>
+      {row.postalCode && (
+        <span style={{ color: "var(--text-muted)" }}>📮 {row.postalCode} {row.city}</span>
+      )}
+      {row.phone && (
+        <a href={`tel:${row.phone}`} style={{ color: "var(--accent)", textDecoration: "none" }}>📞 {row.phone}</a>
+      )}
+      {row.email && (
+        <a href={`mailto:${row.email}`} style={{ color: "var(--accent)", textDecoration: "none" }}>✉ {row.email}</a>
+      )}
+    </div>
+  );
+}
+
 
 export default function BezorgenPage() {
   const { role, can } = useRole();
@@ -79,6 +99,8 @@ export default function BezorgenPage() {
   // Drag state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  // Contact info dropdown — customerId currently expanded
+  const [expandedInfo, setExpandedInfo] = useState<string | null>(null);
   // Pakbon modal
   type PakbonLine = { breadTypeId: string; name: string; orderedQty: number; deliveredQty: number };
   const [pakbonModal, setPakbonModal] = useState<{ customerId: string; name: string; lines: PakbonLine[] } | null>(null);
@@ -424,7 +446,8 @@ export default function BezorgenPage() {
               ) : (
                 <div className="card" style={{ overflow: "hidden" }}>
                   {busRows.map((row, i) => (
-                    <div key={row.customerId} draggable
+                    <Fragment key={row.customerId}>
+                    <div draggable
                       onDragStart={() => onDragStart(row.customerId)}
                       onDragOver={e => onDragOver(e, row.customerId)}
                       onDrop={() => onDrop(row.customerId)}
@@ -463,6 +486,13 @@ export default function BezorgenPage() {
                           </span>
                         ))}
                       </div>
+                      {(row.postalCode || row.phone || row.email) && (
+                        <button onClick={() => setExpandedInfo(x => x === row.customerId ? null : row.customerId)}
+                          title="Contactgegevens"
+                          style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 14, color: expandedInfo === row.customerId ? "var(--accent)" : "var(--text-subtle)" }}>
+                          ℹ️
+                        </button>
+                      )}
                       <button onClick={() => openPakbonModal(row)}
                         style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 13, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
                         title="Geleverd">✓</button>
@@ -470,6 +500,8 @@ export default function BezorgenPage() {
                         style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 15, color: "var(--text-subtle)" }}
                         title="Verwijder">×</button>
                     </div>
+                    {expandedInfo === row.customerId && <ContactInfoPanel row={row} />}
+                    </Fragment>
                   ))}
                 </div>
               )}
@@ -491,7 +523,8 @@ export default function BezorgenPage() {
                 ) : (
                   <div className="card" style={{ overflow: "hidden" }}>
                     {pendingRows.map((row, i) => (
-                      <div key={row.customerId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                      <Fragment key={row.customerId}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
                         <button onClick={() => addToBus(row.customerId)}
                           style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 15, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
                           title="Voeg toe aan bus">+</button>
@@ -516,12 +549,21 @@ export default function BezorgenPage() {
                             </span>
                           ))}
                         </div>
+                        {(row.postalCode || row.phone || row.email) && (
+                          <button onClick={() => setExpandedInfo(x => x === row.customerId ? null : row.customerId)}
+                            title="Contactgegevens"
+                            style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 13, color: expandedInfo === row.customerId ? "var(--accent)" : "var(--text-subtle)" }}>
+                            ℹ️
+                          </button>
+                        )}
                         {canNote && (
                           <button onClick={() => { setNoteModal({ customerId: row.customerId, name: row.name }); setNoteText(""); }}
                             style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "var(--text-subtle)" }}
                             title="Notitie">📝</button>
                         )}
                       </div>
+                      {expandedInfo === row.customerId && <ContactInfoPanel row={row} />}
+                      </Fragment>
                     ))}
                   </div>
                 )}

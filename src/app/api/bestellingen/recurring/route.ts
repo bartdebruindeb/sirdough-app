@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
     const customers = await prisma.customer.findMany({
       where: { tenantId: tid, active: true },
-      select: { id: true, name: true, city: true, preferredBread: true },
+      select: { id: true, name: true, city: true, preferredBread: true, discountPercent: true },
       orderBy: { name: "asc" },
     });
 
@@ -62,6 +62,7 @@ const UpsertRecurringSchema = z.object({
   customerId: z.string(),
   weekday: z.number().int().min(1).max(7),
   notes: z.string().optional(),
+  pickupLocation: z.string().nullable().optional(),
   lines: z.array(z.object({
     breadTypeId: z.string(),
     quantity: z.number().int().min(0),
@@ -76,11 +77,12 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, UpsertRecurringSchema);
+    const pickupData = input.pickupLocation !== undefined ? { pickupLocation: input.pickupLocation } : {};
 
-    const ro = await prisma.recurringOrder.upsert({
+    const ro = await (prisma as any).recurringOrder.upsert({
       where: { tenantId_customerId_weekday: { tenantId: tid, customerId: input.customerId, weekday: input.weekday } },
-      create: { tenantId: tid, customerId: input.customerId, weekday: input.weekday, notes: input.notes, active: true },
-      update: { notes: input.notes, active: true },
+      create: { tenantId: tid, customerId: input.customerId, weekday: input.weekday, notes: input.notes, active: true, ...pickupData },
+      update: { notes: input.notes, active: true, ...pickupData },
     });
 
     // Replace lines

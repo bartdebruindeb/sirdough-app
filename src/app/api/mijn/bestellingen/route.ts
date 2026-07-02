@@ -222,11 +222,15 @@ export async function PATCH(req: Request) {
       });
       if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
 
+      // UTC throughout — must match the date construction used everywhere else
+      // (isCutoffPassed, the "Deze week" display), or the stored exception date
+      // silently mismatches the displayed date and the skip filter never matches.
       const now = new Date();
-      const dayDiff = (order.weekday - (now.getDay() || 7) + 7) % 7 || 7;
+      const nowIsoDay = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+      const dayDiff = (order.weekday - nowIsoDay + 7) % 7 || 7;
       const nextDate = new Date(now);
-      nextDate.setDate(nextDate.getDate() + dayDiff);
-      nextDate.setHours(12, 0, 0, 0);
+      nextDate.setUTCDate(nextDate.getUTCDate() + dayDiff);
+      nextDate.setUTCHours(12, 0, 0, 0);
 
       // If this week's occurrence is already past its deadline, freeze it exactly as it
       // currently is (via a one-off substitute + skip exception) so it stays unaffected,

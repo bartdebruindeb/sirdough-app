@@ -47,7 +47,13 @@ export async function GET(req: Request) {
       orderBy: { sortOrder: "asc" },
     });
 
-    return Response.json({ orders, customers, breadTypes });
+    const tenant = await (prisma as any).tenant.findUnique({ where: { id: tid }, select: { minDeliveryAmount: true } });
+    const minDeliveryAmount = tenant?.minDeliveryAmount != null ? Number(tenant.minDeliveryAmount) : null;
+
+    return Response.json({
+      orders, customers, minDeliveryAmount,
+      breadTypes: breadTypes.map(bt => ({ ...bt, price: (bt as any).price != null ? Number((bt as any).price) : null })),
+    });
   } catch (e) {
     return toResponse(e);
   }

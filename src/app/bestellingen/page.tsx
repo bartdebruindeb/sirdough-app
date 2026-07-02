@@ -7,17 +7,26 @@ import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailability
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
-type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null };
-type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null };
+type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null; price?: number | null };
+type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null; discountPercent?: number };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
 type LogboekEntry = { type: "eenmalig"|"vast"|"winkel"; date: string; customerName: string; customerId: string; city: string|null; notes: string|null; lines: { breadTypeId: string; breadTypeName: string; quantity: number }[] };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string; sortOrder: number } };
-type RecurringOrder = { id: string; customerId: string; weekday: number; active: boolean; notes: string | null; customer: Customer; lines: RecurringLine[] };
+type RecurringOrder = { id: string; customerId: string; weekday: number; active: boolean; notes: string | null; pickupLocation?: string | null; customer: Customer; lines: RecurringLine[] };
 type Exception = { id: string; date: string; active: boolean };
 
 function getWeekday(date: string) { const d = new Date(date+"T12:00:00Z"); const j=d.getUTCDay(); return j===0?7:j; }
 
+// Same total calculation as the customer portal (mijn-bestellingen) — kept in sync
+// so the staff-side minimum-order check matches what customers themselves see.
+function calcTotal(qty: Record<string,number>, breadTypes: BreadType[], discountPercent = 0): number {
+  return breadTypes.reduce((sum, bt) => {
+    const q = qty[bt.id] ?? 0;
+    if (!q || !bt.price) return sum;
+    return sum + bt.price * q * (1 - discountPercent / 100);
+  }, 0);
+}
 
 function colName(name: string) {
   return name.replace("Boeren ","B. ").replace(" KG","kg")
@@ -31,7 +40,7 @@ const SHOP_PICKUP = [
   { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
 ];
 
-function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[] }) {
+function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliveryAmount }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null }) {
   const { role } = useRole();
   const today = new Date().toISOString().slice(0,10);
   const [customerId, setCustomerId] = useState("");
@@ -56,9 +65,14 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
     return (deliveryDate === todayStr || deliveryDate === tomorrowStr) && now.getHours() >= 4;
   }
 
+  const customer = customers.find(c => c.id === customerId);
+  const total = calcTotal(qty, breadTypes, customer?.discountPercent ?? 0);
+  const belowMin = !pickupLocation && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount;
+
   async function save(bypassWarning = false) {
     if (!customerId) { setError("Selecteer eerst een klant."); return; }
     if (!hasLines) { setError("Voeg minimaal één broodsoort toe."); return; }
+    if (belowMin) { setError(`Bestelling is lager dan de minimale bestelwaarde (€ ${minDeliveryAmount!.toFixed(2)}) voor bezorging.`); return; }
     if (closedWeekdays.includes(getDateWeekday(date))) {
       const dayName = WEEKDAYS[getDateWeekday(date)];
       setError(`${dayName} is een gesloten dag — geen levering mogelijk.`);
@@ -155,10 +169,15 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays }: { cust
           </div>
         </div>
       )}
+      {belowMin && (
+        <p style={{ fontSize:13, color:"var(--danger)", margin:"0 0 8px" }}>
+          ⚠ Bestelling (€ {total.toFixed(2)}) is lager dan de minimale bestelwaarde (€ {minDeliveryAmount!.toFixed(2)}) voor bezorging — kies afhalen of voeg meer toe.
+        </p>
+      )}
       {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
       {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
       {!deadlineWarning && (
-        <button onClick={() => save()} disabled={saving} className="btn-primary" style={{ fontSize:13 }}>
+        <button onClick={() => save()} disabled={saving || belowMin} className="btn-primary" style={{ fontSize:13 }}>
           {saving?"Opslaan…":"Bestelling toevoegen"}
         </button>
       )}
@@ -253,13 +272,14 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
 
 
 // ── New recurring order: week table form (one go for all days) ───────────────
-function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, closedWeekdays }: {
-  customers: Customer[]; breadTypes: BreadType[]; recurring: RecurringOrder[]; onSaved: () => void; closedWeekdays: number[];
+function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, closedWeekdays, minDeliveryAmount }: {
+  customers: Customer[]; breadTypes: BreadType[]; recurring: RecurringOrder[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null;
 }) {
   const { role } = useRole();
   const [customerId, setCustomerId] = useState("");
   // qty: weekday (1-7) → breadTypeId → quantity
   const [qty, setQty] = useState<Record<number, Record<string,number>>>({});
+  const [pickupLocation, setPickupLocation] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -267,10 +287,16 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
 
   const allBTs = breadTypes; // show all bread types (not filtered by customerOrderable)
   const openDays = [2,3,4,5,6].filter(wd => !closedWeekdays.includes(wd)); // Tue–Sat by default
+  const customer = customers.find(c => c.id === customerId);
+  const daysWithOrders = openDays.filter(wd => Object.values(qty[wd] ?? {}).some(v => v > 0));
+  const dayTotals = Object.fromEntries(daysWithOrders.map(wd => [wd, calcTotal(qty[wd] ?? {}, breadTypes, customer?.discountPercent ?? 0)]));
+  const belowMinDays = !pickupLocation && minDeliveryAmount !== null
+    ? daysWithOrders.filter(wd => dayTotals[wd] > 0 && dayTotals[wd] < minDeliveryAmount)
+    : [];
 
   // Pre-fill from existing recurring orders for selected customer
   useEffect(() => {
-    if (!customerId) { setQty({}); return; }
+    if (!customerId) { setQty({}); setPickupLocation(""); return; }
     const initial: Record<number, Record<string,number>> = {};
     for (const wd of openDays) {
       initial[wd] = {};
@@ -280,19 +306,24 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
       }
     }
     setQty(initial);
+    const anyOrder = recurring.find(o => o.customerId === customerId && o.pickupLocation);
+    setPickupLocation(anyOrder?.pickupLocation ?? "");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId, recurring.map(o=>o.id).join(",")]);
 
   async function save() {
     if (!customerId) { setError("Selecteer eerst een klant."); return; }
-    const daysWithOrders = openDays.filter(wd => Object.values(qty[wd] ?? {}).some(v => v > 0));
     if (daysWithOrders.length === 0) { setError("Voeg minimaal één broodsoort toe."); return; }
+    if (belowMinDays.length > 0) {
+      setError(`${belowMinDays.map(wd => WEEKDAYS[wd]).join(", ")}: lager dan de minimale bestelwaarde (€ ${minDeliveryAmount!.toFixed(2)}) voor bezorging — kies afhalen of voeg meer toe.`);
+      return;
+    }
     setSaving(true); setError(""); setSuccess("");
     for (const wd of daysWithOrders) {
       const lines = Object.entries(qty[wd] ?? {}).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity}));
       await fetch("/api/bestellingen/recurring", {
         method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-        body: JSON.stringify({ customerId, weekday: wd, lines }),
+        body: JSON.stringify({ customerId, weekday: wd, lines, pickupLocation: pickupLocation || null }),
       });
     }
     setSaving(false);
@@ -322,10 +353,27 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
               {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
             </select>
           </div>
+          {customerId && (
+            <div style={{ marginBottom:16 }}>
+              <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:6 }}>Bezorging</label>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <button type="button" onClick={()=>setPickupLocation("")}
+                  style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===""?"var(--accent)":"var(--border)"}`, background:pickupLocation===""?"var(--accent-light)":"var(--surface)", color:pickupLocation===""?"var(--accent)":"var(--text)", fontFamily:"var(--font-body)" }}>
+                  🚚 Bezorgen
+                </button>
+                {SHOP_PICKUP.map(s=>(
+                  <button key={s.id} type="button" onClick={()=>setPickupLocation(s.id)}
+                    style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===s.id?"#d97706":"var(--border)"}`, background:pickupLocation===s.id?"#fef3c7":"var(--surface)", color:pickupLocation===s.id?"#92400e":"var(--text)", fontFamily:"var(--font-body)" }}>
+                    🏪 Afhalen {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {error && <p style={{ color:"var(--danger)", fontSize:13, margin:"0 0 8px" }}>{error}</p>}
           {success && <p style={{ color:"var(--success)", fontSize:13, margin:"0 0 8px", fontWeight:500 }}>{success}</p>}
           {customerId && (
-            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize:13, marginBottom:16 }}>
+            <button onClick={save} disabled={saving || belowMinDays.length > 0} className="btn-primary" style={{ fontSize:13, marginBottom:16 }}>
               {saving?"Opslaan…":"Vaste bestellingen opslaan"}
             </button>
           )}
@@ -356,9 +404,28 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
                       ))}
                     </tr>
                   ))}
+                  {minDeliveryAmount !== null && (
+                    <tr style={{ borderTop:"2px solid var(--border)" }}>
+                      <td style={{ padding:"6px 14px", fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase" }}>Totaal</td>
+                      {openDays.map(wd=>{
+                        const t = dayTotals[wd] ?? 0;
+                        const low = belowMinDays.includes(wd);
+                        return (
+                          <td key={wd} style={{ padding:"6px 6px", borderLeft:"1px solid var(--border)", textAlign:"center", fontSize:11, color: low ? "var(--danger)" : "var(--text-subtle)", fontWeight: low ? 700 : 400 }}>
+                            {t > 0 ? `€${t.toFixed(0)}${low ? " ⚠" : ""}` : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+          )}
+          {belowMinDays.length > 0 && (
+            <p style={{ fontSize:12, color:"var(--danger)", margin:0 }}>
+              ⚠ {belowMinDays.map(wd => WEEKDAYS[wd]).join(", ")} onder de minimale bestelwaarde (€ {minDeliveryAmount!.toFixed(2)}) — kies afhalen of voeg meer toe.
+            </p>
           )}
         </>
       )}
@@ -367,8 +434,8 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
 }
 
 // ── Recurring order with exception planning ───────────────────────────────────
-function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
-  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void;
+function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek, minDeliveryAmount }: {
+  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void; minDeliveryAmount: number | null;
 }) {
   const { role } = useRole();
   const [toggling, setToggling] = useState(false);
@@ -378,6 +445,10 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [loadingEx, setLoadingEx] = useState(false);
   const [editQty, setEditQty] = useState<Record<string,number>>({});
+  const [editPickup, setEditPickup] = useState("");
+
+  const editTotal = calcTotal(editQty, breadTypes, order.customer.discountPercent ?? 0);
+  const editBelowMin = !editPickup && minDeliveryAmount !== null && editTotal > 0 && editTotal < minDeliveryAmount;
 
   async function toggle() {
     setToggling(true);
@@ -396,10 +467,12 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
   }
 
   async function saveEdit() {
+    if (editBelowMin) return;
     await fetch("/api/bestellingen/recurring", {
       method:"POST", headers:{"Content-Type":"application/json","x-role":role ?? ""},
       body: JSON.stringify({ customerId:order.customerId, weekday:order.weekday,
-        lines: Object.entries(editQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
+        lines: Object.entries(editQty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})),
+        pickupLocation: editPickup || null }),
     });
     setShowEdit(false); onChanged();
   }
@@ -424,7 +497,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
   function openEdit() {
     const q: Record<string,number> = {};
     for (const l of order.lines) q[l.breadTypeId] = l.quantity;
-    setEditQty(q); setShowEdit(true);
+    setEditQty(q); setEditPickup(order.pickupLocation ?? ""); setShowEdit(true);
   }
 
   const occurrences = (() => {
@@ -456,6 +529,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
           <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
             <span style={{ fontWeight:500, fontSize:13 }}>{order.customer.name}</span>
             <span style={{ fontSize:12, color:"var(--text-subtle)" }}>{order.customer.city}</span>
+            {order.pickupLocation && <span style={{ fontSize:11, background:"var(--accent-light)", color:"var(--accent)", padding:"2px 7px", borderRadius:10 }}>🏪 Afhalen {order.pickupLocation.replace("Winkel ","")}</span>}
             {order.notes && <span style={{ fontSize:11, color:"var(--text-subtle)", fontStyle:"italic" }}>{order.notes}</span>}
           </div>
           <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginTop:4 }}>
@@ -479,7 +553,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
             <p style={{ fontSize:12, fontWeight:500, margin:0 }}>Aantallen aanpassen</p>
             <div style={{ display:"flex", gap:6 }}>
-              <button onClick={saveEdit} className="btn-primary" style={{ fontSize:11, padding:"4px 12px" }}>Opslaan</button>
+              <button onClick={saveEdit} disabled={editBelowMin} className="btn-primary" style={{ fontSize:11, padding:"4px 12px", opacity:editBelowMin?0.5:1 }}>Opslaan</button>
               <button onClick={()=>setShowEdit(false)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:16, color:"var(--text-subtle)" }}>×</button>
             </div>
           </div>
@@ -492,6 +566,20 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek }: {
               </div>
             ))}
           </div>
+          <div style={{ marginTop:10 }}>
+            <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Afhalen (optioneel)</label>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+              <button type="button" onClick={()=>setEditPickup("")} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", cursor:"pointer", background:!editPickup?"var(--accent)":"none", color:!editPickup?"white":"var(--text-subtle)" }}>Bezorgen</button>
+              {SHOP_PICKUP.map(p=>(
+                <button key={p.id} type="button" onClick={()=>setEditPickup(p.id)} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", cursor:"pointer", background:editPickup===p.id?"var(--accent)":"none", color:editPickup===p.id?"white":"var(--text-subtle)" }}>{p.label}</button>
+              ))}
+            </div>
+          </div>
+          {editBelowMin && (
+            <p style={{ fontSize:11, color:"var(--danger)", marginTop:8 }}>
+              Totaal (€{editTotal.toFixed(2)}) ligt onder het bezorgminimum (€{minDeliveryAmount!.toFixed(2)}). Kies "Afhalen" of verhoog de bestelling.
+            </p>
+          )}
         </div>
       )}
 
@@ -537,6 +625,7 @@ export default function BestellingenPage() {
   const [recurring, setRecurring] = useState<RecurringOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [breadTypes, setBreadTypes] = useState<BreadType[]>([]);
+  const [minDeliveryAmount, setMinDeliveryAmount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [fromDate, setFromDate] = useState(today);
   const toDefault = new Date(today); toDefault.setDate(toDefault.getDate()+7);
@@ -627,6 +716,7 @@ export default function BestellingenPage() {
   function loadOneOff() {
     fetch(`/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
       .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
+        setMinDeliveryAmount(d.minDeliveryAmount ?? null);
         if (d.customers?.length) setCustomers(d.customers);
       });
   }
@@ -854,7 +944,7 @@ export default function BestellingenPage() {
                   </div>
                 </>
               )}
-              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} />
+              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} />
             </>
           )}
 
@@ -1021,7 +1111,7 @@ export default function BestellingenPage() {
             </>
           )}
           {canWriteRecurring && (
-            <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} />
+            <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} />
           )}
 
           {/* filters */}
@@ -1063,7 +1153,7 @@ export default function BestellingenPage() {
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   {dayOrders.map(order=>(
-                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} onEditWeek={()=>openWeekEdit(order.customerId)} />
+                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} onEditWeek={()=>openWeekEdit(order.customerId)} minDeliveryAmount={minDeliveryAmount} />
                   ))}
                 </div>
               </section>

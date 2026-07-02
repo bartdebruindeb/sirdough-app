@@ -47,6 +47,7 @@ export async function GET(req: Request) {
         city: sc.city ?? sc.name, address: sc.address ?? sc.name, id: sc.id,
         lat: sc.lat ?? shopCoords[sc.name]?.lat ?? null,
         lng: sc.lng ?? shopCoords[sc.name]?.lng ?? null,
+        postalCode: sc.postalCode ?? null, email: sc.email ?? null, phone: sc.phone ?? null,
       },
     ]));
 
@@ -55,16 +56,22 @@ export async function GET(req: Request) {
     const deliveryMap = new Map<string, {
       customerId: string; name: string; city: string; address: string; cityOrder: number;
       notes: string; isShop: boolean; lat: number | null; lng: number | null;
+      postalCode: string | null; email: string | null; phone: string | null;
       quantities: Record<string, number>; pickupLocation: string | null;
     }>();
 
-    const addOrder = (key: string, customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean, lines: { breadTypeId: string; quantity: number }[], pickupLocation: string | null, lat?: number | null, lng?: number | null) => {
+    const addOrder = (
+      key: string, customerId: string, name: string, city: string, address: string, notes: string, isShop: boolean,
+      lines: { breadTypeId: string; quantity: number }[], pickupLocation: string | null, lat?: number | null, lng?: number | null,
+      postalCode?: string | null, email?: string | null, phone?: string | null,
+    ) => {
       if (!deliveryMap.has(key)) {
         deliveryMap.set(key, {
           customerId, name, city, address,
           cityOrder: cityOrder[city] ?? 99,
           notes, isShop, pickupLocation,
           lat: lat ?? null, lng: lng ?? null,
+          postalCode: postalCode ?? null, email: email ?? null, phone: phone ?? null,
           quantities: {},
         });
       }
@@ -89,6 +96,7 @@ export async function GET(req: Request) {
           pickup,
           shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
           shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
+          ro.customer.postalCode, ro.customer.email, ro.customer.phone,
         );
       } else {
         addOrder(
@@ -98,6 +106,7 @@ export async function GET(req: Request) {
           ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
           null,
           ro.customer.lat, ro.customer.lng,
+          ro.customer.postalCode, ro.customer.email, ro.customer.phone,
         );
       }
     }
@@ -117,6 +126,7 @@ export async function GET(req: Request) {
           pickup,
           shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
           shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
+          oo.customer.postalCode, oo.customer.email, oo.customer.phone,
         );
       } else {
         addOrder(
@@ -126,6 +136,7 @@ export async function GET(req: Request) {
           oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
           null,
           oo.customer.lat, oo.customer.lng,
+          oo.customer.postalCode, oo.customer.email, oo.customer.phone,
         );
       }
     }
@@ -150,7 +161,8 @@ export async function GET(req: Request) {
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
         addOrder(shopCustomer.id, shopCustomer.id, shopCfg.name, shopCustomer.city,
-          shopCustomer.address, "", true, lines, null, shopCustomer.lat, shopCustomer.lng);
+          shopCustomer.address, "", true, lines, null, shopCustomer.lat, shopCustomer.lng,
+          shopCustomer.postalCode, shopCustomer.email, shopCustomer.phone);
       }
     }
 
