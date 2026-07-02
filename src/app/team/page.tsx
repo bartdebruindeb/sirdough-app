@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 const STAFF_ROLES: AppRole[] = ["OWNER", "ORDER_TABLET", "BAKKER"];
 
-type Worker = { id: string; email: string; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean };
+type Worker = { id: string; email: string | null; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean };
 
 export default function TeamPage() {
   const { role: myRole } = useRole();
@@ -32,12 +32,11 @@ export default function TeamPage() {
   useEffect(() => { load(); }, []);
 
   async function invite() {
-    if (!email) { setError("E-mailadres is verplicht."); return; }
     setSaving(true); setError("");
     const res = await fetch("/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, role: inviteRole }),
+      body: JSON.stringify({ email: email || undefined, name, role: inviteRole }),
     });
     const data = await res.json();
     setSaving(false);
@@ -72,7 +71,7 @@ export default function TeamPage() {
     const res = await fetch("/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: w.id, email: w.email, name: w.name ?? undefined, role: w.role }),
+      body: JSON.stringify({ id: w.id, email: w.email ?? undefined, name: w.name ?? undefined, role: w.role }),
     });
     const data = await res.json();
     setRegenLoading(false);
@@ -116,8 +115,8 @@ export default function TeamPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>E-mailadres *</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inp} placeholder="naam@bakkerij.nl" />
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>E-mailadres (optioneel)</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inp} placeholder="laat leeg — medewerker vult dit zelf in" />
                 </div>
                 <div>
                   <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam</label>
@@ -141,7 +140,8 @@ export default function TeamPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                ✓ Uitnodigingslink aangemaakt voor <strong>{email}</strong> als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 48 uur.
+                ✓ Uitnodigingslink aangemaakt{email ? <> voor <strong>{email}</strong></> : ""} als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 48 uur.
+                {!email && " De medewerker vult zelf een e-mailadres in via de link."}
               </p>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
                 <p style={{ fontSize: 12, wordBreak: "break-all", margin: 0 }}>{inviteUrl}</p>
@@ -150,10 +150,12 @@ export default function TeamPage() {
                 <button onClick={copy} className="btn-primary" style={{ fontSize: 13 }}>
                   {copied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
                 </button>
-                <a href={`mailto:${email}?subject=Uitnodiging%20Digital%20Bakery&body=Hoi%20${name ? name : ""},%0A%0AKlik%20op%20deze%20link%20om%20je%20account%20in%20te%20stellen:%0A${encodeURIComponent(inviteUrl)}`}
-                  className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
-                  ✉ Stuur e-mail
-                </a>
+                {email && (
+                  <a href={`mailto:${email}?subject=Uitnodiging%20Digital%20Bakery&body=Hoi%20${name ? name : ""},%0A%0AKlik%20op%20deze%20link%20om%20je%20account%20in%20te%20stellen:%0A${encodeURIComponent(inviteUrl)}`}
+                    className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
+                    ✉ Stuur e-mail
+                  </a>
+                )}
                 <button onClick={() => setShowForm(false)} className="btn-secondary" style={{ fontSize: 13, marginLeft: "auto" }}>Sluiten</button>
               </div>
             </div>
@@ -192,17 +194,21 @@ export default function TeamPage() {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 14, fontWeight: 600, color: "var(--accent)",
               }}>
-                {(w.name ?? w.email).charAt(0).toUpperCase()}
+                {(w.name ?? w.email ?? "?").charAt(0).toUpperCase()}
               </div>
 
               <div style={{ flex: 1, minWidth: 160 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 500, fontSize: 14 }}>{w.name ?? w.email}</span>
+                  <span style={{ fontWeight: 500, fontSize: 14 }}>{w.name ?? w.email ?? "Uitnodiging in behandeling"}</span>
                   {!w.active && <span style={{ fontSize: 10, color: "var(--danger)", background: "var(--danger-bg)", padding: "2px 8px", borderRadius: 10 }}>Inactief</span>}
                   {isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Beheerder</span>}
                   {isLastOwner && !isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Laatste eigenaar</span>}
                 </div>
-                {!isProtectedAdmin && <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "2px 0 0" }}>{w.email}</p>}
+                {!isProtectedAdmin && (
+                  <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "2px 0 0" }}>
+                    {w.email ?? "Nog geen e-mailadres — wacht op uitnodiging"}
+                  </p>
+                )}
               </div>
 
               {/* Role selector */}
@@ -265,7 +271,7 @@ export default function TeamPage() {
         }} onClick={() => setRegenFor(null)}>
           <div className="card" style={{ padding: "1.5rem", maxWidth: 480, width: "100%" }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 15, marginBottom: "0.75rem" }}>
-              Nieuwe link voor {regenFor.name ?? regenFor.email}
+              Nieuwe link voor {regenFor.name ?? regenFor.email ?? "medewerker"}
             </h3>
             {regenLoading ? (
               <p style={{ fontSize: 13, color: "var(--text-subtle)" }}>Genereren…</p>
@@ -281,10 +287,12 @@ export default function TeamPage() {
                   <button onClick={copyRegen} className="btn-primary" style={{ fontSize: 13 }}>
                     {regenCopied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
                   </button>
-                  <a href={`mailto:${regenFor.email}?subject=Nieuwe%20link%20Digital%20Bakery&body=${encodeURIComponent(regenUrl)}`}
-                    className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
-                    ✉ Stuur e-mail
-                  </a>
+                  {regenFor.email && (
+                    <a href={`mailto:${regenFor.email}?subject=Nieuwe%20link%20Digital%20Bakery&body=${encodeURIComponent(regenUrl)}`}
+                      className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
+                      ✉ Stuur e-mail
+                    </a>
+                  )}
                   <button onClick={() => setRegenFor(null)} className="btn-secondary" style={{ fontSize: 13, marginLeft: "auto" }}>Sluiten</button>
                 </div>
               </div>

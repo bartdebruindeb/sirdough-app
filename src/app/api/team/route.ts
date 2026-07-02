@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 
 const InviteWorkerSchema = z.object({
   id: z.string().optional(),
-  email: z.string().email(),
+  email: z.string().email().optional(), // optional — the worker can state it themselves via the link
   name: z.string().optional(),
   role: z.enum(["OWNER","ORDER_TABLET","BAKKER"]).default("BAKKER"),
 });
@@ -55,12 +55,12 @@ export async function POST(req: Request) {
     // the client is masked (protected admin account).
     let user = input.id
       ? await prisma.user.findFirst({ where: { id: input.id, tenantId: tid } })
-      : await prisma.user.findFirst({ where: { tenantId: tid, email: input.email } });
+      : (input.email ? await prisma.user.findFirst({ where: { tenantId: tid, email: input.email } }) : null);
 
     if (!user) {
       if (input.id) return Response.json({ message: "Gebruiker niet gevonden." }, { status: 404 });
       user = await prisma.user.create({
-        data: { tenantId: tid, email: input.email, name: input.name, role: input.role, active: false },
+        data: { tenantId: tid, email: input.email ?? null, name: input.name, role: input.role, active: false },
       });
     }
 
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     const inviteUrl = `${baseUrl}/uitnodiging?token=${token}&type=worker`;
 
-    return Response.json({ inviteUrl, email: input.email }, { status: 201 });
+    return Response.json({ inviteUrl, email: input.email ?? null }, { status: 201 });
   } catch (e) {
     return toResponse(e);
   }

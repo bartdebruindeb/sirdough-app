@@ -59,12 +59,20 @@ export async function PUT(req: Request) {
 
     const passwordHash = await bcrypt.hash(input.password, 12);
 
-    // Check if this is a worker invite (customerId is actually a userId)
+    // Check if this is a worker invite (customerId is actually a userId). Email may not
+    // have been known when the invite was generated — the worker states it themselves here.
     const workerUser = await prisma.user.findFirst({ where: { id: invite.customerId, role: { in: ["OWNER","ORDER_TABLET","BAKKER"] } } });
     if (workerUser) {
-      await prisma.user.update({ where: { id: workerUser.id }, data: { passwordHash, active: true } });
+      let email = workerUser.email;
+      if (!email) {
+        email = (input.email ?? "").trim().toLowerCase();
+        if (!email) return Response.json({ error: "NO_EMAIL", message: "Vul een e-mailadres in." }, { status: 400 });
+        const existing = await prisma.user.findFirst({ where: { tenantId: invite.tenantId, email, NOT: { id: workerUser.id } } });
+        if (existing) return Response.json({ error: "EMAIL_IN_USE", message: "Dit e-mailadres is al in gebruik." }, { status: 409 });
+      }
+      await prisma.user.update({ where: { id: workerUser.id }, data: { passwordHash, active: true, email } });
       await prisma.inviteToken.update({ where: { token: input.token }, data: { usedAt: new Date() } });
-      return Response.json({ ok: true, email: workerUser.email });
+      return Response.json({ ok: true, email });
     }
 
     // Customer invite — email may not have been known when the invite was generated;

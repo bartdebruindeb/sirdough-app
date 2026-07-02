@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
       const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
       await sendPasswordReset({
-        to: user.email,
+        to: user.email!, // guaranteed non-null: matched by exact email filter above
         resetUrl: `${base}/login/reset-password?token=${token}`,
       });
     }

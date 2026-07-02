@@ -79,7 +79,7 @@ model Announcement {
 model User {
   id           String   @id @default(cuid())
   tenantId     String
-  email        String
+  email        String?  // null until the invitee sets it themselves (invite-only accounts)
   name         String?
   role         Role     @default(BAKKER)
   passwordHash String?  // bcrypt hash, null for SSO/invite-only users
