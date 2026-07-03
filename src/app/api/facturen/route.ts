@@ -149,7 +149,10 @@ export async function POST(req: Request) {
         unitPrice: l.unitPrice,
       }))),
       yourRef: `Week ${input.week}`,
-    }).catch(() => null);
+    }).catch((e) => {
+      console.error("Exact invoice creation threw (falling back to local invoice number):", e);
+      return null;
+    });
 
     const invoiceNumber = exact?.invoiceNumber ?? null;
 

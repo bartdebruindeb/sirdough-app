@@ -154,10 +154,16 @@ export async function createExactInvoice(
     yourRef?: string;
   }
 ): Promise<ExactInvoiceResult | null> {
-  if (!CLIENT_ID) return null; // Exact not configured
+  if (!CLIENT_ID) {
+    console.error("Exact invoice skipped: EXACT_CLIENT_ID is not set in this process's environment");
+    return null;
+  }
 
   const auth = await getAccessToken(tenantId);
-  if (!auth) return null;
+  if (!auth) {
+    console.error(`Exact invoice skipped: no ExactToken row for tenantId=${tenantId} (not connected, or connected under a different tenantId)`);
+    return null;
+  }
 
   let division = auth.division;
   if (!division) {
