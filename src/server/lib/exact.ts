@@ -131,6 +131,27 @@ export async function exactConnected(tenantId: string): Promise<boolean> {
   return !!row;
 }
 
+// GLAccount GUIDs don't change during a process's lifetime — cache per division to avoid
+// an extra Exact API call on every invoice line.
+const glAccountGuidCache = new Map<string, string>();
+
+async function getGLAccountGuid(token: string, division: number, code: string): Promise<string> {
+  const cacheKey = `${division}:${code}`;
+  const cached = glAccountGuidCache.get(cacheKey);
+  if (cached) return cached;
+
+  const res = await fetch(
+    `${BASE}/api/v1/${division}/financial/GLAccounts?$filter=Code eq '${code}'&$select=ID`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
+  );
+  if (!res.ok) throw new Error(`Exact GLAccount lookup failed: ${await res.text()}`);
+  const data = await res.json();
+  const guid = data.d?.results?.[0]?.ID;
+  if (!guid) throw new Error(`No GLAccount found with Code=${code} in division ${division}`);
+  glAccountGuidCache.set(cacheKey, guid);
+  return guid;
+}
+
 export interface ExactInvoiceLine {
   description: string;
   quantity: number;
@@ -188,6 +209,10 @@ export async function createExactInvoice(
     });
   }
 
+  // GLAccount expects the account's internal GUID, not its human-readable Code
+  // ("Error converting the value ... to type 'Guid'").
+  const glAccountGuid = await getGLAccountGuid(auth.token, division, "8000");
+
   // Exact's REST API rejects a POST body wrapped in the OData-style { d: {...} } envelope
   // ("The property name 'd' ... is not valid") — only GET responses come wrapped like that.
   const body = {
@@ -206,7 +231,7 @@ export async function createExactInvoice(
       // TODO: "8000" (Omzet binnenland hoog tarief) is a placeholder — this test
       // administration has no VAT-code rights to confirm the real 9% code/account.
       // Confirm against a real, fully-configured Exact administration before go-live.
-      GLAccount: l.glAccountCode ?? "8000",
+      GLAccount: glAccountGuid,
       ...(l.vatCode ? { VATCode: l.vatCode } : {}),
     })),
   };
