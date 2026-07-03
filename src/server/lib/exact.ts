@@ -1,21 +1,34 @@
 /**
  * Exact Online OAuth2 + Sales Invoice integration.
  *
- * Setup required (add to .env):
+ * Setup required (add to .env, same values on every bakery deployment):
  *   EXACT_CLIENT_ID=...
- *   EXACT_CLIENT_SECRET=...
- *   EXACT_REDIRECT_URI=https://yourdomain.com/api/exact/callback
+ *   EXACT_CLIENT_SECRET=...            (only used locally for token refresh — the initial
+ *                                        code exchange happens on the relay host, see below)
+ *   EXACT_REDIRECT_URI=https://sirdough.com/api/exact/relay-callback
+ *   STATE_SIGNING_SECRET=...           (shared across every bakery + the relay host)
+ *   RELAY_SHARED_SECRET=...            (unique per bakery — authenticates the relay's token handoff)
  *
- * The owner authorizes once via /api/exact/connect → tokens are stored in ExactToken.
- * All subsequent calls auto-refresh the access token.
+ * Exact only allows ONE registered redirect URI per app, but every bakery is its own
+ * isolated deployment (own DB, own subdomain). To support many bakeries under one Exact
+ * app registration, the OAuth "authorize" redirect always points at a single relay
+ * endpoint (hosted inside one bakery deployment, reached via the apex domain). The relay
+ * exchanges the code, then hands the tokens off to the correct bakery's own deployment
+ * over a server-to-server call — see /api/exact/relay-callback and /api/exact/relay-receive.
+ *
+ * Day-to-day token refresh does NOT involve redirect_uri, so it still happens locally on
+ * each bakery's own deployment using its own (duplicated) EXACT_CLIENT_ID/SECRET.
  */
 
 import { prisma } from "@/server/config/db";
+import crypto from "crypto";
 
 const BASE = "https://start.exactonline.nl";
 const CLIENT_ID = process.env.EXACT_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.EXACT_CLIENT_SECRET ?? "";
 const REDIRECT_URI = process.env.EXACT_REDIRECT_URI ?? "";
+const STATE_SIGNING_SECRET = process.env.STATE_SIGNING_SECRET ?? "";
+const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 export function exactAuthUrl(state: string) {
   const p = new URLSearchParams({
@@ -28,7 +41,34 @@ export function exactAuthUrl(state: string) {
   return `${BASE}/api/oauth2/auth?${p}`;
 }
 
-export async function exchangeCode(tenantId: string, code: string) {
+/** Stateless, self-verifying CSRF state — no cookie needed since the OAuth redirect
+ * now lands on a different domain (the relay) than the one that started the flow. */
+export function signState(tenant: string): string {
+  const payload = Buffer.from(JSON.stringify({ tenant, nonce: crypto.randomBytes(9).toString("hex"), iat: Date.now() })).toString("base64url");
+  const sig = crypto.createHmac("sha256", STATE_SIGNING_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+export function verifyState(state: string): { tenant: string } | null {
+  const [payload, sig] = state.split(".");
+  if (!payload || !sig) return null;
+  const expected = crypto.createHmac("sha256", STATE_SIGNING_SECRET).update(payload).digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expected);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
+  try {
+    const { tenant, iat } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (typeof tenant !== "string" || typeof iat !== "number") return null;
+    if (Date.now() - iat > STATE_MAX_AGE_MS) return null;
+    return { tenant };
+  } catch {
+    return null;
+  }
+}
+
+/** Pure Exact token-endpoint exchange — no DB write. Only ever called by the relay,
+ * which is the one place holding the client secret + matching the registered redirect_uri. */
+export async function exchangeCodeForTokens(code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   const res = await fetch(`${BASE}/api/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -41,12 +81,10 @@ export async function exchangeCode(tenantId: string, code: string) {
     }),
   });
   if (!res.ok) throw new Error(`Exact token exchange failed: ${await res.text()}`);
-  const data = await res.json();
-  await saveToken(tenantId, data);
-  return data;
+  return res.json();
 }
 
-async function saveToken(tenantId: string, data: { access_token: string; refresh_token: string; expires_in: number }) {
+export async function storeTokens(tenantId: string, data: { access_token: string; refresh_token: string; expires_in: number }) {
   const expiresAt = new Date(Date.now() + data.expires_in * 1000);
   await (prisma as any).exactToken.upsert({
     where: { tenantId },
@@ -73,7 +111,7 @@ async function getAccessToken(tenantId: string): Promise<{ token: string; divisi
     });
     if (!res.ok) throw new Error(`Exact token refresh failed: ${await res.text()}`);
     const data = await res.json();
-    await saveToken(tenantId, data);
+    await storeTokens(tenantId, data);
     return { token: data.access_token, division: row.division };
   }
 

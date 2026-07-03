@@ -56,10 +56,48 @@ Edit `.env`:
 - `CRON_SECRET` → generate a NEW one (`openssl rand -base64 32`), used by the daily reminder cron (see step 9 below)
 - `RESEND_API_KEY` → your Resend account's API key (can be shared across bakeries — Resend keys aren't domain-locked)
 - `RESEND_FROM` → e.g. `"<Bakery name> <noreply@<newbakery>.jouwdomein.nl>"` — **must be unique per bakery** so emails carry the right sender name/domain
-- `EXACT_CLIENT_ID` / `EXACT_CLIENT_SECRET` → from the Exact Online app registration (only needed if this bakery connects Exact — see facturatie page)
-- `EXACT_REDIRECT_URI` → `https://<newbakery>.jouwdomein.nl/api/exact/callback` — **must be unique per bakery** and registered as a redirect URI in the Exact app (Exact validates it exactly)
+- `EXACT_CLIENT_ID` / `EXACT_CLIENT_SECRET` → **same values on every bakery**, from the one Exact Online app registration (see "Exact Online: one app, many bakeries" below). Used locally for day-to-day token refresh; do not register a new Exact app per bakery.
+- `EXACT_REDIRECT_URI` → **same value on every bakery**: `https://sirdough.com/api/exact/relay-callback` (the one URI actually registered in the Exact app)
+- `STATE_SIGNING_SECRET` → **same value on every bakery** (generate once with `openssl rand -base64 32`, reuse it everywhere) — signs the OAuth CSRF state so the relay can verify it came from a real bakery
+- `RELAY_SHARED_SECRET` → generate a NEW one per bakery (`openssl rand -base64 32`) and also add it to the relay host's `TENANT_REGISTRY` entry for this bakery (see below) — authenticates the relay's token handoff to this bakery
 
 Missing any of `RESEND_*` or `EXACT_*` doesn't crash the app — those features just silently no-op (no emails sent / "Koppel Exact" fails) — so double-check them explicitly rather than relying on an error to catch a typo.
+
+### Exact Online: one app, many bakeries
+
+Exact only allows **one registered redirect URI per app**, but every bakery is its own
+isolated deployment on its own subdomain. To avoid registering a separate Exact app per
+bakery, all bakeries redirect through one shared relay endpoint hosted inside a single
+bakery deployment (pick one live deployment — e.g. Leffers — as the "relay host"):
+
+1. In the Exact App Store, register **one** app for the whole platform, with redirect URI
+   `https://sirdough.com/api/exact/relay-callback`.
+2. On the **relay host's** `.env` only, in addition to the vars above, add:
+   - `TENANT_REGISTRY` → JSON mapping every bakery's `TENANT_SLUG` to where the relay
+     should hand off tokens, e.g.:
+     ```json
+     {"leffers":{"receiveUrl":"https://meneerleffers.sirdough.com/api/exact/relay-receive","secret":"<that bakery's RELAY_SHARED_SECRET>"},"newbakery":{"receiveUrl":"https://newbakery.sirdough.com/api/exact/relay-receive","secret":"<newbakery's RELAY_SHARED_SECRET>"}}
+     ```
+   - `TENANT_DOMAIN_SUFFIX` → `.sirdough.com` (used to build the post-connect redirect back to the right bakery)
+3. On the relay host's nginx server block for the **apex domain** (`sirdough.com`, not a
+   subdomain), add one location proxying to the relay host's own port, leaving everything
+   else on the apex serving the static landing page as before:
+   ```nginx
+   server {
+       server_name sirdough.com;
+       location /api/exact/relay-callback {
+           proxy_pass http://localhost:3000;   # relay host's port
+           proxy_set_header Host $host;
+       }
+       location / {
+           # existing static landing page config
+       }
+   }
+   ```
+
+Onboarding a new bakery's Exact connection after that is just: generate a
+`RELAY_SHARED_SECRET` for it, add it to `.env`, and add one entry to the relay host's
+`TENANT_REGISTRY` — no new Exact app, no new redirect URI registration.
 
 ### 4. Edit `src/config/bakery.config.ts`
 
@@ -186,9 +224,11 @@ zero to "usable" in one step. Day-to-day changes happen in the UI.
 | Codebase | ✅ same source, copied per deployment | — |
 | Database | ❌ never | ✅ separate Postgres DB |
 | Config (`bakery.config.ts`) | — | ✅ edited per copy |
-| `NEXTAUTH_SECRET`, DB password, `CRON_SECRET` | ❌ never reuse | ✅ unique per bakery |
-| `NEXTAUTH_URL`, `EXACT_REDIRECT_URI`, `RESEND_FROM` | ❌ never reuse | ✅ unique per bakery (each is tied to that bakery's own subdomain) |
+| `NEXTAUTH_SECRET`, DB password, `CRON_SECRET`, `RELAY_SHARED_SECRET` | ❌ never reuse | ✅ unique per bakery |
+| `NEXTAUTH_URL`, `RESEND_FROM` | ❌ never reuse | ✅ unique per bakery (each is tied to that bakery's own subdomain) |
 | `RESEND_API_KEY` | ✅ can be shared (not domain-locked) | — |
+| `EXACT_CLIENT_ID`, `EXACT_CLIENT_SECRET`, `EXACT_REDIRECT_URI`, `STATE_SIGNING_SECRET` | ✅ same value on every bakery (one shared Exact app registration, see "Exact Online: one app, many bakeries") | — |
+| `TENANT_REGISTRY`, `TENANT_DOMAIN_SUFFIX` | — | ✅ relay-host deployment only |
 | Public folder (`public/logo.jpg`, `public/brood/`) | ❌ never | ✅ separate per deployment directory — safe automatically since each copy has its own `public/` |
 | Login sessions | ❌ never | ✅ browser cookies are host-scoped to the exact subdomain; a session on one bakery's subdomain is never sent to another |
 | Cron job (daily reminder) | — | ✅ one crontab entry per bakery, pointing at that bakery's own URL (step 9) |
