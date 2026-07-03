@@ -148,6 +148,7 @@ export async function POST(req: Request) {
         description: `${l.description} (${g.date})`,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
+        breadTypeId: l.breadTypeId,
       }))),
       yourRef: `Week ${input.week}`,
     }).catch((e) => {

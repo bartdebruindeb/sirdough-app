@@ -158,6 +158,39 @@ export interface ExactInvoiceLine {
   unitPrice: number; // excl. VAT
   vatCode?: string;       // omitted if not set — this test administration has none configured
   glAccountCode?: string; // defaults to "8000" (Omzet binnenland hoog tarief) — placeholder, confirm on a real administration
+  breadTypeId: string;    // maps to an Exact Item, find-or-created and cached on BreadType.exactItemGuid
+}
+
+/** Reuses the cached Exact Item GUID for this bread type if we've already linked it,
+ * otherwise finds-or-creates one by Code (the bread type's slug) — same pattern as
+ * findOrCreateAccount for customers. */
+async function findOrCreateItemGuid(token: string, division: number, breadTypeId: string): Promise<string> {
+  const bt = await prisma.breadType.findUnique({ where: { id: breadTypeId } });
+  if (!bt) throw new Error(`BreadType ${breadTypeId} not found`);
+  if ((bt as any).exactItemGuid) return (bt as any).exactItemGuid;
+
+  const search = await fetch(
+    `${BASE}/api/v1/${division}/logistics/Items?$filter=Code eq '${bt.slug}'&$select=ID`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
+  );
+  if (!search.ok) throw new Error(`Exact item search failed: ${await search.text()}`);
+  const sdata = await search.json();
+  let guid: string | undefined = sdata.d?.results?.[0]?.ID;
+
+  if (!guid) {
+    const create = await fetch(`${BASE}/api/v1/${division}/logistics/Items`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ Code: bt.slug, Description: bt.name, IsSalesItem: true }),
+    });
+    if (!create.ok) throw new Error(`Exact item creation failed: ${await create.text()}`);
+    const cdata = await create.json();
+    guid = cdata.d?.ID;
+    if (!guid) throw new Error("Exact item creation returned no ID");
+  }
+
+  await prisma.breadType.update({ where: { id: breadTypeId }, data: { exactItemGuid: guid } as any });
+  return guid;
 }
 
 export interface ExactInvoiceResult {
@@ -213,6 +246,20 @@ export async function createExactInvoice(
   // ("Error converting the value ... to type 'Guid'").
   const glAccountGuid = await getGLAccountGuid(auth.token, division, "8000");
 
+  // Exact requires each line to reference a real Item (product), not just free text
+  // ("Mandatory: Item") — find-or-create one per bread type, cached going forward.
+  const invoiceLines = await Promise.all(opts.lines.map(async l => ({
+    Description: l.description,
+    Quantity: l.quantity,
+    UnitPrice: l.unitPrice,
+    // TODO: "8000" (Omzet binnenland hoog tarief) is a placeholder — this test
+    // administration has no VAT-code rights to confirm the real 9% code/account.
+    // Confirm against a real, fully-configured Exact administration before go-live.
+    GLAccount: glAccountGuid,
+    Item: await findOrCreateItemGuid(auth.token, division, l.breadTypeId),
+    ...(l.vatCode ? { VATCode: l.vatCode } : {}),
+  })));
+
   // Exact's REST API rejects a POST body wrapped in the OData-style { d: {...} } envelope
   // ("The property name 'd' ... is not valid") — only GET responses come wrapped like that.
   const body = {
@@ -221,16 +268,7 @@ export async function createExactInvoice(
     InvoiceDate: opts.invoiceDate,
     OrderedBy: accountGuid,
     YourRef: opts.yourRef ?? "",
-    SalesInvoiceLines: opts.lines.map(l => ({
-      Description: l.description,
-      Quantity: l.quantity,
-      UnitPrice: l.unitPrice,
-      // TODO: "8000" (Omzet binnenland hoog tarief) is a placeholder — this test
-      // administration has no VAT-code rights to confirm the real 9% code/account.
-      // Confirm against a real, fully-configured Exact administration before go-live.
-      GLAccount: glAccountGuid,
-      ...(l.vatCode ? { VATCode: l.vatCode } : {}),
-    })),
+    SalesInvoiceLines: invoiceLines,
   };
 
   const res = await fetch(`${BASE}/api/v1/${division}/salesinvoice/SalesInvoices`, {

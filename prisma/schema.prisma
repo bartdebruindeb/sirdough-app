@@ -168,6 +168,7 @@ model BreadType {
   /// override which mixer group this bread counts towards (e.g. "sesam" merges sesam-1.5kg into sesam group)
   mixerGroup String?
   imageFile  String? // filename in /public/brood/, e.g. "Sesam.jpg"
+  exactItemGuid String? // Exact Online Item GUID — cached so invoice lines don't re-search/re-create per invoice
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   doughType        DoughType?       @relation(fields: [doughTypeId], references: [id])

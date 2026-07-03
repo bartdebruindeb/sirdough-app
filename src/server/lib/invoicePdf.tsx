@@ -111,7 +111,7 @@ export interface PdfInvoiceData {
   // Lines grouped by delivery date
   deliveryGroups: {
     date: string;        // "Ma 23 jun 2025"
-    lines: { description: string; quantity: number; unitPrice: number; vatPct: number }[];
+    lines: { description: string; quantity: number; unitPrice: number; vatPct: number; breadTypeId: string }[];
   }[];
   vatPercent: number;
   totalExcl: number;
@@ -293,6 +293,7 @@ export async function buildPdfData(
         quantity: l.quantity,
         unitPrice,
         vatPct: vatPercent,
+        breadTypeId: l.breadTypeId,
       });
     }
   }
