@@ -23,7 +23,7 @@
 import { prisma } from "@/server/config/db";
 import crypto from "crypto";
 
-const BASE = "https://start.exactonline.nl";
+export const BASE = "https://start.exactonline.nl";
 const CLIENT_ID = process.env.EXACT_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.EXACT_CLIENT_SECRET ?? "";
 const REDIRECT_URI = process.env.EXACT_REDIRECT_URI ?? "";
@@ -93,7 +93,7 @@ export async function storeTokens(tenantId: string, data: { access_token: string
   });
 }
 
-async function getAccessToken(tenantId: string): Promise<{ token: string; division: number | null } | null> {
+export async function getAccessToken(tenantId: string): Promise<{ token: string; division: number | null } | null> {
   const row = await (prisma as any).exactToken.findUnique({ where: { tenantId } });
   if (!row) return null;
 
@@ -118,7 +118,7 @@ async function getAccessToken(tenantId: string): Promise<{ token: string; divisi
   return { token: row.accessToken, division: row.division };
 }
 
-async function getDivision(token: string): Promise<number> {
+export async function getDivision(token: string): Promise<number> {
   const res = await fetch(`${BASE}/api/v1/current/Me?$select=CurrentDivision`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
