@@ -243,7 +243,9 @@ async function findOrCreateAccount(token: string, division: number, name: string
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ Name: name, Email: email, IsCustomer: true }),
+    // IsCustomer isn't a settable field on this REST endpoint ("not valid" from Exact) —
+    // an Account becomes a customer implicitly once a sales invoice is created against it.
+    body: JSON.stringify({ Name: name, Email: email }),
   });
   if (!create.ok) throw new Error(`Exact account creation failed: ${await create.text()}`);
   const cdata = await create.json();
