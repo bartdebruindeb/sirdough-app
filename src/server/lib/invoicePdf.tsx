@@ -103,7 +103,7 @@ export interface PdfInvoiceData {
   customerPostal?: string | null;
   customerCity?: string | null;
   customerEmail?: string | null;
-  customerNumber?: number | null;
+  customerNumber?: number | string | null;
   // Invoice meta
   invoiceNumber: string;
   invoiceDate: string;   // "DD-MM-YYYY"
@@ -322,7 +322,10 @@ export async function buildPdfData(
     customerPostal: customer?.postalCode,
     customerCity: customer?.city,
     customerEmail: customer?.email,
-    customerNumber: customer?.customerNumber,
+    // Prefer Exact's own relatienummer once this customer is linked there, so the
+    // invoice matches what the customer sees in Exact — falls back to our internal
+    // sequential number for customers not (yet) connected to Exact.
+    customerNumber: customer?.exactCustomerCode ?? customer?.customerNumber,
     invoiceNumber: nr,
     invoiceDate: fmtInvoiceDate(invoiceDate),
     dueDate: fmtInvoiceDate(dueDate),
