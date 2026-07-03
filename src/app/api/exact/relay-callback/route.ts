@@ -13,7 +13,6 @@ import { NextResponse } from "next/server";
  */
 export async function GET(req: Request) {
   const registryRaw = process.env.TENANT_REGISTRY;
-  const domainSuffix = process.env.TENANT_DOMAIN_SUFFIX ?? ".sirdough.com";
   if (!registryRaw) return Response.json({ error: "NOT_A_RELAY_HOST" }, { status: 501 });
 
   const url = new URL(req.url);
@@ -31,8 +30,12 @@ export async function GET(req: Request) {
     return Response.json({ error: "BAD_TENANT_REGISTRY" }, { status: 500 });
   }
   const entry = registry[verified.tenant];
-  const errorRedirect = NextResponse.redirect(`https://${verified.tenant}${domainSuffix}/facturatie?exact=error`);
-  if (!entry) return errorRedirect;
+  // The tenant slug (TENANT_SLUG) isn't necessarily the same string as the bakery's
+  // actual subdomain — derive the redirect target from receiveUrl's own host instead
+  // of guessing "<tenant>.sirdough.com".
+  if (!entry) return Response.json({ error: "UNKNOWN_TENANT" }, { status: 404 });
+  const bakeryOrigin = new URL(entry.receiveUrl).origin;
+  const errorRedirect = NextResponse.redirect(`${bakeryOrigin}/facturatie?exact=error`);
 
   try {
     const tokens = await exchangeCodeForTokens(code);
@@ -46,5 +49,5 @@ export async function GET(req: Request) {
     return errorRedirect;
   }
 
-  return NextResponse.redirect(`https://${verified.tenant}${domainSuffix}/facturatie?exact=ok`);
+  return NextResponse.redirect(`${bakeryOrigin}/facturatie?exact=ok`);
 }

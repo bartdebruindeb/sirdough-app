@@ -74,11 +74,13 @@ bakery deployment (pick one live deployment — e.g. Leffers — as the "relay h
    `https://sirdough.com/api/exact/relay-callback`.
 2. On the **relay host's** `.env` only, in addition to the vars above, add:
    - `TENANT_REGISTRY` → JSON mapping every bakery's `TENANT_SLUG` to where the relay
-     should hand off tokens, e.g.:
+     should hand off tokens. `receiveUrl` must use that bakery's real subdomain — it
+     doesn't have to match the `TENANT_SLUG` string itself (e.g. Leffers' slug is
+     `leffers` but its real subdomain is `meneerleffers.sirdough.com`); the relay reads
+     the bakery's real domain from `receiveUrl`, not by guessing `<slug>.sirdough.com`:
      ```json
      {"leffers":{"receiveUrl":"https://meneerleffers.sirdough.com/api/exact/relay-receive","secret":"<that bakery's RELAY_SHARED_SECRET>"},"newbakery":{"receiveUrl":"https://newbakery.sirdough.com/api/exact/relay-receive","secret":"<newbakery's RELAY_SHARED_SECRET>"}}
      ```
-   - `TENANT_DOMAIN_SUFFIX` → `.sirdough.com` (used to build the post-connect redirect back to the right bakery)
 3. On the relay host's nginx server block for the **apex domain** (`sirdough.com`, not a
    subdomain), add one location proxying to the relay host's own port, leaving everything
    else on the apex serving the static landing page as before:
@@ -228,7 +230,7 @@ zero to "usable" in one step. Day-to-day changes happen in the UI.
 | `NEXTAUTH_URL`, `RESEND_FROM` | ❌ never reuse | ✅ unique per bakery (each is tied to that bakery's own subdomain) |
 | `RESEND_API_KEY` | ✅ can be shared (not domain-locked) | — |
 | `EXACT_CLIENT_ID`, `EXACT_CLIENT_SECRET`, `EXACT_REDIRECT_URI`, `STATE_SIGNING_SECRET` | ✅ same value on every bakery (one shared Exact app registration, see "Exact Online: one app, many bakeries") | — |
-| `TENANT_REGISTRY`, `TENANT_DOMAIN_SUFFIX` | — | ✅ relay-host deployment only |
+| `TENANT_REGISTRY` | — | ✅ relay-host deployment only |
 | Public folder (`public/logo.jpg`, `public/brood/`) | ❌ never | ✅ separate per deployment directory — safe automatically since each copy has its own `public/` |
 | Login sessions | ❌ never | ✅ browser cookies are host-scoped to the exact subdomain; a session on one bakery's subdomain is never sent to another |
 | Cron job (daily reminder) | — | ✅ one crontab entry per bakery, pointing at that bakery's own URL (step 9) |
