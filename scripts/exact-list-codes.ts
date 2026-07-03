@@ -32,9 +32,12 @@ async function main() {
     return data.d?.results ?? [];
   };
 
-  console.log("── VAT codes (raw, no $select — field names unknown) ──");
-  const vatCodes = await get("/vat/VATCodes?$top=50");
-  for (const v of vatCodes) console.log(JSON.stringify(v));
+  console.log("── VAT codes: raw response (envelope shape unknown) ──");
+  const vatRes = await fetch(`${BASE}/api/v1/${division}/vat/VATCodes?$top=50`, {
+    headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" },
+  });
+  console.log(`status: ${vatRes.status}`);
+  console.log(await vatRes.text());
 
   console.log("\n── All 'Omzet' G/L accounts (any rate) ────");
   const glAccounts = await get("/financial/GLAccounts?$select=Code,Description,Type&$top=200");
