@@ -32,16 +32,14 @@ async function main() {
     return data.d?.results ?? [];
   };
 
-  console.log("── VAT codes ──────────────────────────────");
-  const vatCodes = await get("/vat/VATCodes?$select=Code,Description,VATPercentage");
-  for (const v of vatCodes) console.log(`${v.Code}\t${v.VATPercentage}%\t${v.Description}`);
+  console.log("── VAT codes (raw, no $select — field names unknown) ──");
+  const vatCodes = await get("/vat/VATCodes?$top=50");
+  for (const v of vatCodes) console.log(JSON.stringify(v));
 
-  console.log("\n── G/L accounts (revenue-ish, first 30) ────");
+  console.log("\n── All 'Omzet' G/L accounts (any rate) ────");
   const glAccounts = await get("/financial/GLAccounts?$select=Code,Description,Type&$top=200");
-  const revenueish = glAccounts.filter((g: any) => /omzet|verkoop|revenue|sales/i.test(g.Description ?? ""));
-  for (const g of (revenueish.length ? revenueish : glAccounts).slice(0, 30)) {
-    console.log(`${g.Code}\t${g.Description}\t(Type ${g.Type})`);
-  }
+  const revenueish = glAccounts.filter((g: any) => /omzet/i.test(g.Description ?? ""));
+  for (const g of revenueish) console.log(`${g.Code}\t${g.Description}\t(Type ${g.Type})`);
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
