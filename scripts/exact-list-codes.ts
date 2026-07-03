@@ -6,13 +6,11 @@
  * Run on the deployment that's connected to Exact:
  *   npx tsx scripts/exact-list-codes.ts
  */
-import { prisma } from "../src/server/config/db";
+import { resolveTenantId } from "../src/server/config/tenant";
 import { BASE, getAccessToken, getDivision } from "../src/server/lib/exact";
 
 async function main() {
-  const tenantId = process.env.TENANT_SLUG ?? "dev-tenant";
-  const tenant = await (prisma as any).tenant.findUnique({ where: { slug: tenantId } });
-  const tid = tenant?.id ?? tenantId;
+  const tid = await resolveTenantId({ tenantId: process.env.TENANT_SLUG ?? "dev-tenant" });
 
   const auth = await getAccessToken(tid);
   if (!auth) {
