@@ -220,9 +220,6 @@ export async function createExactInvoice(
     // value ... to type 'DateTime'") — this REST API wants a plain ISO date string.
     InvoiceDate: opts.invoiceDate,
     OrderedBy: accountGuid,
-    // Exact flagged "Invalid: Invoice to (Type)" when this wasn't set — InvoiceTo and
-    // OrderedBy can be the same account.
-    InvoiceTo: accountGuid,
     YourRef: opts.yourRef ?? "",
     SalesInvoiceLines: opts.lines.map(l => ({
       Description: l.description,
