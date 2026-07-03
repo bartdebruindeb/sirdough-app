@@ -187,20 +187,18 @@ export async function createExactInvoice(
     });
   }
 
+  // Exact's REST API rejects a POST body wrapped in the OData-style { d: {...} } envelope
+  // ("The property name 'd' ... is not valid") — only GET responses come wrapped like that.
   const body = {
-    d: {
-      InvoiceDate: `/Date(${new Date(opts.invoiceDate + "T12:00:00Z").getTime()})/`,
-      OrderedBy: accountGuid,
-      YourRef: opts.yourRef ?? "",
-      SalesInvoiceLines: {
-        results: opts.lines.map(l => ({
-          Description: l.description,
-          Quantity: l.quantity,
-          UnitPrice: l.unitPrice,
-          VATCode: l.vatCode ?? "1",
-        })),
-      },
-    },
+    InvoiceDate: `/Date(${new Date(opts.invoiceDate + "T12:00:00Z").getTime()})/`,
+    OrderedBy: accountGuid,
+    YourRef: opts.yourRef ?? "",
+    SalesInvoiceLines: opts.lines.map(l => ({
+      Description: l.description,
+      Quantity: l.quantity,
+      UnitPrice: l.unitPrice,
+      VATCode: l.vatCode ?? "1",
+    })),
   };
 
   const res = await fetch(`${BASE}/api/v1/${division}/salesinvoice/SalesInvoices`, {
@@ -245,7 +243,7 @@ async function findOrCreateAccount(token: string, division: number, name: string
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ d: { Name: name, Email: email, IsCustomer: true } }),
+    body: JSON.stringify({ Name: name, Email: email, IsCustomer: true }),
   });
   if (!create.ok) throw new Error(`Exact account creation failed: ${await create.text()}`);
   const cdata = await create.json();
