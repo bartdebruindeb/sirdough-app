@@ -135,7 +135,8 @@ export interface ExactInvoiceLine {
   description: string;
   quantity: number;
   unitPrice: number; // excl. VAT
-  vatCode?: string;  // defaults to "1" (9% NL low rate)
+  vatCode?: string;       // omitted if not set — this test administration has none configured
+  glAccountCode?: string; // defaults to "8000" (Omzet binnenland hoog tarief) — placeholder, confirm on a real administration
 }
 
 export interface ExactInvoiceResult {
@@ -194,12 +195,19 @@ export async function createExactInvoice(
     // value ... to type 'DateTime'") — this REST API wants a plain ISO date string.
     InvoiceDate: opts.invoiceDate,
     OrderedBy: accountGuid,
+    // Exact flagged "Invalid: Invoice to (Type)" when this wasn't set — InvoiceTo and
+    // OrderedBy can be the same account.
+    InvoiceTo: accountGuid,
     YourRef: opts.yourRef ?? "",
     SalesInvoiceLines: opts.lines.map(l => ({
       Description: l.description,
       Quantity: l.quantity,
       UnitPrice: l.unitPrice,
-      VATCode: l.vatCode ?? "1",
+      // TODO: "8000" (Omzet binnenland hoog tarief) is a placeholder — this test
+      // administration has no VAT-code rights to confirm the real 9% code/account.
+      // Confirm against a real, fully-configured Exact administration before go-live.
+      GLAccount: l.glAccountCode ?? "8000",
+      ...(l.vatCode ? { VATCode: l.vatCode } : {}),
     })),
   };
 
