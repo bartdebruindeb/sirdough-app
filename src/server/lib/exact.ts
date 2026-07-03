@@ -190,7 +190,9 @@ export async function createExactInvoice(
   // Exact's REST API rejects a POST body wrapped in the OData-style { d: {...} } envelope
   // ("The property name 'd' ... is not valid") — only GET responses come wrapped like that.
   const body = {
-    InvoiceDate: `/Date(${new Date(opts.invoiceDate + "T12:00:00Z").getTime()})/`,
+    // Exact rejected the legacy OData "/Date(ms)/" wrapper too ("Error converting the
+    // value ... to type 'DateTime'") — this REST API wants a plain ISO date string.
+    InvoiceDate: opts.invoiceDate,
     OrderedBy: accountGuid,
     YourRef: opts.yourRef ?? "",
     SalesInvoiceLines: opts.lines.map(l => ({
