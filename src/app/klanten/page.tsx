@@ -29,10 +29,22 @@ function parseHuisnr(addr: string): { huisnummer: string; huisletter: string } {
   return m ? { huisnummer: m[1], huisletter: m[2] } : { huisnummer: "", huisletter: "" };
 }
 
-// PDOK — official Dutch address lookup (returns street, city, lat, lng)
+// PDOK — official Dutch address lookup (returns street, city, lat, lng).
+// Uses structured fq filters (exact match on postcode + huisnummer) instead of a
+// free-text q= query — free-text search is fuzzy and can match a nearby postcode
+// when there's no exact hit for the given house number.
 async function pdokLookup(postcode: string, huisnummer: string, huisletter: string): Promise<{ straat: string; stad: string; lat: number; lng: number } | null> {
-  const q = encodeURIComponent(`${postcode.replace(/\s/g, "")} ${huisnummer}${huisletter}`.trim());
-  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&fl=straatnaam,woonplaatsnaam,centroide_ll&rows=1`);
+  const pc = postcode.replace(/\s/g, "").toUpperCase();
+  const params = new URLSearchParams({
+    q: "*",
+    fq: "type:adres",
+    fl: "straatnaam,woonplaatsnaam,centroide_ll",
+    rows: "1",
+  });
+  params.append("fq", `postcode:${pc}`);
+  params.append("fq", `huisnummer:${huisnummer}`);
+  if (huisletter) params.append("fq", `huisletter:${huisletter}`);
+  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
   const data = await res.json();
   const doc = data.response?.docs?.[0];
   if (!doc?.straatnaam) return null;
