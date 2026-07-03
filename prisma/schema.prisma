@@ -23,6 +23,7 @@ model Tenant {
   plan            String   @default("starter")
   closedWeekdays  String   @default("1,7")
   basketTypes     String   @default("750 gram,rond,1 kg,1,5 kg")
+  extraCategories String   @default("")
   bakeryAddress   String?
   bakeryLat       Float?
   bakeryLng       Float?
