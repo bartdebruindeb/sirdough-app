@@ -130,7 +130,10 @@ export default function FacturatiePage() {
     setGenerating(null);
   }
 
-  async function sendInvoice() {
+  // Creates the real invoice (in Exact, if connected) and saves its final PDF — the
+  // invoice/customer number only exists once this actually runs, since Exact assigns
+  // them on creation. Emailing is a separate step afterward (sendInvoiceEmail below).
+  async function createInvoice() {
     if (!previewCustomer) return;
     setSending(true);
     const res = await fetch("/api/facturen", {
@@ -141,7 +144,15 @@ export default function FacturatiePage() {
     setSending(false);
     closeModal();
     if (res?.ok) load(week);
-    else alert("Er ging iets mis bij het versturen.");
+    else alert("Er ging iets mis bij het aanmaken van de factuur.");
+  }
+
+  async function sendInvoiceEmail(id: string) {
+    setResending(id);
+    const r = await fetch(`/api/facturen/${id}`, { method: "POST" }).then(x => x.json()).catch(() => ({}));
+    setResending(null);
+    if (r.ok) load(week);
+    else alert(r.error === "NO_EMAIL" ? "Klant heeft geen e-mailadres." : "Versturen mislukt.");
   }
 
   function closeModal() {
@@ -322,32 +333,28 @@ export default function FacturatiePage() {
         </div>
       )}
 
-      {/* ── Sent invoices ──────────────────────────── */}
+      {/* ── Invoiced ────────────────────────────────── */}
       {sent.length > 0 && (
         <div>
-          <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", marginBottom: 10 }}>Verstuurd</h2>
+          <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", marginBottom: 10 }}>Gefactureerd</h2>
           {sent.map(inv => (
             <div key={inv.id} className="card" style={{ padding: "0.75rem 1.25rem", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <span style={{ fontWeight: 500, fontSize: 13 }}>{inv.invoiceNumber ?? `DBK-${inv.id.slice(-6).toUpperCase()}`}</span>
-                {inv.sentAt && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>verstuurd {new Date(inv.sentAt).toLocaleDateString("nl-NL")}</span>}
+                {inv.sentAt
+                  ? <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>verstuurd {new Date(inv.sentAt).toLocaleDateString("nl-NL")}</span>
+                  : <span style={{ fontSize: 12, color: "#f97316", marginLeft: 8 }}>nog niet verstuurd</span>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>€ {Number(inv.totalAmountExcl).toFixed(2)}</span>
                 <a href={`/api/facturen/${inv.id}`} target="_blank" rel="noopener" style={{ fontSize: 12, color: "var(--text-subtle)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>PDF ↗</a>
                 <button
                   disabled={resending === inv.id}
-                  onClick={async () => {
-                    setResending(inv.id);
-                    const r = await fetch(`/api/facturen/${inv.id}`, { method: "POST" }).then(x => x.json()).catch(() => ({}));
-                    setResending(null);
-                    if (r.ok) alert("Factuur opnieuw verstuurd.");
-                    else alert(r.error === "NO_EMAIL" ? "Klant heeft geen e-mailadres." : "Versturen mislukt.");
-                  }}
+                  onClick={() => sendInvoiceEmail(inv.id)}
                   className="btn-secondary"
                   style={{ fontSize: 11, padding: "4px 10px" }}
                 >
-                  {resending === inv.id ? "…" : "Opnieuw versturen"}
+                  {resending === inv.id ? "…" : inv.sentAt ? "Opnieuw versturen" : "Verstuur per e-mail"}
                 </button>
               </div>
             </div>
@@ -393,9 +400,9 @@ export default function FacturatiePage() {
                 {!previewCustomer.customerEmail && <span style={{ fontSize: 12, color: "#f97316", marginLeft: 10 }}>⚠ geen e-mail</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={downloadPreview} className="btn-secondary" style={{ fontSize: 12 }}>Download PDF</button>
-                <button onClick={sendInvoice} disabled={sending} className="btn-primary" style={{ fontSize: 12 }}>
-                  {sending ? "Versturen…" : previewCustomer.customerEmail ? "Verstuur per e-mail" : "Sla op (geen e-mail)"}
+                <button onClick={downloadPreview} className="btn-secondary" style={{ fontSize: 12 }}>Download voorbeeld</button>
+                <button onClick={createInvoice} disabled={sending} className="btn-primary" style={{ fontSize: 12 }}>
+                  {sending ? "Aanmaken…" : "Aanmaken in Exact"}
                 </button>
                 <button onClick={closeModal} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
               </div>

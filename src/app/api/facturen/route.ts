@@ -1,6 +1,8 @@
 /**
  * GET  /api/facturen?week=YYYY-WNN  – list customers with uninvoiced orders that week
- * POST /api/facturen                – create + send invoice for a customer/week
+ * POST /api/facturen                – create the invoice (in Exact, if connected) and save
+ *                                      its final PDF; does NOT email it — see /api/facturen/[id]
+ *                                      for downloading and (re)sending by email as separate steps.
  */
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
@@ -10,7 +12,6 @@ import { toResponse } from "@/server/lib/errors";
 import { createExactInvoice } from "@/server/lib/exact";
 import { buildInvoiceHtml } from "@/server/lib/invoiceHtml";
 import { buildPdfData, generateInvoicePdf } from "@/server/lib/invoicePdf";
-import { Resend } from "resend";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -178,57 +179,9 @@ export async function POST(req: Request) {
       },
     });
 
-    // Send email with PDF attachment
-    if (pdfData.customerEmail) {
-      await sendInvoiceEmail({
-        to: pdfData.customerEmail,
-        customerName: pdfData.customerName,
-        invoiceNumber: finalNumber,
-        week: input.week,
-        pdfBuffer,
-        totalExcl,
-        vatPercent: input.vatPercent,
-      });
-      await (prisma as any).invoice.update({ where: { id: invoice.id }, data: { sentAt: new Date() } });
-    }
-
-    return Response.json({ ok: true, invoiceId: invoice.id, invoiceNumber: finalNumber, sentTo: pdfData.customerEmail ?? null });
+    // Invoice is created (in Exact, if connected) and the final PDF is saved — but not
+    // emailed yet. Sending is now a separate step (POST /api/facturen/[id]), so the owner
+    // can check the real invoice/customer number before it goes out.
+    return Response.json({ ok: true, invoiceId: invoice.id, invoiceNumber: finalNumber });
   } catch (e) { return toResponse(e); }
-}
-
-async function sendInvoiceEmail(opts: {
-  to: string;
-  customerName: string;
-  invoiceNumber: string;
-  week: string;
-  pdfBuffer: Buffer;
-  totalExcl: number;
-  vatPercent: number;
-}) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) { console.warn("RESEND_API_KEY not set — invoice email skipped"); return; }
-  const from = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
-  const vat = opts.totalExcl * (opts.vatPercent / 100);
-  const total = opts.totalExcl + vat;
-  const [year, wn] = opts.week.split("-W");
-
-  const html = `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-    <p style="font-size:18px;font-weight:700">Digital Bakery</p>
-    <p>Beste ${opts.customerName},</p>
-    <p>Bijgaand de factuur voor week ${wn} van ${year}.</p>
-    <p style="font-size:15px;font-weight:700">Totaal te voldoen: € ${(total).toFixed(2).replace(".", ",")}</p>
-    <p style="font-size:12px;color:#999">De factuur is als bijlage toegevoegd aan deze e-mail.</p>
-  </div>`;
-
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from,
-    to: opts.to,
-    subject: `Factuur ${opts.invoiceNumber} – Digital Bakery`,
-    html,
-    attachments: [{
-      filename: `factuur-${opts.invoiceNumber}.pdf`,
-      content: opts.pdfBuffer,
-    }],
-  });
 }
