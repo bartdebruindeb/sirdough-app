@@ -49,14 +49,14 @@ function shortName(name: string) {
     .replace("Gekiemde Rogge", "G.Rogge").replace("Volkoren", "Volk.");
 }
 
-// Small contact-info dropdown: postal code, phone (tel: link), email (mailto: link) —
+// Small contact-info dropdown: street address, phone (tel: link), email (mailto: link) —
 // so the driver can look up the address or call/mail the customer without leaving the page.
 function ContactInfoPanel({ row }: { row: DeliveryRow }) {
-  if (!row.postalCode && !row.phone && !row.email) return null;
+  if (!row.address && !row.phone && !row.email) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 12 }}>
-      {row.postalCode && (
-        <span style={{ color: "var(--text-muted)" }}>📮 {row.postalCode} {row.city}</span>
+      {row.address && (
+        <span style={{ color: "var(--text-muted)" }}>📍 {row.address}</span>
       )}
       {row.phone && (
         <a href={`tel:${row.phone}`} style={{ color: "var(--accent)", textDecoration: "none" }}>📞 {row.phone}</a>
@@ -486,7 +486,7 @@ export default function BezorgenPage() {
                           </span>
                         ))}
                       </div>
-                      {(row.postalCode || row.phone || row.email) && (
+                      {(row.address || row.phone || row.email) && (
                         <button onClick={() => setExpandedInfo(x => x === row.customerId ? null : row.customerId)}
                           title="Contactgegevens"
                           style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 14, color: expandedInfo === row.customerId ? "var(--accent)" : "var(--text-subtle)" }}>
@@ -549,7 +549,7 @@ export default function BezorgenPage() {
                             </span>
                           ))}
                         </div>
-                        {(row.postalCode || row.phone || row.email) && (
+                        {(row.address || row.phone || row.email) && (
                           <button onClick={() => setExpandedInfo(x => x === row.customerId ? null : row.customerId)}
                             title="Contactgegevens"
                             style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 13, color: expandedInfo === row.customerId ? "var(--accent)" : "var(--text-subtle)" }}>
