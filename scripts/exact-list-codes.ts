@@ -50,6 +50,10 @@ async function main() {
   const glAccounts = await get("/financial/GLAccounts?$select=Code,Description,Type&$top=200");
   const revenueish = glAccounts.filter((g: any) => /omzet/i.test(g.Description ?? ""));
   for (const g of revenueish) console.log(`${g.Code}\t${g.Description}\t(Type ${g.Type})`);
+
+  console.log("\n── Item groups ──");
+  const itemGroups = await get("/logistics/ItemGroups?$select=ID,Code,Description&$top=50");
+  for (const g of itemGroups) console.log(`${g.ID}\t${g.Code}\t${g.Description}`);
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
