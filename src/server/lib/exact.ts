@@ -232,6 +232,7 @@ async function findOrCreateAccount(token: string, division: number, name: string
     `${BASE}/api/v1/${division}/crm/Accounts?$filter=Email eq '${encodeURIComponent(email)}'&$select=ID,Code`,
     { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
   );
+  if (!search.ok) throw new Error(`Exact account search failed: ${await search.text()}`);
   const sdata = await search.json();
   const existing = sdata.d?.results?.[0];
   if (existing) return { guid: existing.ID, code: existing.Code ?? null };
@@ -246,6 +247,7 @@ async function findOrCreateAccount(token: string, division: number, name: string
     },
     body: JSON.stringify({ d: { Name: name, Email: email, IsCustomer: true } }),
   });
+  if (!create.ok) throw new Error(`Exact account creation failed: ${await create.text()}`);
   const cdata = await create.json();
   return { guid: cdata.d.ID, code: cdata.d.Code ?? null };
 }
