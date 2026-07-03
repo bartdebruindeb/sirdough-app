@@ -84,6 +84,7 @@ export default function FacturatiePage() {
   const [generating, setGenerating] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [resending, setResending] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const previewBlobRef = useRef<Blob | null>(null);
 
   const load = useCallback((w: string) => {
@@ -153,6 +154,16 @@ export default function FacturatiePage() {
     setResending(null);
     if (r.ok) load(week);
     else alert(r.error === "NO_EMAIL" ? "Klant heeft geen e-mailadres." : "Versturen mislukt.");
+  }
+
+  async function deleteInvoice(id: string) {
+    if (!confirm("Factuur definitief verwijderen? Als deze in Exact staat, wordt hij daar ook verwijderd (alleen mogelijk zolang hij nog niet verwerkt/geboekt is).")) return;
+    setDeleting(id);
+    const r = await fetch(`/api/facturen/${id}`, { method: "DELETE" }).then(x => x.json()).catch(() => ({}));
+    setDeleting(null);
+    if (r.ok) load(week);
+    else if (r.error === "EXACT_DELETE_FAILED") alert(`Kon niet verwijderen: deze factuur staat nog in Exact en kan daar niet meer automatisch worden verwijderd (waarschijnlijk al verwerkt/geboekt). Verwijder of crediteer hem eerst handmatig in Exact.\n\n${r.detail ?? ""}`);
+    else alert("Verwijderen mislukt.");
   }
 
   function closeModal() {
@@ -356,6 +367,16 @@ export default function FacturatiePage() {
                 >
                   {resending === inv.id ? "…" : inv.sentAt ? "Opnieuw versturen" : "Verstuur per e-mail"}
                 </button>
+                {isOwner && (
+                  <button
+                    disabled={deleting === inv.id}
+                    onClick={() => deleteInvoice(inv.id)}
+                    className="btn-secondary"
+                    style={{ fontSize: 11, padding: "4px 10px", color: "#dc2626" }}
+                  >
+                    {deleting === inv.id ? "…" : "🗑"}
+                  </button>
+                )}
               </div>
             </div>
           ))}

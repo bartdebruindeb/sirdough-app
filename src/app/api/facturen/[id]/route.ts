@@ -1,9 +1,10 @@
-/** GET /api/facturen/[id] — serve stored PDF; POST — resend email */
+/** GET /api/facturen/[id] — serve stored PDF; POST — resend email; DELETE — remove invoice (+ Exact, if linked) */
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { Resend } from "resend";
 import { toResponse } from "@/server/lib/errors";
+import { deleteExactInvoice } from "@/server/lib/exact";
 
 export const dynamic = "force-dynamic";
 
@@ -73,5 +74,29 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
     await (prisma as any).invoice.update({ where: { id: params.id }, data: { sentAt: new Date() } });
     return Response.json({ ok: true, sentTo: to });
+  } catch (e) { return toResponse(e); }
+}
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  try {
+    const session = await getServerSession(authOptions);
+    if ((session?.user as any)?.role !== "OWNER") return new Response("Unauthorized", { status: 401 });
+
+    const invoice = await (prisma as any).invoice.findUnique({ where: { id: params.id } });
+    if (!invoice) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+
+    // Only draft (unprocessed) invoices can be deleted in Exact — a rejection here
+    // (e.g. already booked) blocks the local delete too, so the two stay in sync
+    // instead of silently drifting apart.
+    if (invoice.exactGuid) {
+      try {
+        await deleteExactInvoice(invoice.tenantId, invoice.exactGuid);
+      } catch (e: any) {
+        return Response.json({ error: "EXACT_DELETE_FAILED", detail: e?.message ?? String(e) }, { status: 409 });
+      }
+    }
+
+    await (prisma as any).invoice.delete({ where: { id: params.id } });
+    return Response.json({ ok: true });
   } catch (e) { return toResponse(e); }
 }

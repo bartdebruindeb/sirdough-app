@@ -294,6 +294,28 @@ export async function createExactInvoice(
   };
 }
 
+/**
+ * Deletes a sales invoice in Exact. Only works while the invoice is still a draft
+ * (Exact rejects deleting an invoice that's already been processed/booked — those
+ * need a credit note instead, which this function does not attempt).
+ * Returns true if deleted, false if Exact isn't configured/connected for this tenant.
+ * Throws if Exact rejects the delete (e.g. already processed) so the caller can decide
+ * whether to still remove the local record.
+ */
+export async function deleteExactInvoice(tenantId: string, exactGuid: string): Promise<boolean> {
+  if (!CLIENT_ID) return false;
+  const auth = await getAccessToken(tenantId);
+  if (!auth) return false;
+
+  const division = auth.division ?? (await getDivision(auth.token));
+  const res = await fetch(`${BASE}/api/v1/${division}/salesinvoice/SalesInvoices(guid'${exactGuid}')`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
+  if (!res.ok) throw new Error(`Exact invoice delete failed: ${await res.text()}`);
+  return true;
+}
+
 async function findOrCreateAccount(token: string, division: number, name: string, email: string): Promise<{ guid: string; code: string | null }> {
   // Search by email
   const search = await fetch(
