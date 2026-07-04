@@ -324,7 +324,7 @@ export default function MijnBestellingenPage() {
     <div style={{ padding: "1.5rem", maxWidth: 700 }}>
       <h1 style={{ fontSize: 26, marginBottom: "0.25rem" }}>Mijn bestellingen</h1>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: "2rem" }}>
-        Wijzigingen mogelijk tot 4:00 am de dag vóór bezorging.
+        Wijzigingen mogelijk tot 4:00 AM de dag vóór bezorging.
       </p>
 
       {loading && <p style={{ color: "var(--text-subtle)" }}>Laden...</p>}
@@ -345,7 +345,7 @@ export default function MijnBestellingenPage() {
               const d = new Date(monStr+"T12:00:00Z");
               d.setUTCDate(d.getUTCDate() + ((o.weekday - 1 + 7) % 7));
               const dateStr = d.toISOString().slice(0,10);
-              if (dateStr >= monStr && dateStr <= sunStr) {
+              if (dateStr >= todayUTC && dateStr <= sunStr) {
                 const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
                 if (!skipped && o.lines.some(l => l.quantity > 0)) {
                   weekItems.push({
@@ -357,7 +357,7 @@ export default function MijnBestellingenPage() {
               }
             });
             upcoming.forEach(o => {
-              if (o.deliveryDate >= monStr && o.deliveryDate <= sunStr) {
+              if (o.deliveryDate >= todayUTC && o.deliveryDate <= sunStr) {
                 weekItems.push({
                   date: o.deliveryDate,
                   lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
