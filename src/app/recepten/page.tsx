@@ -437,21 +437,12 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
       body: form,
     }).then(r => r.json()).catch(() => ({}));
     setUploading(false);
-    if (res.imageFile) { onUploaded(res.imageFile); setTs(Date.now()); }
+    if (res.imageFile) onUploaded(res.imageFile);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  const [ts, setTs] = useState(() => Date.now());
-  const [imgPrimary, imgFallback] = breadImageUrls(bt);
-
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 1rem" }}>
-      <img src={`${imgPrimary}?t=${ts}`} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, border: "1px solid var(--border)", background: "#f5f0eb" }}
-        onError={e => {
-          const el = e.target as HTMLImageElement;
-          if (imgFallback && el.src !== window.location.origin + imgFallback) { el.src = imgFallback; }
-          else { el.style.opacity = "0"; }
-        }} />
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
       <button
         onClick={() => fileRef.current?.click()}

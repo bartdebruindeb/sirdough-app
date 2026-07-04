@@ -1,7 +1,12 @@
 /**
  * POST /api/bread-types/image?id=<breadTypeId>
  * Accepts multipart/form-data with a "file" field.
- * Saves to public/brood/<breadTypeId>.<ext> and updates BreadType.imageFile.
+ * Saves to public/brood/<breadTypeId>-<timestamp>.jpg and updates BreadType.imageFile.
+ * The timestamp in the filename matters: every consumer of this URL (recipe list,
+ * customer order screen, the upload preview) renders a plain <img src> with no
+ * cache-busting query param, so a fixed filename would mean the browser keeps showing
+ * whatever it cached the very first time it requested that URL (often a 404, if the
+ * item had no picture yet) even after a real image is uploaded.
  */
 import fs from "fs";
 import path from "path";
@@ -38,9 +43,15 @@ export async function POST(req: NextRequest) {
     // Accept only images
     if (!file.type.startsWith("image/")) return Response.json({ error: "not an image" }, { status: 400 });
 
-    // Always save as <id>.jpg regardless of original extension for predictable URL
-    const filename = `${id}.jpg`;
+    // Unique filename per upload so the URL changes and browsers can't serve a stale
+    // cached response — see the file-level comment above.
+    const filename = `${id}-${Date.now()}.jpg`;
     const dest = path.join(process.cwd(), "public", "brood", filename);
+
+    // Best-effort cleanup of the previous file so old uploads don't pile up
+    if (bt.imageFile) {
+      fs.unlink(path.join(process.cwd(), "public", "brood", bt.imageFile), () => {});
+    }
 
     const buf = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(dest, buf);
