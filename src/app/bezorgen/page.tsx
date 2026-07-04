@@ -274,8 +274,11 @@ export default function BezorgenPage() {
       setBusOrder(prev => prev.filter(x => x !== id));
       postStatus(id, "delivered");
     } else {
-      // Unmark — if a pakbon was already sent, confirm first since this resets that status
-      if (pakbonSent[id] && !confirm("De pakbon voor deze bezorging is al verstuurd. Weet je zeker dat je de bezorgstatus wilt terugzetten naar 'nog te bezorgen'?")) {
+      // Unmark — always confirm first, since this resets a completed delivery back to pending
+      const warning = pakbonSent[id]
+        ? "De pakbon voor deze bezorging is al verstuurd. Weet je zeker dat je de bezorgstatus wilt terugzetten naar 'nog te bezorgen'?"
+        : "Deze bezorging staat al op 'geleverd'. Weet je zeker dat je de status wilt terugzetten naar 'nog te bezorgen'?";
+      if (!confirm(warning)) {
         return;
       }
       setDelivered(d => ({ ...d, [id]: false }));
