@@ -26,6 +26,7 @@ export async function GET() {
       address:    customer.address ?? "",
       postalCode: customer.postalCode ?? "",
       city:       customer.city ?? "",
+      kvk:        (customer as any).kvk ?? "",
     });
   } catch (e) { return toResponse(e); }
 }
@@ -36,6 +37,7 @@ const UpdateAccountSchema = z.object({
   address:    z.string().optional(),
   postalCode: z.string().optional(),
   city:       z.string().optional(),
+  kvk:        z.string().optional(),
 });
 
 export async function PATCH(req: Request) {

@@ -268,6 +268,7 @@ model Customer {
   active    Boolean @default(true)
   discountPercent Int @default(0) // 0, 5, 10, 15 or 20 percent discount
   customerNumber  Int?    // human-readable number, editable by owner
+  kvk              String? // Chamber of Commerce number — more stable match key for Exact than email
   exactAccountId   String? // Exact Online Account GUID — cached so invoice sync doesn't re-search by email each time
   exactCustomerCode String? // Exact Online's own customer/relatienummer (Code field), for display only
   userId    String? @unique  // linked User account for customer portal

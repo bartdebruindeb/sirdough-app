@@ -6,9 +6,16 @@ const inp: React.CSSProperties = {
   fontSize: 14, background: "var(--surface)", width: "100%", color: "var(--text)",
 };
 
+// Uses structured fq filters (exact match on postcode + huisnummer) instead of a
+// free-text q= query — free-text search is fuzzy and can match a nearby postcode
+// when there's no exact hit for the given house number (same fix as klanten/page.tsx).
 async function pdokLookup(postcode: string, huisnummer: string, huisletter: string) {
-  const q = encodeURIComponent(`${postcode.replace(/\s/g, "")} ${huisnummer}${huisletter}`.trim());
-  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&fl=straatnaam,woonplaatsnaam,centroide_ll&rows=1`);
+  const pc = postcode.replace(/\s/g, "").toUpperCase();
+  const params = new URLSearchParams({ q: "*", fq: "type:adres", fl: "straatnaam,woonplaatsnaam,centroide_ll", rows: "1" });
+  params.append("fq", `postcode:${pc}`);
+  params.append("fq", `huisnummer:${huisnummer}`);
+  if (huisletter) params.append("fq", `huisletter:${huisletter}`);
+  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
   const data = await res.json();
   const doc = data.response?.docs?.[0];
   if (!doc) return null;
@@ -24,6 +31,7 @@ export default function MijnAccountPage() {
   const [name, setName]     = useState("");
   const [phone, setPhone]   = useState("");
   const [email, setEmail]   = useState("");
+  const [kvk, setKvk]       = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
 
@@ -40,6 +48,7 @@ export default function MijnAccountPage() {
       setName(d.name ?? "");
       setPhone(d.phone ?? "");
       setEmail(d.email ?? "");
+      setKvk(d.kvk ?? "");
       setPostcode(d.postalCode ?? "");
       setFoundStraat(d.address ?? "");
       setFoundStad(d.city ?? "");
@@ -70,7 +79,7 @@ export default function MijnAccountPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name, phone,
+        name, phone, kvk,
         address:    lookupStatus === "found" ? foundStraat : undefined,
         postalCode: lookupStatus === "found" ? postcode.trim().toUpperCase() : undefined,
         city:       lookupStatus === "found" ? foundStad : undefined,
@@ -100,7 +109,12 @@ export default function MijnAccountPage() {
             <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Telefoonnummer</label>
             <input value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="+31 6 ..." />
           </div>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 5 }}>KvK-nummer *</label>
+            <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678" />
+          </div>
         </div>
+        {!kvk.trim() && <p style={{ fontSize: 12, color: "#f97316", marginTop: 10, marginBottom: 0 }}>⚠ Vul je KvK-nummer in — dit wordt gebruikt om je bedrijf correct te koppelen aan onze boekhouding.</p>}
       </div>
 
       {/* Address */}
@@ -142,7 +156,7 @@ export default function MijnAccountPage() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={saveProfile} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>
+        <button onClick={saveProfile} disabled={saving || !kvk.trim()} className="btn-primary" style={{ fontSize: 13 }}>
           {saving ? "Opslaan..." : "Opslaan"}
         </button>
         {saved && <span style={{ fontSize: 13, color: "var(--success)" }}>Opgeslagen</span>}

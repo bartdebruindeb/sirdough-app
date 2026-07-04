@@ -9,6 +9,7 @@ type Customer = {
   id: string; name: string; city: string | null; address: string | null;
   postalCode: string | null;
   email: string | null; phone: string | null; notes: string | null;
+  kvk: string | null;
   preferredBread: string | null;
   lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
@@ -98,6 +99,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [name, setName]             = useState(initial?.name ?? "");
   const [email, setEmail]           = useState(initial?.email ?? "");
   const [phone, setPhone]           = useState(initial?.phone ?? "");
+  const [kvk, setKvk]               = useState(initial?.kvk ?? "");
   const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
 
@@ -154,7 +156,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
         postalCode: postcode.trim() || null,
         lat: foundLat,
         lng: foundLng,
-        email, phone, notes, preferredBread,
+        email, phone, kvk, notes, preferredBread,
       });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
@@ -205,6 +207,10 @@ function CustomerForm({ initial, onSave, onCancel }: {
           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Telefoon</label>
           <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="+31 6 12345678" />
         </div>
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>KvK-nummer</label>
+        <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678" />
       </div>
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
