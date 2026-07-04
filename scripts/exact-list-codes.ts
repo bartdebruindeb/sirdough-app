@@ -54,6 +54,10 @@ async function main() {
   console.log("\n── Item groups ──");
   const itemGroups = await get("/logistics/ItemGroups?$select=ID,Code,Description&$top=50");
   for (const g of itemGroups) console.log(`${g.ID}\t${g.Code}\t${g.Description}`);
+
+  console.log("\n── One full Account record (no $select — to find the real KvK field name) ──");
+  const accounts = await get("/crm/Accounts?$top=1");
+  console.log(JSON.stringify(accounts[0] ?? "no accounts found", null, 2));
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
