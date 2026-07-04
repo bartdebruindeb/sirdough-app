@@ -18,8 +18,15 @@ export const BREAD_IMAGES: Record<string, string> = {
 };
 
 // Returns [primaryUrl, fallbackUrl|null]. Primary = uploaded file by ID (or imageFile), fallback = name-map.
+//
+// Uploaded images are served through /api/brood/<file> (reads the file fresh from disk on
+// every request) rather than Next's static /public serving — `next start` doesn't reliably
+// pick up files added to public/ after the server process started, only after a restart,
+// which would mean a freshly uploaded photo doesn't appear until the next deploy. Static
+// fallback images (the name-based BREAD_IMAGES map) never change at runtime, so they keep
+// using plain /brood/ static serving.
 export function breadImageUrls(bt: { id: string; name: string; imageFile?: string | null }): [string, string | null] {
-  const uploaded = `/brood/${bt.imageFile ?? (bt.id + ".jpg")}`;
+  const uploaded = `/api/brood/${bt.imageFile ?? (bt.id + ".jpg")}`;
   const name = bt.name;
   const fallback = BREAD_IMAGES[name]
     ?? BREAD_IMAGES[name.replace(/\s*\d[,.\d]*\s*(kg|KG|g|gr)\s*$/i, "").trim()]
