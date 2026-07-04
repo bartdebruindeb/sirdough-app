@@ -105,9 +105,9 @@ export default function BezorgenPage() {
   type PakbonLine = { breadTypeId: string; name: string; orderedQty: number; deliveredQty: number };
   const [pakbonModal, setPakbonModal] = useState<{ customerId: string; name: string; lines: PakbonLine[] } | null>(null);
   const [sendingPakbon, setSendingPakbon] = useState(false);
-  // Ja/nee choice shown after "Bevestig bezorging" — ja opens the pakbon modal, nee marks
-  // delivered directly without one.
-  const [confirmDeliveryFor, setConfirmDeliveryFor] = useState<DeliveryRow | null>(null);
+  // Shown after adjusting quantities in the pakbon modal and clicking "Bevestig bezorging" —
+  // asks whether to actually send a pakbon before finalizing.
+  const [askSendPakbon, setAskSendPakbon] = useState(false);
 
   function loadNotes(d: string) {
     fetch(`/api/delivery-notes?from=${d}&to=${d}`, { headers: { "x-role": role ?? "" } })
@@ -309,21 +309,12 @@ export default function BezorgenPage() {
         deliveredQty: row.quantities[bt.id] ?? 0,
       }));
     setPakbonModal({ customerId: row.customerId, name: row.name, lines });
+    setAskSendPakbon(false);
   }
 
-  // Marks delivered without generating/sending a pakbon at all — for deliveries where a
-  // packing slip isn't relevant (mainly internal winkel stock, but not restricted to it).
-  // The Ja/Nee choice in confirmDeliveryFor is itself the confirmation step, so no extra
-  // native confirm() here.
-  function markDeliveredNoPakbon(row: DeliveryRow) {
-    const now = new Date().toISOString();
-    setDelivered(d => ({ ...d, [row.customerId]: true }));
-    setDeliveredTimes(t => ({ ...t, [row.customerId]: now }));
-    setBusOrder(prev => prev.filter(x => x !== row.customerId));
-    postStatus(row.customerId, "delivered");
-  }
-
-  async function confirmPakbon() {
+  // Step 1 (quantities) already happened in the pakbon modal by the time this runs —
+  // this is step 2, asking whether to actually send the pakbon before finalizing.
+  function requestConfirmDelivery() {
     if (!pakbonModal) return;
     const hasDeviation = pakbonModal.lines.some(l => l.deliveredQty !== l.orderedQty);
     if (hasDeviation) {
@@ -331,23 +322,31 @@ export default function BezorgenPage() {
         .filter(l => l.deliveredQty !== l.orderedQty)
         .map(l => `${l.name}: besteld ${l.orderedQty} → geleverd ${l.deliveredQty}`)
         .join("\n");
-      if (!confirm(`Je hebt de geleverde hoeveelheid aangepast t.o.v. de bestelling:\n\n${summary}\n\nWeet je zeker dat dit klopt? Dit wordt vermeld op de pakbon en verwerkt in de factuur.`)) {
+      if (!confirm(`Je hebt de geleverde hoeveelheid aangepast t.o.v. de bestelling:\n\n${summary}\n\nWeet je zeker dat dit klopt? Dit wordt verwerkt in de factuur.`)) {
         return;
       }
     }
+    setAskSendPakbon(true);
+  }
+
+  // Step 3: finalize with the chosen lines (possibly altered), sending a pakbon or not.
+  // The delivered-quantity correction always happens either way — only the pakbon
+  // email itself is optional.
+  async function confirmPakbon(sendPakbon: boolean) {
+    if (!pakbonModal) return;
     setSendingPakbon(true);
     await fetch("/api/bezorgen/pakbon", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
-      body: JSON.stringify({ customerId: pakbonModal.customerId, date, deliveredLines: pakbonModal.lines }),
+      body: JSON.stringify({ customerId: pakbonModal.customerId, date, deliveredLines: pakbonModal.lines, sendPakbon }),
     }).catch(() => {});
-    // Mark as delivered — pakbon sent means this is now final
     const now = new Date().toISOString();
     setDelivered(d => ({ ...d, [pakbonModal.customerId]: true }));
     setDeliveredTimes(t => ({ ...t, [pakbonModal.customerId]: now }));
-    setPakbonSent(p => ({ ...p, [pakbonModal.customerId]: true }));
+    if (sendPakbon) setPakbonSent(p => ({ ...p, [pakbonModal.customerId]: true }));
     setBusOrder(prev => prev.filter(x => x !== pakbonModal.customerId));
     setSendingPakbon(false);
+    setAskSendPakbon(false);
     setPakbonModal(null);
   }
 
@@ -508,7 +507,7 @@ export default function BezorgenPage() {
                           ℹ️
                         </button>
                       )}
-                      <button onClick={() => setConfirmDeliveryFor(row)}
+                      <button onClick={() => openPakbonModal(row)}
                         style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 13, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
                         title="Bevestig bezorging">✓</button>
                       <button onClick={() => removeFromBus(row.customerId)}
@@ -627,27 +626,6 @@ export default function BezorgenPage() {
         </div>
       )}
 
-      {/* Bevestig bezorging — ja/nee pakbon */}
-      {confirmDeliveryFor && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
-          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 360, padding: "1.5rem", display: "flex", flexDirection: "column", gap: 14 }}>
-            <h2 style={{ margin: 0, fontSize: 16 }}>Bezorging bevestigen — {confirmDeliveryFor.name}</h2>
-            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: 0 }}>Wil je een pakbon versturen voor deze bezorging?</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button
-                onClick={() => { const row = confirmDeliveryFor; setConfirmDeliveryFor(null); openPakbonModal(row); }}
-                className="btn-primary" style={{ fontSize: 13 }}
-              >Ja, pakbon versturen</button>
-              <button
-                onClick={() => { const row = confirmDeliveryFor; setConfirmDeliveryFor(null); markDeliveredNoPakbon(row); }}
-                className="btn-secondary" style={{ fontSize: 13 }}
-              >Nee, alleen bezorgd markeren</button>
-              <button onClick={() => setConfirmDeliveryFor(null)} style={{ background: "none", border: "none", color: "var(--text-subtle)", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Annuleren</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Pakbon modal */}
       {pakbonModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
@@ -697,14 +675,33 @@ export default function BezorgenPage() {
             </table>
             {pakbonModal.lines.some(l => l.deliveredQty !== l.orderedQty) && (
               <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400e" }}>
-                Afwijking van bestelling — dit wordt vermeld in de pakbon en verwerkt in de factuurlijst.
+                Afwijking van bestelling — dit wordt verwerkt in de factuurlijst.
               </div>
             )}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setPakbonModal(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-              <button onClick={confirmPakbon} disabled={sendingPakbon} className="btn-primary" style={{ fontSize: 13 }}>
-                {sendingPakbon ? "Verzenden…" : "Stuur pakbon & bevestig bezorging"}
+              <button onClick={requestConfirmDelivery} disabled={sendingPakbon} className="btn-primary" style={{ fontSize: 13 }}>
+                Bevestig bezorging
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ja/nee: pakbon versturen? — shown after quantities are confirmed */}
+      {pakbonModal && askSendPakbon && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 24 }}>
+          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 360, padding: "1.5rem", display: "flex", flexDirection: "column", gap: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>Pakbon versturen?</h2>
+            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: 0 }}>Bezorging voor <strong>{pakbonModal.name}</strong> wordt bevestigd. Wil je ook een pakbon versturen?</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button onClick={() => confirmPakbon(true)} disabled={sendingPakbon} className="btn-primary" style={{ fontSize: 13 }}>
+                {sendingPakbon ? "Bezig…" : "Ja, pakbon versturen"}
+              </button>
+              <button onClick={() => confirmPakbon(false)} disabled={sendingPakbon} className="btn-secondary" style={{ fontSize: 13 }}>
+                Nee, alleen bezorgd markeren
+              </button>
+              <button onClick={() => setAskSendPakbon(false)} disabled={sendingPakbon} style={{ background: "none", border: "none", color: "var(--text-subtle)", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Terug</button>
             </div>
           </div>
         </div>

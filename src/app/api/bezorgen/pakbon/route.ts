@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const tid = await resolveTenantId({ tenantId, tenantSlug });
 
   const body = await req.json();
-  const { customerId, date, deliveredLines } = z.object({
+  const { customerId, date, deliveredLines, sendPakbon: shouldSendPakbon } = z.object({
     customerId: z.string(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     deliveredLines: z.array(z.object({
@@ -17,6 +17,7 @@ export async function POST(req: Request) {
       orderedQty: z.number().int().min(0),
       deliveredQty: z.number().int().min(0),
     })).optional(),
+    sendPakbon: z.boolean().optional().default(true),
   }).parse(body);
 
   const [customer, tenant] = await Promise.all([
@@ -29,7 +30,9 @@ export async function POST(req: Request) {
   const tenantName = tenant?.name ?? "De bakkerij";
 
   const email = customer.email;
-  if (!email) return Response.json({ error: "Klant heeft geen e-mailadres" }, { status: 400 });
+  // The delivered-quantity correction below always runs regardless of sendPakbon — only
+  // the pakbon email itself is optional, so a missing email should only block that step.
+  if (shouldSendPakbon && !email) return Response.json({ error: "Klant heeft geen e-mailadres" }, { status: 400 });
 
   const startOfDay = `${date}T00:00:00.000Z`;
   const endOfDay   = `${date}T23:59:59.999Z`;
@@ -114,19 +117,21 @@ export async function POST(req: Request) {
 
   if (lines.length === 0) return Response.json({ error: "Geen orderregels gevonden" }, { status: 400 });
 
-  const formattedDate = new Date(date + "T12:00:00Z").toLocaleDateString("nl-NL", {
-    weekday: "long", day: "numeric", month: "long",
-  });
+  if (shouldSendPakbon) {
+    const formattedDate = new Date(date + "T12:00:00Z").toLocaleDateString("nl-NL", {
+      weekday: "long", day: "numeric", month: "long",
+    });
+    await sendPakbon({ to: email!, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines, deviations });
+  }
 
-  await sendPakbon({ to: email, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines, deviations });
-
-  // Pakbon sent = delivery is final; can no longer be reverted (see /api/delivery-status)
+  // Pakbon sent = delivery is final; can no longer be reverted (see /api/delivery-status).
+  // Without a pakbon, deliveredAt still marks the delivery confirmed, just pakbonSentAt stays null.
   const statusDate = new Date(date + "T12:00:00Z");
   const now = new Date();
   await prisma.deliveryStatus.upsert({
     where: { tenantId_date_customerId: { tenantId: tid, date: statusDate, customerId } },
-    create: { tenantId: tid, date: statusDate, customerId, deliveredAt: now, pakbonSentAt: now },
-    update: { deliveredAt: now, pakbonSentAt: now },
+    create: { tenantId: tid, date: statusDate, customerId, deliveredAt: now, pakbonSentAt: shouldSendPakbon ? now : null },
+    update: { deliveredAt: now, ...(shouldSendPakbon ? { pakbonSentAt: now } : {}) },
   });
 
   return Response.json({ ok: true });
