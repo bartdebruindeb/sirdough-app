@@ -7,6 +7,9 @@ import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailability
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
+// weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
+function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
+
 type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null; price?: number | null };
 type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null; discountPercent?: number };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
@@ -642,7 +645,7 @@ export default function BestellingenPage() {
   const [tab, setTab] = useState<"eenmalig"|"vast"|"klant">(role === "BAKKER" ? "klant" : "eenmalig");
   const [pendingDeleteId, setPendingDeleteId] = useState<string|null>(null);
   const [recurringCustomerFilter, setRecurringCustomerFilter] = useState("");
-  const [recurringCityFilter, setRecurringCityFilter] = useState("");
+  const [recurringDayFilter, setRecurringDayFilter] = useState<number | "">("");
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([1,7]);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -882,11 +885,18 @@ export default function BestellingenPage() {
   const recurringByDay=new Map<number,RecurringOrder[]>();
   const filteredRecurring = recurring
     .filter(r => !recurringCustomerFilter || r.customerId === recurringCustomerFilter)
-    .filter(r => !recurringCityFilter || (r.customer.city ?? "") === recurringCityFilter);
+    .filter(r => recurringDayFilter === "" || r.weekday === recurringDayFilter);
   for (const r of filteredRecurring) { if (!recurringByDay.has(r.weekday)) recurringByDay.set(r.weekday,[]); recurringByDay.get(r.weekday)!.push(r); }
   const recurringCustomers = Array.from(new Map(recurring.map(r=>[r.customerId, r.customer])).values())
     .sort((a,b)=>a.name.localeCompare(b.name));
-  const recurringCities = [...new Set(recurring.map(r=>r.customer.city ?? "").filter(Boolean))].sort();
+  // Tue–Sat, reordered to start from today's weekday (wrapping), so e.g. on Wednesday the
+  // order is Wed, Thu, Fri, Sat, Tue instead of always Tue-first.
+  const recurringDayOrder = (() => {
+    const base = [2,3,4,5,6];
+    const todayWd = jsWeekdayToISO(new Date());
+    const startIdx = base.findIndex(d => d >= todayWd);
+    return startIdx === -1 ? base : [...base.slice(startIdx), ...base.slice(0, startIdx)];
+  })();
 
   return (
     <div style={{ padding:"2rem 2.5rem", maxWidth:1100 }}>
@@ -1116,20 +1126,18 @@ export default function BestellingenPage() {
 
           {/* filters */}
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-            <select value={recurringCityFilter} onChange={e=>setRecurringCityFilter(e.target.value)}
+            <select value={recurringDayFilter} onChange={e=>setRecurringDayFilter(e.target.value === "" ? "" : Number(e.target.value))}
               style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
-              <option value="">Alle steden</option>
-              {recurringCities.map(c=><option key={c} value={c}>{c}</option>)}
+              <option value="">Alle dagen</option>
+              {recurringDayOrder.map(wd=><option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
             </select>
             <select value={recurringCustomerFilter} onChange={e=>setRecurringCustomerFilter(e.target.value)}
               style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
               <option value="">Alle klanten</option>
-              {recurringCustomers
-                .filter(c => !recurringCityFilter || (c.city ?? "") === recurringCityFilter)
-                .map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
+              {recurringCustomers.map(c=><option key={c.id} value={c.id}>{c.name}{c.city?` (${c.city})`:""}</option>)}
             </select>
-            {(recurringCustomerFilter || recurringCityFilter) && (
-              <button onClick={()=>{ setRecurringCustomerFilter(""); setRecurringCityFilter(""); }} className="btn-secondary" style={{ fontSize:12, padding:"5px 10px" }}>
+            {(recurringCustomerFilter || recurringDayFilter !== "") && (
+              <button onClick={()=>{ setRecurringCustomerFilter(""); setRecurringDayFilter(""); }} className="btn-secondary" style={{ fontSize:12, padding:"5px 10px" }}>
                 ✕ Reset filter
               </button>
             )}
@@ -1140,7 +1148,7 @@ export default function BestellingenPage() {
               Geen vaste bestellingen gevonden.
             </p>
           )}
-          {[2,3,4,5,6].map(wd=>{
+          {recurringDayOrder.map(wd=>{
             const dayOrders=recurringByDay.get(wd)??[];
             if (dayOrders.length===0) return null;
             const activeCount=dayOrders.filter(o=>o.active).length;
