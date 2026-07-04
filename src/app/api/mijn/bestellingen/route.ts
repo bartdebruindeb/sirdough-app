@@ -60,7 +60,7 @@ export async function GET(req: Request) {
         where: { tenantId: customer.tenantId, customerId: customer.id },
         include: {
           lines: { include: { breadType: true } },
-          exceptions: { where: { date: { gte: new Date() } }, orderBy: { date: "asc" } },
+          exceptions: { where: { date: { gte: sixtyDaysAgo } }, orderBy: { date: "asc" } },
         },
         orderBy: { weekday: "asc" },
       }),
