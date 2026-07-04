@@ -437,7 +437,10 @@ function BreadImageUpload({ bt, role, onUploaded }: { bt: BreadType; role: strin
       body: form,
     }).then(r => r.json()).catch(() => ({}));
     setUploading(false);
-    if (res.imageFile) onUploaded(res.imageFile);
+    if (res.imageFile) {
+      onUploaded(res.imageFile);
+      window.location.reload();
+    }
     if (fileRef.current) fileRef.current.value = "";
   }
 
