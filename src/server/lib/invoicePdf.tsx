@@ -5,6 +5,8 @@ import {
   Document, Page, Text, View, Image, StyleSheet, renderToBuffer,
 } from "@react-pdf/renderer";
 import { prisma } from "@/server/config/db";
+import { bakeryConfig } from "@/config/bakery.config";
+import { buildShopDeliveryLines } from "@/server/lib/winkelInvoicing";
 
 function loadLogo(): string | null {
   try {
@@ -248,6 +250,19 @@ function fmtInvoiceDate(d: Date) {
   return d.toLocaleDateString("nl-NL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function weekBounds(isoWeek: string): { start: Date; end: Date } {
+  const [yearStr, wStr] = isoWeek.split("-W");
+  const year = Number(yearStr), week = Number(wStr);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  sunday.setUTCHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+
 /** Build PdfInvoiceData from DB — shared between generate (preview) and send */
 export async function buildPdfData(
   tenantId: string,
@@ -295,6 +310,32 @@ export async function buildPdfData(
         vatPct: vatPercent,
         breadTypeId: l.breadTypeId,
       });
+    }
+  }
+
+  // Shops (Winkel Delft, Winkel Den Haag, ...) have no OneOffOrder rows — their bread
+  // flows through WinkelTemplate/WinkelLog instead — so their lines come from there.
+  const isShop = customer && bakeryConfig.shops.some(s => s.name === customer.name);
+  if (isShop && customer) {
+    const { start, end } = weekBounds(week);
+    const breadTypes = await prisma.breadType.findMany({ where: { tenantId, active: true } });
+    const dayLines = await buildShopDeliveryLines(tenantId, customer.name, start, end);
+    for (const d of dayLines) {
+      const dateLabel = nlDate(d.date);
+      if (!groups.has(d.date)) groups.set(d.date, { date: dateLabel, lines: [] });
+      for (const l of d.lines) {
+        const bt = breadTypes.find(b => b.id === l.breadTypeId);
+        const price = bt?.price ? Number(bt.price) : 0;
+        const unitPrice = price * (1 - discount / 100);
+        totalExcl += unitPrice * l.quantity;
+        groups.get(d.date)!.lines.push({
+          description: l.breadTypeName,
+          quantity: l.quantity,
+          unitPrice,
+          vatPct: vatPercent,
+          breadTypeId: l.breadTypeId,
+        });
+      }
     }
   }
 

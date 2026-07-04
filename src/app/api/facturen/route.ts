@@ -12,6 +12,8 @@ import { toResponse } from "@/server/lib/errors";
 import { createExactInvoice } from "@/server/lib/exact";
 import { buildInvoiceHtml } from "@/server/lib/invoiceHtml";
 import { buildPdfData, generateInvoicePdf } from "@/server/lib/invoicePdf";
+import { buildShopDeliveryLines } from "@/server/lib/winkelInvoicing";
+import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -108,6 +110,39 @@ export async function GET(req: Request) {
         orderIds: orders.map((o: any) => o.id),
       };
     });
+
+    // Shops (Winkel Delft, Winkel Den Haag, ...) never get OneOffOrder rows — their
+    // bread flows through WinkelTemplate/WinkelLog instead — so they need a separate
+    // "already invoiced" check (by customerId + period overlap, since there are no
+    // order rows to track via InvoiceOrder).
+    const shopNames = bakeryConfig.shops.map(s => s.name);
+    if (shopNames.length > 0) {
+      const alreadyInvoicedCustomerIds = new Set(invoiced.map((inv: any) => inv.customerId));
+      const shopCustomers = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
+      const breadTypes = await prisma.breadType.findMany({ where: { tenantId: tid, active: true } });
+
+      for (const shop of shopCustomers) {
+        if (alreadyInvoicedCustomerIds.has(shop.id)) continue;
+        const discount = shop.discountPercent ?? 0;
+        const dayLines = await buildShopDeliveryLines(tid, shop.name, start, end);
+        const lines = dayLines.flatMap(d => d.lines.map(l => {
+          const bt = breadTypes.find(b => b.id === l.breadTypeId);
+          const price = (bt?.price ? Number(bt.price) : 0) * (1 - discount / 100);
+          return { name: l.breadTypeName, quantity: l.quantity, unitPrice: price, lineTotal: price * l.quantity, date: d.date };
+        }));
+        if (lines.length === 0) continue;
+        const total = lines.reduce((s, l) => s + l.lineTotal, 0);
+        result.push({
+          customerId: shop.id,
+          customerName: shop.name,
+          customerEmail: shop.email,
+          discountPercent: discount,
+          lines,
+          total,
+          orderIds: [], // no real order rows to mark invoiced — see "already invoiced" check above
+        });
+      }
+    }
 
     return Response.json({ week, customers: result, invoiced: invoiced.map((inv: any) => ({ ...inv, orders: undefined })) });
   } catch (e) { return toResponse(e); }
