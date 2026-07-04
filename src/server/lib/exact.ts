@@ -131,6 +131,10 @@ export async function exactConnected(tenantId: string): Promise<boolean> {
   return !!row;
 }
 
+export async function disconnectExact(tenantId: string): Promise<void> {
+  await (prisma as any).exactToken.deleteMany({ where: { tenantId } });
+}
+
 // GLAccount GUIDs don't change during a process's lifetime — cache per division to avoid
 // an extra Exact API call on every invoice line.
 const glAccountGuidCache = new Map<string, string>();

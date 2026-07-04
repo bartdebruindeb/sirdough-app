@@ -66,6 +66,7 @@ export default function FacturatiePage() {
   const [sent, setSent] = useState<SentInvoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [exactConnected, setExactConnected] = useState<boolean | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Billing entities
@@ -226,7 +227,25 @@ export default function FacturatiePage() {
             {showEntities ? "Sluiten" : "⚙ BV's beheren"}
           </button>
           {exactConnected === false && <a href="/api/exact/connect" className="btn-secondary" style={{ fontSize: 12, textDecoration: "none", padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-subtle)" }}>Koppel Exact</a>}
-          {exactConnected === true && <span style={{ fontSize: 12, color: "var(--success)", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "4px 10px", borderRadius: 6 }}>✓ Exact</span>}
+          {exactConnected === true && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--success)", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "4px 10px", borderRadius: 6 }}>✓ Exact</span>
+              <button
+                disabled={disconnecting}
+                onClick={async () => {
+                  if (!confirm("Exact ontkoppelen? Facturen gaan daarna niet meer automatisch naar Exact totdat je opnieuw koppelt.")) return;
+                  setDisconnecting(true);
+                  await fetch("/api/exact/status", { method: "DELETE" }).catch(() => {});
+                  setDisconnecting(false);
+                  setExactConnected(false);
+                }}
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: "6px 12px" }}
+              >
+                {disconnecting ? "…" : "Ontkoppel"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
