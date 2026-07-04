@@ -308,6 +308,18 @@ export default function BezorgenPage() {
     setPakbonModal({ customerId: row.customerId, name: row.name, lines });
   }
 
+  // Marks delivered without generating/sending a pakbon at all — for deliveries where a
+  // packing slip isn't relevant (mainly internal winkel stock, but not restricted to it).
+  // Always confirmed, since this skips the pakbon-record entirely (harder to reconstruct after).
+  function markDeliveredNoPakbon(row: DeliveryRow) {
+    if (!confirm(`"${row.name}" als bezorgd markeren zonder pakbon te versturen?\n\nGebruik dit alleen als een pakbon niet relevant is (bijv. interne winkellevering). Weet je het zeker?`)) return;
+    const now = new Date().toISOString();
+    setDelivered(d => ({ ...d, [row.customerId]: true }));
+    setDeliveredTimes(t => ({ ...t, [row.customerId]: now }));
+    setBusOrder(prev => prev.filter(x => x !== row.customerId));
+    postStatus(row.customerId, "delivered");
+  }
+
   async function confirmPakbon() {
     if (!pakbonModal) return;
     const hasDeviation = pakbonModal.lines.some(l => l.deliveredQty !== l.orderedQty);
@@ -496,6 +508,9 @@ export default function BezorgenPage() {
                       <button onClick={() => openPakbonModal(row)}
                         style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, border: "2px solid var(--border-strong)", background: "transparent", cursor: "pointer", fontSize: 13, color: "var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}
                         title="Geleverd">✓</button>
+                      <button onClick={() => markDeliveredNoPakbon(row)}
+                        style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "1px solid var(--border)", background: "transparent", cursor: "pointer", fontSize: 10, color: "var(--text-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title="Bezorgd markeren zonder pakbon (bijv. interne winkellevering)">⊘</button>
                       <button onClick={() => removeFromBus(row.customerId)}
                         style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: "none", background: "none", cursor: "pointer", fontSize: 15, color: "var(--text-subtle)" }}
                         title="Verwijder">×</button>
