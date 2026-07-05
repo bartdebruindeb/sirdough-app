@@ -5,8 +5,10 @@ import { sendOrderReminder } from "@/server/lib/email";
 // Call daily at 00:00 from VPS cron:
 //   0 0 * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://yourdomain.nl/api/cron/order-reminder
 export async function GET(req: Request) {
+  // Fail closed: if CRON_SECRET isn't configured, refuse rather than run open —
+  // otherwise anyone could trigger reminder emails to every customer.
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("x-cron-secret") !== secret) {
+  if (!secret || req.headers.get("x-cron-secret") !== secret) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

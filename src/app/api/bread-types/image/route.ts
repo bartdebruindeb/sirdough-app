@@ -16,6 +16,7 @@ import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
+import { readImageUpload } from "@/server/lib/imageUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +41,8 @@ export async function POST(req: NextRequest) {
     const file = form.get("file") as File | null;
     if (!file) return Response.json({ error: "no file" }, { status: 400 });
 
-    // Accept only images
-    if (!file.type.startsWith("image/")) return Response.json({ error: "not an image" }, { status: 400 });
+    // Validate size + real image content (not just the client-set MIME type).
+    const buf = await readImageUpload(file);
 
     // Unique filename per upload so the URL changes and browsers can't serve a stale
     // cached response — see the file-level comment above.
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest) {
       fs.unlink(path.join(process.cwd(), "public", "brood", bt.imageFile), () => {});
     }
 
-    const buf = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(dest, buf);
 
     // Best-effort DB update (field may not exist until prisma generate runs)

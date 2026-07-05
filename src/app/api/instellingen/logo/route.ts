@@ -9,6 +9,7 @@ import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
 import { toResponse } from "@/server/lib/errors";
+import { readImageUpload } from "@/server/lib/imageUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,11 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("file") as File | null;
     if (!file) return Response.json({ error: "no file" }, { status: 400 });
-    if (!file.type.startsWith("image/")) return Response.json({ error: "not an image" }, { status: 400 });
+
+    // Validate size + real image content (not just the client-set MIME type).
+    const buf = await readImageUpload(file);
 
     const dest = path.join(process.cwd(), "public", "logo.jpg");
-    const buf = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(dest, buf);
 
     return Response.json({ ok: true });

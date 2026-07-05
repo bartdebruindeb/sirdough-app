@@ -5,17 +5,19 @@ import { prisma } from "@/server/config/db";
 import { Resend } from "resend";
 import { toResponse } from "@/server/lib/errors";
 import { deleteExactInvoice } from "@/server/lib/exact";
+import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
   const customerId = (session?.user as any)?.customerId;
   if (!role && !customerId) return new Response("Unauthorized", { status: 401 });
 
+  const tid = await resolveTenantId(getTenantFromRequest(req));
   const invoice = await (prisma as any).invoice.findUnique({ where: { id: params.id } });
-  if (!invoice) return new Response("Not found", { status: 404 });
+  if (!invoice || invoice.tenantId !== tid) return new Response("Not found", { status: 404 });
 
   // Owner can see any invoice; customer can only see their own
   if (role !== "OWNER" && role !== "BAKKER" && invoice.customerId !== customerId) {
@@ -33,16 +35,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   });
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     if ((session?.user as any)?.role !== "OWNER") return new Response("Unauthorized", { status: 401 });
 
+    const tid = await resolveTenantId(getTenantFromRequest(req));
     const invoice = await (prisma as any).invoice.findUnique({
       where: { id: params.id },
       include: { customer: { select: { name: true, email: true } } },
     });
-    if (!invoice) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+    if (!invoice || invoice.tenantId !== tid) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
     if (!invoice.pdfData) return Response.json({ error: "NO_PDF" }, { status: 400 });
 
     const to = invoice.customer?.email;
@@ -77,13 +80,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   } catch (e) { return toResponse(e); }
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     if ((session?.user as any)?.role !== "OWNER") return new Response("Unauthorized", { status: 401 });
 
+    const tid = await resolveTenantId(getTenantFromRequest(req));
     const invoice = await (prisma as any).invoice.findUnique({ where: { id: params.id } });
-    if (!invoice) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+    if (!invoice || invoice.tenantId !== tid) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
 
     // Only draft (unprocessed) invoices can be deleted in Exact — a rejection here
     // (e.g. already booked) blocks the local delete too, so the two stay in sync

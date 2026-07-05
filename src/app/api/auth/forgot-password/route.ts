@@ -1,12 +1,18 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/config/db";
 import { sendPasswordReset } from "@/server/lib/email";
+import { isRateLimited, getClientIp } from "@/server/lib/ratelimit";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // Throttle so this can't be used to email-bomb a known address or flood token rows.
+    if (isRateLimited(`forgot:${getClientIp(req)}`, 5, 15 * 60 * 1000)) {
+      return Response.json({ ok: true }); // opaque: same body as success, never reveal throttling
+    }
+
     const { email } = await req.json();
     if (!email || typeof email !== "string") {
       return Response.json({ ok: true }); // don't reveal anything

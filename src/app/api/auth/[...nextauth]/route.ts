@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import { authOptions } from "@/server/config/auth";
-import { isRateLimited } from "@/server/lib/ratelimit";
+import { isRateLimited, getClientIp } from "@/server/lib/ratelimit";
 
 const handler = NextAuth(authOptions);
 
@@ -11,10 +11,7 @@ export { handler as GET };
 export async function POST(req: Request, ctx: unknown) {
   const url = new URL(req.url);
   if (url.pathname.endsWith("/callback/credentials")) {
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
-      req.headers.get("x-real-ip") ??
-      "unknown";
+    const ip = getClientIp(req);
 
     if (isRateLimited(ip, 10, 5 * 60 * 1000)) {
       return Response.json(

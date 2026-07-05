@@ -39,11 +39,19 @@ export async function resolveTenantId(ctx: TenantContext): Promise<string> {
   const byId = await prisma.tenant.findUnique({ where: { id: ctx.tenantId } });
   if (byId) return byId.id;
 
-  // Last resort for fresh dev databases with no TENANT_SLUG set yet
-  const first = await prisma.tenant.findFirst();
-  if (first) return first.id;
+  // Last resort: only safe when the DB holds exactly one tenant — then there's no
+  // ambiguity and nothing to leak, so "the only tenant" is the right answer (this is
+  // today's single-bakery deployment). The moment a SECOND tenant exists, refuse to
+  // guess: silently grabbing the first would serve one bakery's data to another.
+  // Set TENANT_SLUG per deployment before going multi-tenant on shared infrastructure.
+  const tenantCount = await prisma.tenant.count();
+  if (tenantCount === 1) {
+    const only = await prisma.tenant.findFirst();
+    if (only) return only.id;
+  }
 
   throw new Error(
-    `No tenant found for "${ctx.tenantId}". Set TENANT_SLUG in .env to match a Tenant.slug in the database, or run the seed script.`
+    `Cannot resolve tenant "${ctx.tenantId}" and the database holds ${tenantCount} tenants. ` +
+    `Set TENANT_SLUG in .env to match a Tenant.slug, or run the seed script.`
   );
 }

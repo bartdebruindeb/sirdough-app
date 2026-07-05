@@ -1,11 +1,17 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/config/db";
+import { isRateLimited, getClientIp } from "@/server/lib/ratelimit";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // Throttle token submissions so the reset endpoint can't be hammered.
+    if (isRateLimited(`reset:${getClientIp(req)}`, 10, 15 * 60 * 1000)) {
+      return Response.json({ error: "Te veel pogingen. Wacht even en probeer opnieuw." }, { status: 429 });
+    }
+
     const { token, password } = await req.json();
     if (!token || !password || typeof token !== "string" || typeof password !== "string") {
       return Response.json({ error: "Ongeldige aanvraag." }, { status: 400 });
