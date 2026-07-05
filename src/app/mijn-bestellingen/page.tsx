@@ -343,20 +343,26 @@ export default function MijnBestellingenPage() {
             // Within the current week, hide days already passed; other weeks show their full range.
             const showFrom = weekOffset === 0 ? todayUTC : monStr;
 
-            type WeekItem = { date: string; lines: { name: string; quantity: number; price: number | null }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null };
+            type WeekItem = { date: string; lines: { name: string; quantity: number; price: number | null }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null; deviationNote: string | null };
             const weekItems: WeekItem[] = [];
+
+            // A recurring delivery that got adjusted by the driver (see the pakbon flow in
+            // Bezorgen) is recorded as a real OneOffOrder with a deviation note — once that
+            // exists for a date, it reflects reality better than the plain computed
+            // occurrence, so skip the computed one for that date.
+            const oneOffDates = new Set([...upcoming, ...pastOrders].map(o => o.deliveryDate));
 
             recurring.filter(o => o.active).forEach(o => {
               const d = new Date(monStr+"T12:00:00Z");
               d.setUTCDate(d.getUTCDate() + ((o.weekday - 1 + 7) % 7));
               const dateStr = d.toISOString().slice(0,10);
-              if (dateStr >= showFrom && dateStr <= sunStr) {
+              if (dateStr >= showFrom && dateStr <= sunStr && !oneOffDates.has(dateStr)) {
                 const skipped = o.exceptions.some(e => e.date === dateStr && !e.active);
                 if (!skipped && o.lines.some(l => l.quantity > 0)) {
                   weekItems.push({
                     date: dateStr,
                     lines: o.lines.filter(l => l.quantity > 0).map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
-                    source: "vast", locked: !isEditable(dateStr), pickup: null,
+                    source: "vast", locked: !isEditable(dateStr), pickup: null, deviationNote: null,
                   });
                 }
               }
@@ -368,6 +374,7 @@ export default function MijnBestellingenPage() {
                   lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
                   source: "eenmalig", locked: !isEditable(o.deliveryDate),
                   pickup: o.pickupLocation ?? null,
+                  deviationNote: o.notes && o.notes.startsWith("Afwijking bezorging") ? o.notes : null,
                 });
               }
             });
@@ -393,17 +400,19 @@ export default function MijnBestellingenPage() {
                     {weekItems.map((item, i) => {
                       const total = item.lines.reduce((s, l) => l.price != null ? s + l.price * l.quantity * (1 - discountPercent/100) : s, 0);
                       const hasPrice = item.lines.some(l => l.price != null);
-                      // Purely date-based, regardless of actual delivery check-in status —
-                      // a simple "already happened vs. still coming" signal for this overview.
-                      const received = item.date <= todayUTC;
+                      // Real confirmation from Bezorgen (DeliveryStatus.deliveredAt), not a
+                      // date guess — only actually "Ontvangen" once the driver checks it in.
+                      const deliveredTime = deliveryTimeMap[item.date];
+                      const received = !!deliveredTime;
                       return (
-                        <div key={i} className="card" style={{ padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: 12, opacity: received ? 0.75 : 1 }}>
+                        <div key={i} className="card" style={{ padding: "0.75rem 1.25rem", display: "flex", flexDirection: "column", gap: 6, opacity: received ? 0.75 : 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <div style={{ minWidth: 80 }}>
                             <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
                               {new Date(item.date+"T12:00:00Z").toLocaleDateString("nl-NL",{weekday:"short",day:"numeric",month:"short"})}
                             </p>
                             <span style={{ fontSize: 10, color: received ? "var(--success)" : (item.locked ? "var(--danger)" : "var(--success)") }}>
-                              {received ? "✓ Ontvangen" : (item.locked ? "Aanpassen niet meer mogelijk" : timeUntilCutoff(item.date))}
+                              {received ? `✓ Ontvangen ${deliveredTime}` : (item.locked ? "Aanpassen niet meer mogelijk" : timeUntilCutoff(item.date))}
                             </span>
                           </div>
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flex: 1 }}>
@@ -426,6 +435,12 @@ export default function MijnBestellingenPage() {
                               </span>
                             )}
                           </div>
+                        </div>
+                        {item.deviationNote && (
+                          <div style={{ fontSize: 11, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px" }}>
+                            ⚠ Hoeveelheid aangepast bij bezorging — {item.deviationNote.replace("Afwijking bezorging: ", "")}
+                          </div>
+                        )}
                         </div>
                       );
                     })}
