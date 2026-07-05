@@ -316,7 +316,18 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       const deliveredOrdered = geocoded
         .filter(g => g.stop.deliveredAt)
         .sort((a, b) => (a.stop.deliveredAt ?? "").localeCompare(b.stop.deliveredAt ?? ""));
-      const routePoints: [number, number][] = [BAKERY, ...deliveredOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number]), ...inBusOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number])];
+      // Stops not yet added to the bus at all have no real driving order yet — sort by
+      // city then name just so the "still to drive" line is stable, not a claim of the
+      // actual final route.
+      const pendingOrdered = geocoded
+        .filter(g => !g.stop.inBusAt && !g.stop.deliveredAt)
+        .sort((a, b) => (a.stop.city ?? "").localeCompare(b.stop.city ?? "") || a.stop.name.localeCompare(b.stop.name));
+      const routePoints: [number, number][] = [
+        BAKERY,
+        ...deliveredOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number]),
+        ...inBusOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number]),
+        ...pendingOrdered.map(g => [g.coord.lat, g.coord.lng] as [number, number]),
+      ];
 
       // Fetch all route segments in parallel (cached)
       const routeSegments = await Promise.all(
@@ -330,9 +341,10 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
         const seg = routeSegments[i];
         const isDoneSegment    = i < deliveredOrdered.length;
         const isCurrentSegment = i === deliveredOrdered.length;
-        const color = isDoneSegment ? "#16a34a" : isCurrentSegment ? "#7F77DD" : "#9ca3af";
+        // Done = green, next stop to drive = red, everything still further out = grey.
+        const color = isDoneSegment ? "#16a34a" : isCurrentSegment ? "#dc2626" : "#9ca3af";
         const weight = isCurrentSegment ? 3.5 : isDoneSegment ? 3 : 2;
-        const opacity = isCurrentSegment || isDoneSegment ? 0.8 : 0.45;
+        const opacity = isCurrentSegment || isDoneSegment ? 0.8 : 0.6;
         if (seg) {
           L.polyline(seg, { color, weight, opacity, dashArray: isCurrentSegment ? "10 5" : undefined }).addTo(map);
         } else {
