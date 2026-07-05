@@ -340,8 +340,9 @@ export default function MijnBestellingenPage() {
             const thisMonStr = (() => { const d = new Date(todayUTC+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() - (isoDay - 1)); return d.toISOString().slice(0,10); })();
             const monStr = (() => { const d = new Date(thisMonStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + weekOffset*7); return d.toISOString().slice(0,10); })();
             const sunStr = (() => { const d = new Date(monStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10); })();
-            // Within the current week, hide days already passed; other weeks show their full range.
-            const showFrom = weekOffset === 0 ? todayUTC : monStr;
+            // Show the full Mon–Sun range for every week, including the current one — past
+            // days now show their real delivery status/deviation note instead of just hiding.
+            const showFrom = monStr;
 
             type WeekItem = { date: string; lines: { name: string; quantity: number; price: number | null }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null; deviationNote: string | null };
             const weekItems: WeekItem[] = [];
