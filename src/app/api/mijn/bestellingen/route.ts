@@ -99,13 +99,15 @@ export async function GET(req: Request) {
       price: b.price ? Number(b.price) : null,
     }));
 
-    // Build delivery time map: dateStr → "HH:MM"
+    // Build delivery time map: dateStr → "HH:MM" in Amsterdam local time (this runs
+    // server-side, so getUTCHours()/getUTCMinutes() would show raw UTC/GMT instead of
+    // Dutch wall-clock time — Intl's timeZone option handles the CET/CEST DST switch).
     const deliveryTimeMap: Record<string, string> = {};
+    const timeFmt = new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", hour12: false });
     for (const ds of deliveryStatuses) {
       if (ds.deliveredAt) {
         const dateStr = toDateStr(ds.date);
-        const t = new Date(ds.deliveredAt);
-        deliveryTimeMap[dateStr] = `${String(t.getUTCHours()).padStart(2,"0")}:${String(t.getUTCMinutes()).padStart(2,"0")}`;
+        deliveryTimeMap[dateStr] = timeFmt.format(new Date(ds.deliveredAt));
       }
     }
 
