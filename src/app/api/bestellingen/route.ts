@@ -37,8 +37,12 @@ export async function GET(req: Request) {
       orderBy: { deliveryDate: "asc" },
     });
 
-    const customers = await prisma.customer.findMany({
+    // Include delivery addresses so staff can pick which one an order ships to when a
+    // customer has several branches billed under the same KvK (see mijn-account's
+    // "Bezorgadressen" — this is the staff-side equivalent for placing an order for them).
+    const customers = await (prisma as any).customer.findMany({
       where: { tenantId: tid, active: true },
+      include: { deliveryAddresses: { orderBy: [{ isDefault: "desc" }, { id: "asc" }] } },
       orderBy: { name: "asc" },
     });
 
@@ -64,6 +68,7 @@ const CreateOrderSchema = z.object({
   deliveryDate: z.string(),
   notes: z.string().optional(),
   pickupLocation: z.string().optional(),
+  deliveryAddressId: z.string().optional(),
   lines: z.array(z.object({
     breadTypeId: z.string(),
     quantity: z.number().int().positive(),
@@ -78,6 +83,16 @@ export async function POST(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const input = await parseJson(req, CreateOrderSchema);
+
+    // A chosen delivery address must actually belong to this customer — otherwise an
+    // order could end up pointing at another customer's address.
+    if (input.deliveryAddressId) {
+      const addr = await (prisma as any).customerAddress.findFirst({
+        where: { id: input.deliveryAddressId, customerId: input.customerId },
+      });
+      if (!addr) return Response.json({ message: "Bezorgadres hoort niet bij deze klant." }, { status: 400 });
+    }
+
     const order = await (prisma as any).oneOffOrder.create({
       data: {
         tenantId: tid,
@@ -85,6 +100,7 @@ export async function POST(req: Request) {
         deliveryDate: new Date(input.deliveryDate + "T12:00:00Z"),
         notes: input.notes ?? null,
         pickupLocation: input.pickupLocation ?? null,
+        deliveryAddressId: input.deliveryAddressId ?? null,
         lines: {
           create: input.lines.map(l => ({
             breadTypeId: l.breadTypeId,

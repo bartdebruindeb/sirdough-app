@@ -11,7 +11,8 @@ const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zater
 function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
 
 type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null; price?: number | null };
-type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null; discountPercent?: number };
+type CustomerAddress = { id: string; label: string; street: string; postalCode: string; city: string; isDefault: boolean };
+type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null; discountPercent?: number; deliveryAddresses?: CustomerAddress[] };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
 type LogboekEntry = { type: "eenmalig"|"vast"|"winkel"; date: string; customerName: string; customerId: string; city: string|null; notes: string|null; lines: { breadTypeId: string; breadTypeName: string; quantity: number }[] };
@@ -50,6 +51,7 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
+  const [deliveryAddressId, setDeliveryAddressId] = useState("");
   const [qty, setQty] = useState<Record<string,number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -69,8 +71,17 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
   }
 
   const customer = customers.find(c => c.id === customerId);
+  const addresses = customer?.deliveryAddresses ?? [];
   const total = calcTotal(qty, breadTypes, customer?.discountPercent ?? 0);
   const belowMin = !pickupLocation && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount;
+
+  // Pick a sensible default delivery address whenever the customer changes: their
+  // default one if they have several, otherwise clear it (nothing to choose from,
+  // or the customer's single primary address is used as before).
+  useEffect(() => {
+    setDeliveryAddressId(addresses.length > 1 ? (addresses.find(a => a.isDefault)?.id ?? addresses[0].id) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
 
   async function save(bypassWarning = false) {
     if (!customerId) { setError("Selecteer eerst een klant."); return; }
@@ -96,11 +107,12 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
       method: "POST", headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({ customerId, deliveryDate: date, notes: notes||undefined,
         pickupLocation: pickupLocation || undefined,
+        deliveryAddressId: (!pickupLocation && deliveryAddressId) ? deliveryAddressId : undefined,
         lines: Object.entries(qty).filter(([,q])=>q>0).map(([breadTypeId,quantity])=>({breadTypeId,quantity})) }),
     });
     setSaving(false);
     if (res.ok) {
-      setQty({}); setNotes(""); setPickupLocation(""); onSaved();
+      setQty({}); setNotes(""); setPickupLocation(""); setDeliveryAddressId(""); onSaved();
       setSuccess(`✓ Bestelling voor ${customerName} toegevoegd.`);
       setTimeout(() => setSuccess(""), 4000);
     }
@@ -146,6 +158,20 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
           </button>
         ))}
       </div>
+      {/* Bezorgadres: only relevant for delivery, and only when this customer has more
+          than one address on file (several branches billed under one KvK — see
+          mijn-account's "Bezorgadressen"). With zero or one address there's nothing to
+          choose, so the customer's single primary address is used as before. */}
+      {!pickupLocation && addresses.length > 1 && (
+        <div style={{ marginBottom: 10 }}>
+          <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Bezorgadres</label>
+          <select value={deliveryAddressId} onChange={e=>setDeliveryAddressId(e.target.value)} style={{ ...inp, maxWidth: 360 }}>
+            {addresses.map(a => (
+              <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}{a.isDefault ? " (standaard)" : ""}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px,1fr))", gap:8, marginBottom:10 }}>
         {breadTypes.filter(bt=>bt.customerOrderable).map(bt=>{
           const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];

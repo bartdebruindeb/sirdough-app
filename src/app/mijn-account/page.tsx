@@ -90,22 +90,36 @@ function AddressRow({ address, customerId, onChanged }: { address: AddressT; cus
   const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">("found");
   const [isDefault, setIsDefault] = useState(address.isDefault);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  async function doLookup() {
-    if (!postcode.trim() || !huisnummer.trim()) return;
+  // Returns the resolved street/city, doing the PDOK lookup first if it hasn't
+  // succeeded yet — so clicking "Opslaan" always does something instead of silently
+  // sitting there disabled when someone forgot to click "Zoek adres" first (or the
+  // postcode/huisnummer they'd already looked up got edited afterwards).
+  async function resolveAddress(): Promise<{ straat: string; stad: string } | null> {
+    if (lookupStatus === "found" && postcode.trim() && huisnummer.trim()) return { straat: foundStraat, stad: foundStad };
+    if (!postcode.trim() || !huisnummer.trim()) { setLookupStatus("fail"); return null; }
     setLookupStatus("looking");
     const result = await pdokLookup(postcode, huisnummer, huisletter);
-    if (result) { setFoundStraat(`${result.straat} ${huisnummer}${huisletter}`.trim()); setFoundStad(result.stad); setLookupStatus("found"); }
-    else setLookupStatus("fail");
+    if (!result) { setLookupStatus("fail"); return null; }
+    const straat = `${result.straat} ${huisnummer}${huisletter}`.trim();
+    setFoundStraat(straat); setFoundStad(result.stad); setLookupStatus("found");
+    return { straat, stad: result.stad };
   }
+  async function doLookup() { await resolveAddress(); }
 
   async function save() {
+    setSaveError("");
+    const resolved = await resolveAddress();
+    if (!resolved) { setSaveError("Adres niet gevonden. Controleer postcode en huisnummer."); return; }
     setSaving(true);
-    await fetch(`/api/mijn/adressen?id=${address.id}&customerId=${customerId}`, {
+    const res = await fetch(`/api/mijn/adressen?id=${address.id}&customerId=${customerId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: labelVal, street: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad, isDefault }),
+      body: JSON.stringify({ label: labelVal, street: resolved.straat, postalCode: postcode.toUpperCase(), city: resolved.stad, isDefault }),
     });
-    setSaving(false); setEditing(false); onChanged();
+    setSaving(false);
+    if (res.ok) { setEditing(false); onChanged(); }
+    else setSaveError("Opslaan mislukt. Probeer het opnieuw.");
   }
   async function remove() {
     if (!confirm(`Adres "${address.label}" verwijderen?`)) return;
@@ -138,9 +152,10 @@ function AddressRow({ address, customerId, onChanged }: { address: AddressT; cus
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginBottom: 10 }}>
         <input type="checkbox" checked={isDefault} onChange={e => setIsDefault(e.target.checked)} /> Standaard bezorgadres
       </label>
+      {saveError && <p style={{ color: "var(--danger)", fontSize: 12, margin: "0 0 8px" }}>{saveError}</p>}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => setEditing(false)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
-        <button onClick={save} disabled={saving || lookupStatus !== "found"} className="btn-primary" style={{ fontSize: 12 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
+        <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 12 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
       </div>
     </div>
   );
@@ -155,21 +170,34 @@ function NewAddressForm({ customerId, onAdded, onCancel }: { customerId: string;
   const [foundStad, setFoundStad] = useState("");
   const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">("idle");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  async function doLookup() {
-    if (!postcode.trim() || !huisnummer.trim()) return;
+  // Same as AddressRow.resolveAddress: run the lookup if it hasn't succeeded yet, so
+  // "Toevoegen" always does something rather than sitting disabled and silent.
+  async function resolveAddress(): Promise<{ straat: string; stad: string } | null> {
+    if (lookupStatus === "found" && postcode.trim() && huisnummer.trim()) return { straat: foundStraat, stad: foundStad };
+    if (!postcode.trim() || !huisnummer.trim()) { setLookupStatus("fail"); return null; }
     setLookupStatus("looking");
     const result = await pdokLookup(postcode, huisnummer, huisletter);
-    if (result) { setFoundStraat(`${result.straat} ${huisnummer}${huisletter}`.trim()); setFoundStad(result.stad); setLookupStatus("found"); }
-    else setLookupStatus("fail");
+    if (!result) { setLookupStatus("fail"); return null; }
+    const straat = `${result.straat} ${huisnummer}${huisletter}`.trim();
+    setFoundStraat(straat); setFoundStad(result.stad); setLookupStatus("found");
+    return { straat, stad: result.stad };
   }
+  async function doLookup() { await resolveAddress(); }
+
   async function save() {
+    setSaveError("");
+    const resolved = await resolveAddress();
+    if (!resolved) { setSaveError("Adres niet gevonden. Controleer postcode en huisnummer."); return; }
     setSaving(true);
-    await fetch(`/api/mijn/adressen?customerId=${customerId}`, {
+    const res = await fetch(`/api/mijn/adressen?customerId=${customerId}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: labelVal || "Locatie", street: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad, isDefault: false }),
+      body: JSON.stringify({ label: labelVal || "Locatie", street: resolved.straat, postalCode: postcode.toUpperCase(), city: resolved.stad, isDefault: false }),
     });
-    setSaving(false); onAdded();
+    setSaving(false);
+    if (res.ok) onAdded();
+    else setSaveError("Toevoegen mislukt. Probeer het opnieuw.");
   }
 
   return (
@@ -179,9 +207,10 @@ function NewAddressForm({ customerId, onAdded, onCancel }: { customerId: string;
       <AddressLookupFields postcode={postcode} setPostcode={setPostcode} huisnummer={huisnummer} setHuisnummer={setHuisnummer}
         huisletter={huisletter} setHuisletter={setHuisletter} lookupStatus={lookupStatus} setLookupStatus={setLookupStatus}
         foundStraat={foundStraat} foundStad={foundStad} onLookup={doLookup} />
+      {saveError && <p style={{ color: "var(--danger)", fontSize: 12, margin: "0 0 8px" }}>{saveError}</p>}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={onCancel} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
-        <button onClick={save} disabled={saving || lookupStatus !== "found"} className="btn-primary" style={{ fontSize: 12 }}>{saving ? "Toevoegen..." : "Toevoegen"}</button>
+        <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 12 }}>{saving ? "Toevoegen..." : "Toevoegen"}</button>
       </div>
     </div>
   );
