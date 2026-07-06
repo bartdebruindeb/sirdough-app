@@ -21,7 +21,7 @@ const PICKUP_COORDS: Record<string, { lat: number; lng: number; label: string }>
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
-type RecurringOrder = { id: string; weekday: number; active: boolean; pickupLocation?: string | null; lines: RecurringLine[]; exceptions: RecurringException[] };
+type RecurringOrder = { id: string; weekday: number; active: boolean; pickupLocation?: string | null; notes?: string | null; lines: RecurringLine[]; exceptions: RecurringException[] };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null; pickupLocation?: string | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
@@ -133,6 +133,57 @@ function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate 
   );
 }
 
+// Calendar date picker: available dates are highlighted and clickable, everything else
+// (past, closed weekday, deadline passed) is dimmed and disabled. Weekend days are styled
+// exactly like weekdays — availability comes only from isAvailable, no weekend rule.
+const DOW = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+function OrderDatePicker({ value, onChange, isAvailable }: {
+  value: string;
+  onChange: (d: string) => void;
+  isAvailable: (dateStr: string) => boolean;
+}) {
+  const todayMonth = new Date().toISOString().slice(0, 7);
+  const [view, setView] = useState<string>(() => (value ? value.slice(0, 7) : todayMonth));
+  const [y, m] = view.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const firstDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay() || 7; // 1=Mon..7=Sun
+  const cells: (number | null)[] = [...Array(firstDow - 1).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("nl-NL", { month: "long", year: "numeric", timeZone: "UTC" });
+  const canPrev = view > todayMonth;
+  const shift = (delta: number) => setView(new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7));
+
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, background: "var(--surface)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <button type="button" onClick={() => canPrev && shift(-1)} disabled={!canPrev} className="btn-secondary" style={{ fontSize: 12, padding: "3px 9px", opacity: canPrev ? 1 : 0.4 }}>‹</button>
+        <span style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize" }}>{monthLabel}</span>
+        <button type="button" onClick={() => shift(1)} className="btn-secondary" style={{ fontSize: 12, padding: "3px 9px" }}>›</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+        {DOW.map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "var(--text-subtle)", padding: "2px 0" }}>{d}</div>)}
+        {cells.map((day, i) => {
+          if (day === null) return <div key={`b${i}`} />;
+          const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const available = isAvailable(dateStr);
+          const selected = dateStr === value;
+          return (
+            <button key={dateStr} type="button" disabled={!available} onClick={() => onChange(dateStr)}
+              style={{
+                aspectRatio: "1", borderRadius: 7, fontSize: 13, cursor: available ? "pointer" : "default",
+                border: selected ? "2px solid var(--accent)" : "1px solid transparent",
+                background: selected ? "var(--accent)" : available ? "var(--accent-light)" : "transparent",
+                color: selected ? "#fff" : available ? "var(--accent)" : "var(--text-subtle)",
+                opacity: available ? 1 : 0.35, fontWeight: available ? 600 : 400,
+              }}>
+              {day}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Delivery/pickup chooser with a live map beside it: click a location and the map on
 // the right re-renders that spot's geolocation + address. Used in every order form
 // (new/edit one-off, new/edit recurring).
@@ -202,6 +253,7 @@ export default function MijnBestellingenPage() {
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [editRecQty, setEditRecQty]     = useState<Record<string,number>>({});
   const [editRecPickup, setEditRecPickup] = useState<string>("");
+  const [editRecNotes, setEditRecNotes] = useState("");
   const [savingRec, setSavingRec]       = useState(false);
   const [savedRecAppliesFrom, setSavedRecAppliesFrom] = useState<string | null>(null);
 
@@ -210,6 +262,7 @@ export default function MijnBestellingenPage() {
   const [newRecWeekday, setNewRecWeekday] = useState(1);
   const [newRecQty, setNewRecQty]       = useState<Record<string,number>>({});
   const [newRecPickup, setNewRecPickup] = useState<string>("");
+  const [newRecNotes, setNewRecNotes]   = useState("");
   const [savingNewRec, setSavingNewRec] = useState(false);
 
   // One-off edit
@@ -273,7 +326,7 @@ export default function MijnBestellingenPage() {
   function startEditRec(o: RecurringOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditRecQty(q); setEditRecPickup(o.pickupLocation ?? ""); setEditingRecId(o.id);
+    setEditRecQty(q); setEditRecPickup(o.pickupLocation ?? ""); setEditRecNotes(o.notes ?? ""); setEditingRecId(o.id);
   }
   async function saveRec(o: RecurringOrder) {
     setSavingRec(true);
@@ -283,6 +336,7 @@ export default function MijnBestellingenPage() {
         recurringOrderId: o.id,
         lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editRecQty[bt.id] ?? 0 })),
         pickupLocation: editRecPickup || null,
+        notes: editRecNotes || null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -319,9 +373,10 @@ export default function MijnBestellingenPage() {
         weekday: newRecWeekday,
         lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: newRecQty[bt.id] ?? 0 })),
         pickupLocation: newRecPickup || undefined,
+        notes: newRecNotes || undefined,
       }),
     });
-    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); scheduleEmail(); load();
+    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); setNewRecNotes(""); scheduleEmail(); load();
   }
 
   // One-off
@@ -637,6 +692,10 @@ export default function MijnBestellingenPage() {
                     {isEditing && <>
                       <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                       <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
+                        <input value={editRecNotes} onChange={e => setEditRecNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
+                      </div>
+                      <div style={{ marginTop: 10 }}>
                         <PickupAndMap value={editRecPickup} onChange={setEditRecPickup} mapTarget={mapTargetFor} />
                       </div>
                       {(() => {
@@ -693,6 +752,10 @@ export default function MijnBestellingenPage() {
                       {availableWeekdays.map(d => <option key={d} value={d}>{WEEKDAYS[d]}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
+                    <input value={newRecNotes} onChange={e => setNewRecNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
+                  </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                   <PickupAndMap value={newRecPickup} onChange={setNewRecPickup} mapTarget={mapTargetFor} />
                   {(() => {
@@ -720,17 +783,13 @@ export default function MijnBestellingenPage() {
 
             {showNewOO && (
               <div className="card" style={{ padding: "1.25rem", marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdatum</label>
-                    <input type="date" value={newDate} min={today}
-                      onChange={e => { setNewDate(e.target.value); setDateError(validateDate(e.target.value)); }}
-                      style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                    <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
-                  </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdatum</label>
+                  <OrderDatePicker value={newDate} onChange={d => { setNewDate(d); setDateError(validateDate(d)); }} isAvailable={dateStr => !validateDate(dateStr)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
+                  <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
                 </div>
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
                 <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />

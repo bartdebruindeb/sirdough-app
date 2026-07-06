@@ -129,7 +129,7 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
         </div>
         <div>
           <label style={{ fontSize:11, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Opmerkingen</label>
-          <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inp} />
+          <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inp} />
         </div>
       </div>
       {/* Pickup / delivery toggle */}

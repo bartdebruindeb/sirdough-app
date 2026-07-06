@@ -187,6 +187,7 @@ const UpdateRecurringSchema = z.object({
   recurringOrderId: z.string(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
   pickupLocation: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -287,8 +288,14 @@ export async function PATCH(req: Request) {
           });
         }
       }
-      if (input.pickupLocation !== undefined) {
-        await (prisma as any).recurringOrder.update({ where: { id: order.id }, data: { pickupLocation: input.pickupLocation } });
+      if (input.pickupLocation !== undefined || input.notes !== undefined) {
+        await (prisma as any).recurringOrder.update({
+          where: { id: order.id },
+          data: {
+            ...(input.pickupLocation !== undefined && { pickupLocation: input.pickupLocation }),
+            ...(input.notes !== undefined && { notes: input.notes }),
+          },
+        });
       }
 
       // No immediate confirmation email — the client schedules a debounced summary instead.
@@ -324,6 +331,7 @@ const CreateRecurringSchema = z.object({
   weekday: z.number().int().min(1).max(7),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
   pickupLocation: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 // PUT /api/mijn/bestellingen — create a new recurring order for a weekday
@@ -345,6 +353,7 @@ export async function PUT(req: Request) {
         weekday: input.weekday,
         active: true,
         pickupLocation: input.pickupLocation ?? null,
+        notes: input.notes ?? null,
         lines: {
           create: input.lines.filter(l => l.quantity > 0),
         },
