@@ -256,6 +256,7 @@ export default function MijnBestellingenPage() {
   const [editRecNotes, setEditRecNotes] = useState("");
   const [savingRec, setSavingRec]       = useState(false);
   const [savedRecAppliesFrom, setSavedRecAppliesFrom] = useState<string | null>(null);
+  const [editRecError, setEditRecError] = useState("");
 
   // New recurring
   const [showNewRec, setShowNewRec]     = useState(false);
@@ -264,6 +265,7 @@ export default function MijnBestellingenPage() {
   const [newRecPickup, setNewRecPickup] = useState<string>("");
   const [newRecNotes, setNewRecNotes]   = useState("");
   const [savingNewRec, setSavingNewRec] = useState(false);
+  const [newRecError, setNewRecError]   = useState("");
 
   // One-off edit
   const [editingOOId, setEditingOOId]   = useState<string | null>(null);
@@ -280,6 +282,7 @@ export default function MijnBestellingenPage() {
   const [newNotes, setNewNotes]         = useState("");
   const [savingNew, setSavingNew]       = useState(false);
   const [dateError, setDateError]       = useState("");
+  const [newOOError, setNewOOError]     = useState("");
 
   // New one-off: pickup
   const [newPickup, setNewPickup]       = useState<string>(""); // "" = delivery, else location id
@@ -351,9 +354,19 @@ export default function MijnBestellingenPage() {
   function startEditRec(o: RecurringOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditRecQty(q); setEditRecPickup(o.pickupLocation ?? ""); setEditRecNotes(o.notes ?? ""); setEditingRecId(o.id);
+    setEditRecQty(q); setEditRecPickup(o.pickupLocation ?? ""); setEditRecNotes(o.notes ?? ""); setEditRecError(""); setEditingRecId(o.id);
   }
   async function saveRec(o: RecurringOrder) {
+    // Checked only at the moment of saving, not continuously while adjusting the
+    // basket — the message should disappear the instant it no longer applies, not
+    // linger as a standing warning.
+    const isPickup = !!editRecPickup;
+    const total = calcBasketTotal(editRecQty, breadTypes, discountPercent);
+    if (!isPickup && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount) {
+      setEditRecError(`Bestelling is lager dan de minimale bestelwaarde (€ ${minDeliveryAmount.toFixed(2)}) voor bezorging.`);
+      return;
+    }
+    setEditRecError("");
     setSavingRec(true);
     const res = await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -365,7 +378,9 @@ export default function MijnBestellingenPage() {
       }),
     });
     const data = await res.json().catch(() => ({}));
-    setSavingRec(false); setEditingRecId(null); scheduleEmail(); load();
+    setSavingRec(false);
+    if (!res.ok) { setEditRecError(data.message ?? "Opslaan mislukt."); return; }
+    setEditingRecId(null); scheduleEmail(); load();
     if (data.appliesFrom) {
       setSavedRecAppliesFrom(data.appliesFrom);
       setTimeout(() => setSavedRecAppliesFrom(null), 8000);
@@ -391,8 +406,15 @@ export default function MijnBestellingenPage() {
     load();
   }
   async function createRec() {
+    const isPickup = !!newRecPickup;
+    const total = calcBasketTotal(newRecQty, breadTypes, discountPercent);
+    if (!isPickup && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount) {
+      setNewRecError(`Bestelling is lager dan de minimale bestelwaarde (€ ${minDeliveryAmount.toFixed(2)}) voor bezorging.`);
+      return;
+    }
+    setNewRecError("");
     setSavingNewRec(true);
-    await fetch("/api/mijn/bestellingen", {
+    const res = await fetch("/api/mijn/bestellingen", {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         weekday: newRecWeekday,
@@ -401,7 +423,9 @@ export default function MijnBestellingenPage() {
         notes: newRecNotes || undefined,
       }),
     });
-    setSavingNewRec(false); setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); setNewRecNotes(""); scheduleEmail(); load();
+    setSavingNewRec(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setNewRecError(d.message ?? "Opslaan mislukt."); return; }
+    setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); setNewRecNotes(""); scheduleEmail(); load();
   }
 
   // One-off
@@ -438,11 +462,17 @@ export default function MijnBestellingenPage() {
   async function createOO() {
     const err = validateDate(newDate);
     if (err || !newDate || Object.values(newQty).every(v => v === 0)) return;
+    // Checked only at the moment of placing the order, not continuously while adjusting
+    // the basket — the message should disappear the instant it no longer applies.
     const isPickup = !!newPickup;
     const total = calcBasketTotal(newQty, breadTypes, discountPercent);
-    if (!isPickup && minDeliveryAmount !== null && total < minDeliveryAmount) return;
+    if (!isPickup && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount) {
+      setNewOOError(`Bestelling is lager dan de minimale bestelwaarde (€ ${minDeliveryAmount.toFixed(2)}) voor bezorging.`);
+      return;
+    }
+    setNewOOError("");
     setSavingNew(true);
-    await fetch("/api/mijn/bestellingen", {
+    const res = await fetch("/api/mijn/bestellingen", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         deliveryDate: newDate,
@@ -451,7 +481,9 @@ export default function MijnBestellingenPage() {
         lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity: quantity as number })),
       }),
     });
-    setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
+    setSavingNew(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setNewOOError(d.message ?? "Opslaan mislukt."); return; }
+    setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
   }
 
   // Where an order goes, for the form map: a pickup shop (its real address, from the
@@ -684,7 +716,7 @@ export default function MijnBestellingenPage() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Vaste bestellingen</h2>
               {availableWeekdays.length > 0 && (
-                <button onClick={() => { setNewRecWeekday(availableWeekdays[0]); setShowNewRec(true); }} className="btn-secondary" style={{ fontSize: 12 }}>
+                <button onClick={() => { setNewRecWeekday(availableWeekdays[0]); setNewRecError(""); setShowNewRec(true); }} className="btn-secondary" style={{ fontSize: 12 }}>
                   + Dag toevoegen
                 </button>
               )}
@@ -772,22 +804,17 @@ export default function MijnBestellingenPage() {
                       <div style={{ marginTop: 10 }}>
                         <PickupAndMap value={editRecPickup} onChange={setEditRecPickup} options={pickupOptions} mapTarget={mapTargetFor} />
                       </div>
-                      {(() => {
-                        const t = calcBasketTotal(editRecQty, breadTypes, discountPercent);
-                        const isPickup = !!editRecPickup;
-                        return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
-                          ? <p style={{ fontSize: 12, color: "var(--danger)", margin: "8px 0 0" }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
-                          : null;
-                      })()}
                       {thisWeekLocked && (
                         <p style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "8px 10px", borderRadius: 6, margin: "8px 0 0" }}>
                           De deadline voor de eerstvolgende bezorging ({new Date(next+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"})}) is al verstreken — die bezorging blijft ongewijzigd.
                           Deze wijziging gaat in vanaf {nextEditable ? new Date(nextEditable+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"}) : "volgende week"}.
                         </p>
                       )}
+                      {/* Shown only at the moment Opslaan is actually rejected, not while adjusting */}
+                      {editRecError && <p style={{ fontSize: 12, color: "var(--danger)", margin: "8px 0 0" }}>{editRecError}</p>}
                       <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                         <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-                        <button onClick={() => saveRec(order)} disabled={savingRec || (!editRecPickup && minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
+                        <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 13 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
                       </div>
                     </>}
 
@@ -836,16 +863,11 @@ export default function MijnBestellingenPage() {
                   </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                   <PickupAndMap value={newRecPickup} onChange={setNewRecPickup} options={pickupOptions} mapTarget={mapTargetFor} />
-                  {(() => {
-                    const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
-                    const isPickup = !!newRecPickup;
-                    return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
-                      ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
-                      : null;
-                  })()}
+                  {/* Shown only at the moment "toevoegen" is actually rejected, not while adjusting */}
+                  {newRecError && <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>{newRecError}</p>}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => { setShowNewRec(false); setNewRecPickup(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
-                    <button onClick={createRec} disabled={savingNewRec || (!newRecPickup && minDeliveryAmount !== null && calcBasketTotal(newRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
+                    <button onClick={() => { setShowNewRec(false); setNewRecPickup(""); setNewRecError(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                    <button onClick={createRec} disabled={savingNewRec} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
                   </div>
                 </div>
               )}
@@ -856,7 +878,7 @@ export default function MijnBestellingenPage() {
           {activeSection === "eenmalig" && <section style={{ marginBottom: "2rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
-              <button onClick={() => setShowNewOO(true)} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
+              <button onClick={() => { setNewOOError(""); setShowNewOO(true); }} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
             </div>
 
             {showNewOO && (
@@ -874,13 +896,11 @@ export default function MijnBestellingenPage() {
 
                 <PickupAndMap value={newPickup} onChange={setNewPickup} options={pickupOptions} mapTarget={mapTargetFor} />
 
-                {/* Basket total + min delivery warning */}
+                {/* Basket total (informational — always shown once there are prices) */}
                 {(() => {
                   const total = calcBasketTotal(newQty, breadTypes, discountPercent);
                   const isPickup = !!newPickup;
-                  const belowMin = !isPickup && minDeliveryAmount !== null && total < minDeliveryAmount && total > 0;
                   const hasPrices = breadTypes.some(b => b.price != null);
-                  // ponytail: belowMin used here AND in disabled prop below — keep in sync
                   return hasPrices ? (
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -890,11 +910,6 @@ export default function MijnBestellingenPage() {
                       {discountPercent > 0 && (
                         <p style={{ fontSize: 11, color: "var(--success)", margin: "3px 0 0" }}>{discountPercent}% korting verwerkt</p>
                       )}
-                      {belowMin && (
-                        <p style={{ fontSize: 12, color: "var(--danger)", margin: "4px 0 0" }}>
-                          Minimale bestelwaarde voor bezorging is € {minDeliveryAmount!.toFixed(2)}. Voeg meer toe of kies afhalen.
-                        </p>
-                      )}
                       {isPickup && minDeliveryAmount !== null && (
                         <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "3px 0 0" }}>Geen minimale bestelwaarde bij afhalen.</p>
                       )}
@@ -902,10 +917,13 @@ export default function MijnBestellingenPage() {
                   ) : null;
                 })()}
 
+                {/* Shown only at the moment "Bestelling plaatsen" is actually rejected, not while adjusting */}
+                {newOOError && <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>{newOOError}</p>}
+
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => { setShowNewOO(false); setDateError(""); setNewPickup(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
+                  <button onClick={() => { setShowNewOO(false); setDateError(""); setNewPickup(""); setNewOOError(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
                   <button onClick={createOO}
-                    disabled={savingNew || !!dateError || !newDate || Object.values(newQty).every(v => v === 0) || (!newPickup && minDeliveryAmount !== null && calcBasketTotal(newQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(newQty, breadTypes, discountPercent) > 0)}
+                    disabled={savingNew || !!dateError || !newDate || Object.values(newQty).every(v => v === 0)}
                     className="btn-primary" style={{ fontSize: 13 }}>
                     {savingNew ? "Plaatsen..." : "Bestelling plaatsen"}
                   </button>
@@ -965,18 +983,12 @@ export default function MijnBestellingenPage() {
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                         <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} options={pickupOptions} mapTarget={mapTargetFor} />
-                        {(() => {
-                          const t = calcBasketTotal(editOOQty, breadTypes, discountPercent);
-                          const isPickup = !!editOOPickup;
-                          return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
-                            ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
-                            : null;
-                        })()}
+                        {/* Shown only at the moment Opslaan is actually rejected, not while adjusting */}
                         {editOOError && <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>{editOOError}</p>}
                         <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                           <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
                           <button onClick={() => saveOO(order)}
-                            disabled={savingOO || (!editOOPickup && minDeliveryAmount !== null && calcBasketTotal(editOOQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editOOQty, breadTypes, discountPercent) > 0)}
+                            disabled={savingOO}
                             className="btn-primary" style={{ fontSize: 13 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
                         </div>
                       </div>
