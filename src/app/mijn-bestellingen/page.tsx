@@ -133,6 +133,50 @@ function QtyGrid({ qty, onChange, breadTypes, discountPercent = 0, deliveryDate 
   );
 }
 
+// Delivery/pickup chooser with a live map beside it: click a location and the map on
+// the right re-renders that spot's geolocation + address. Used in every order form
+// (new/edit one-off, new/edit recurring).
+function PickupAndMap({ value, onChange, mapTarget }: {
+  value: string;
+  onChange: (v: string) => void;
+  mapTarget: (pickup: string) => { lat: number; lng: number; label: string } | null;
+}) {
+  const t = mapTarget(value);
+  return (
+    <div>
+      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Bezorging of afhalen?</label>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: "1 1 200px", alignContent: "flex-start" }}>
+          {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
+            const active = value === loc.id;
+            return (
+              <button key={loc.id} type="button" onClick={() => onChange(loc.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12,
+                  border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                  background: active ? "var(--accent-light)" : "var(--surface-2)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                }}>
+                <span>{loc.icon}</span> {loc.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+          {t ? (
+            <>
+              <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
+              <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "5px 0 0" }}>📍 {t.label}</p>
+            </>
+          ) : !value ? (
+            <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MijnBestellingenPage() {
   const [recurring, setRecurring]         = useState<RecurringOrder[]>([]);
   const [upcoming, setUpcoming]           = useState<OneOffOrder[]>([]);
@@ -172,6 +216,7 @@ export default function MijnBestellingenPage() {
   const [editingOOId, setEditingOOId]   = useState<string | null>(null);
   const [editOOQty, setEditOOQty]       = useState<Record<string,number>>({});
   const [editOONotes, setEditOONotes]   = useState("");
+  const [editOOPickup, setEditOOPickup] = useState<string>("");
   const [savingOO, setSavingOO]         = useState(false);
 
   // New one-off
@@ -283,13 +328,13 @@ export default function MijnBestellingenPage() {
   function startEditOO(o: OneOffOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditingOOId(o.id);
+    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditOOPickup(o.pickupLocation ?? ""); setEditingOOId(o.id);
   }
   async function saveOO(o: OneOffOrder) {
     setSavingOO(true);
     await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
+      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, pickupLocation: editOOPickup || null, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
     });
     setSavingOO(false); setEditingOOId(null); scheduleEmail(); load();
   }
@@ -592,23 +637,7 @@ export default function MijnBestellingenPage() {
                     {isEditing && <>
                       <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                       <div style={{ marginTop: 10 }}>
-                        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
-                            const active = editRecPickup === loc.id;
-                            return (
-                              <button key={loc.id} type="button" onClick={() => setEditRecPickup(loc.id)}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12,
-                                  border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                                  background: active ? "var(--accent-light)" : "var(--surface-2)",
-                                  color: active ? "var(--accent)" : "var(--text)",
-                                }}>
-                                <span>{loc.icon}</span> {loc.label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <PickupAndMap value={editRecPickup} onChange={setEditRecPickup} mapTarget={mapTargetFor} />
                       </div>
                       {(() => {
                         const t = calcBasketTotal(editRecQty, breadTypes, discountPercent);
@@ -665,34 +694,7 @@ export default function MijnBestellingenPage() {
                     </select>
                   </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
-                  <div>
-                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Bezorging of afhalen?</label>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
-                        const active = newRecPickup === loc.id;
-                        return (
-                          <button key={loc.id} type="button" onClick={() => setNewRecPickup(loc.id)}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12,
-                              border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                              background: active ? "var(--accent-light)" : "var(--surface-2)",
-                              color: active ? "var(--accent)" : "var(--text)",
-                            }}>
-                            <span>{loc.icon}</span> {loc.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  {(() => {
-                    const t = mapTargetFor(newRecPickup);
-                    return t ? (
-                      <div>
-                        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{newRecPickup ? "Afhaallocatie" : "Bezorgadres"}</label>
-                        <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
-                      </div>
-                    ) : null;
-                  })()}
+                  <PickupAndMap value={newRecPickup} onChange={setNewRecPickup} mapTarget={mapTargetFor} />
                   {(() => {
                     const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
                     const isPickup = !!newRecPickup;
@@ -733,41 +735,7 @@ export default function MijnBestellingenPage() {
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
                 <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
 
-                {/* Pickup / delivery toggle */}
-                <div>
-                  <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Bezorging of afhalen?</label>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {[{ id: "", label: "Bezorgen", icon: "🚚", sub: "Thuisbezorgd" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪", sub: "Gratis afhalen" }))].map(loc => {
-                      const active = newPickup === loc.id;
-                      return (
-                        <button key={loc.id} type="button" onClick={() => setNewPickup(loc.id)}
-                          style={{
-                            display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-                            padding: "10px 14px", borderRadius: 10, cursor: "pointer", minWidth: 80,
-                            border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                            background: active ? "var(--accent-light)" : "var(--surface-2)",
-                            color: active ? "var(--accent)" : "var(--text)",
-                          }}>
-                          <span style={{ fontSize: 22 }}>{loc.icon}</span>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{loc.label}</span>
-                          <span style={{ fontSize: 10, color: active ? "var(--accent)" : "var(--text-subtle)" }}>{loc.sub}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Map of where this order goes (their address, or the pickup shop) */}
-                {(() => {
-                  const t = mapTargetFor(newPickup);
-                  if (t) return (
-                    <div>
-                      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{newPickup ? "Afhaallocatie" : "Bezorgadres"}</label>
-                      <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
-                    </div>
-                  );
-                  return !newPickup ? <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p> : null;
-                })()}
+                <PickupAndMap value={newPickup} onChange={setNewPickup} mapTarget={mapTargetFor} />
 
                 {/* Basket total + min delivery warning */}
                 {(() => {
@@ -865,6 +833,7 @@ export default function MijnBestellingenPage() {
                           <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. licht gebakken" />
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
+                        <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} mapTarget={mapTargetFor} />
                       </div>
                     )}
                   </div>

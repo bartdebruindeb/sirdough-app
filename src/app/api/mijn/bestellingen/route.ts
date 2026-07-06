@@ -179,6 +179,7 @@ const UpdateOneOffSchema = z.object({
   id: z.string(),
   notes: z.string().optional(),
   deliveryAddressId: z.string().nullable().optional(),
+  pickupLocation: z.string().nullable().optional(),
   lines: z.array(z.object({ breadTypeId: z.string(), quantity: z.number().int().min(0) })),
 });
 
@@ -306,7 +307,11 @@ export async function PATCH(req: Request) {
     await prisma.oneOffOrderLine.deleteMany({ where: { oneOffId: input.id } });
     const updated = await (prisma as any).oneOffOrder.update({
       where: { id: input.id },
-      data: { notes: input.notes ?? order.notes, lines: { create: input.lines.filter((l: any) => l.quantity > 0) } },
+      data: {
+        notes: input.notes ?? order.notes,
+        ...(input.pickupLocation !== undefined && { pickupLocation: input.pickupLocation }),
+        lines: { create: input.lines.filter((l: any) => l.quantity > 0) },
+      },
       include: { lines: { include: { breadType: true } } },
     });
 
