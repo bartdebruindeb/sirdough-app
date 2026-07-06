@@ -4,14 +4,15 @@ import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
 import { geocodeAddress } from "@/server/lib/geocode";
+import { getMijnContext } from "@/server/lib/mijnCustomer";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-async function getCustomerId(session: any): Promise<string> {
-  const id = session?.user?.customerId as string | undefined;
-  if (!id) throw new Error("UNAUTHORIZED");
-  return id;
+async function getCustomerId(_session?: any): Promise<string> {
+  // The active location, validated against this login's own set — see getMijnContext.
+  const { customerId } = await getMijnContext();
+  return customerId;
 }
 
 const AddressSchema = z.object({

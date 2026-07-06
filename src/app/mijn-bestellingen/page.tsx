@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { bakeryConfig } from "@/config/bakery.config";
 import { breadImageUrls } from "@/lib/breadImage";
+import { LocationMap } from "./LocationMap";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
@@ -10,6 +11,12 @@ const PICKUP_LOCATIONS = [
   ...bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") })),
   { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
 ];
+
+// Coordinates for each pickup location (from bakery.config), so the order form can map it.
+const PICKUP_COORDS: Record<string, { lat: number; lng: number; label: string }> = {
+  ...Object.fromEntries(bakeryConfig.shops.map(s => [s.name, { lat: s.lat, lng: s.lon, label: s.name }])),
+  "Ophalen Rotterdam": { lat: bakeryConfig.bakeryLat, lng: bakeryConfig.bakeryLng, label: bakeryConfig.bakeryAddress },
+};
 
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };
@@ -182,6 +189,9 @@ export default function MijnBestellingenPage() {
   const [showLog, setShowLog]           = useState(false);
   // Section toggle
   const [activeSection, setActiveSection] = useState<"eenmalig"|"vast"|null>(null);
+  const [showChooser, setShowChooser]   = useState(false);
+  // Delivery address (for the order-form map)
+  const [delivery, setDelivery]         = useState<{ lat: number | null; lng: number | null; label: string }>({ lat: null, lng: null, label: "" });
   const [deliveryTimeMap, setDeliveryTimeMap] = useState<Record<string,string>>({});
   const [invoiceNumberMap, setInvoiceNumberMap] = useState<Record<string,string>>({});
   // Week overview scroller — 0 = this week, -1 = last week, +1 = next week, etc.
@@ -199,6 +209,7 @@ export default function MijnBestellingenPage() {
         setMinDeliveryAmount(d.minDeliveryAmount ?? null);
         setDeliveryTimeMap(d.deliveryTimeMap ?? {});
         setInvoiceNumberMap(d.invoiceNumberMap ?? {});
+        setDelivery({ lat: d.deliveryLat ?? null, lng: d.deliveryLng ?? null, label: d.deliveryLabel ?? "" });
         setLoading(false);
       });
   }
@@ -304,6 +315,14 @@ export default function MijnBestellingenPage() {
       }),
     });
     setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
+  }
+
+  // Where an order goes, for the form map: a pickup shop (from config) or, for delivery
+  // (pickup === ""), the customer's own geocoded address. null when we have no coords.
+  function mapTargetFor(pickup: string): { lat: number; lng: number; label: string } | null {
+    if (pickup) return PICKUP_COORDS[pickup] ?? null;
+    if (delivery.lat != null && delivery.lng != null) return { lat: delivery.lat, lng: delivery.lng, label: delivery.label || "Bezorgadres" };
+    return null;
   }
 
   const usedWeekdays = new Set(recurring.map(r => r.weekday));
@@ -451,23 +470,34 @@ export default function MijnBestellingenPage() {
             );
           })()}
 
-          {/* ── Section toggle buttons ── */}
-          <div style={{ display: "flex", gap: 10, marginBottom: "1.5rem" }}>
-            <button
-              onClick={() => setActiveSection(s => s === "eenmalig" ? null : "eenmalig")}
-              className={activeSection === "eenmalig" ? "btn-primary" : "btn-secondary"}
-              style={{ flex: 1, fontSize: 13, padding: "10px 0" }}
-            >
-              Eenmalige bestellingen
-            </button>
-            <button
-              onClick={() => setActiveSection(s => s === "vast" ? null : "vast")}
-              className={activeSection === "vast" ? "btn-primary" : "btn-secondary"}
-              style={{ flex: 1, fontSize: 13, padding: "10px 0" }}
-            >
-              Vaste bestellingen
-            </button>
-          </div>
+          {/* ── Bestelling toevoegen/aanpassen: one entry, then choose the type ── */}
+          {activeSection === null ? (
+            !showChooser ? (
+              <div style={{ marginBottom: "1.5rem" }}>
+                <button onClick={() => setShowChooser(true)} className="btn-primary" style={{ width: "100%", fontSize: 14, padding: "12px 0" }}>
+                  ➕ Bestelling toevoegen / aanpassen
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginBottom: "1.5rem", display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Eenmalig of een vaste (wekelijkse) bestelling?</p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => { setActiveSection("eenmalig"); setShowChooser(false); }} className="btn-secondary" style={{ flex: 1, fontSize: 13, padding: "10px 0" }}>
+                    Eenmalige bestelling
+                  </button>
+                  <button onClick={() => { setActiveSection("vast"); setShowChooser(false); }} className="btn-secondary" style={{ flex: 1, fontSize: 13, padding: "10px 0" }}>
+                    Vaste bestelling
+                  </button>
+                </div>
+                <button onClick={() => setShowChooser(false)} style={{ fontSize: 12, color: "var(--text-subtle)", background: "none", border: "none", cursor: "pointer", alignSelf: "flex-start" }}>Annuleren</button>
+              </div>
+            )
+          ) : (
+            <div style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={() => { setActiveSection(null); setShowChooser(false); }} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>‹ Terug</button>
+              <span style={{ fontSize: 13, color: "var(--text-subtle)" }}>{activeSection === "eenmalig" ? "Eenmalige bestelling" : "Vaste bestelling"}</span>
+            </div>
+          )}
 
           {/* Vaste bestellingen */}
           {activeSection === "vast" && <section style={{ marginBottom: "2rem" }}>
@@ -655,6 +685,15 @@ export default function MijnBestellingenPage() {
                     </div>
                   </div>
                   {(() => {
+                    const t = mapTargetFor(newRecPickup);
+                    return t ? (
+                      <div>
+                        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{newRecPickup ? "Afhaallocatie" : "Bezorgadres"}</label>
+                        <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
+                      </div>
+                    ) : null;
+                  })()}
+                  {(() => {
                     const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
                     const isPickup = !!newRecPickup;
                     return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
@@ -688,9 +727,12 @@ export default function MijnBestellingenPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                    <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. voor 9:00" style={inputStyle} />
+                    <input value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
                   </div>
                 </div>
+                {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
+                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
+
                 {/* Pickup / delivery toggle */}
                 <div>
                   <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Bezorging of afhalen?</label>
@@ -715,8 +757,17 @@ export default function MijnBestellingenPage() {
                   </div>
                 </div>
 
-                {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
-                <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
+                {/* Map of where this order goes (their address, or the pickup shop) */}
+                {(() => {
+                  const t = mapTargetFor(newPickup);
+                  if (t) return (
+                    <div>
+                      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{newPickup ? "Afhaallocatie" : "Bezorgadres"}</label>
+                      <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
+                    </div>
+                  );
+                  return !newPickup ? <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p> : null;
+                })()}
 
                 {/* Basket total + min delivery warning */}
                 {(() => {
@@ -811,7 +862,7 @@ export default function MijnBestellingenPage() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         <div>
                           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
-                          <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. voor 9:00" />
+                          <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. licht gebakken" />
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                       </div>

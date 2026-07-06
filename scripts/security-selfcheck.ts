@@ -6,6 +6,7 @@
 import assert from "node:assert";
 import { getClientIp, isLockedOut, recordFailure, clearFailures } from "../src/server/lib/ratelimit";
 import { readImageUpload } from "../src/server/lib/imageUpload";
+import { resolveSelectedCustomerId } from "../src/server/lib/mijnCustomer";
 
 function reqWith(headers: Record<string, string>): Request {
   return new Request("http://localhost/x", { headers });
@@ -34,6 +35,13 @@ async function main() {
   assert.equal(isLockedOut(k, LIMIT, WIN), true, "5 failures: locked");
   clearFailures(k); // successful login resets
   assert.equal(isLockedOut(k, LIMIT, WIN), false, "success clears the lockout");
+
+  // --- multi-location portal: selected location must belong to the login (no IDOR) ---
+  const own = ["cust_A", "cust_B"];
+  assert.equal(resolveSelectedCustomerId(own, "cust_B"), "cust_B", "a location the login owns is honoured");
+  assert.equal(resolveSelectedCustomerId(own, "cust_EVIL"), "cust_A", "a foreign/forged location falls back to the first, never leaks");
+  assert.equal(resolveSelectedCustomerId(own, null), "cust_A", "no selection -> first location");
+  assert.equal(resolveSelectedCustomerId([], "cust_A"), null, "no locations -> null");
 
   // --- readImageUpload: sniff real content, not the client MIME type ---
   const jpeg = new File([Buffer.from([0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0])], "a.jpg", { type: "image/jpeg" });

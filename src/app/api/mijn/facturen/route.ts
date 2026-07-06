@@ -1,15 +1,12 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
+import { getMijnContext } from "@/server/lib/mijnCustomer";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    const customerId = (session?.user as any)?.customerId as string | undefined;
-    if (!customerId) return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const { customerId } = await getMijnContext();
 
     const invoices = await (prisma as any).invoice.findMany({
       where: { customerId },

@@ -1,17 +1,14 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { sendOrderConfirmation } from "@/server/lib/email";
+import { getMijnContext } from "@/server/lib/mijnCustomer";
 
 export const dynamic = "force-dynamic";
 
-// POST /api/mijn/email-summary — send a summary of all upcoming orders
+// POST /api/mijn/email-summary — send a summary of the active location's upcoming orders
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
-    const customerId = (session?.user as any)?.customerId as string | undefined;
-    if (!customerId) return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const { customerId } = await getMijnContext();
 
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer?.email) return Response.json({ ok: false });

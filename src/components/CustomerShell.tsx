@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { bakeryConfig } from "@/config/bakery.config";
+import { AddLocationModal } from "@/components/AddLocationModal";
 
 const NAV = [
   { href: "/mijn-bestellingen", label: "Bestellingen",  icon: "◧" },
@@ -18,12 +19,54 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   const name = (session?.user as any)?.name ?? session?.user?.email ?? "";
   const [banner, setBanner] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [locations, setLocations] = useState<{ id: string; name: string; city: string | null }[]>([]);
+  const [selectedLoc, setSelectedLoc] = useState("");
+  const [canAdd, setCanAdd] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/announcement").then(r => r.json()).then(d => { if (d.message) setBanner(d.message); }).catch(() => {});
+    fetch("/api/mijn/locations").then(r => r.json()).then(d => {
+      setLocations(d.locations ?? []);
+      setSelectedLoc(d.selected ?? "");
+      setCanAdd(!!d.canAdd);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
+
+  // Switch active restaurant: persist the choice in a cookie (the server validates it
+  // against this login's own locations) and reload so every page refetches scoped to it.
+  function changeLocation(id: string) {
+    if (id === selectedLoc) return;
+    document.cookie = `mijn_location=${id}; path=/; max-age=31536000; samesite=lax`;
+    window.location.reload();
+  }
+  // A new location becomes the active one right away.
+  function onLocationAdded(id: string) {
+    document.cookie = `mijn_location=${id}; path=/; max-age=31536000; samesite=lax`;
+    window.location.reload();
+  }
+  // Shown for any customer (>=1 location): switch between locations and/or add one (max 3).
+  const locationControls = locations.length > 0 ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {locations.length > 1 && (
+        <select value={selectedLoc} onChange={e => changeLocation(e.target.value)}
+          aria-label="Locatie kiezen"
+          style={{ fontSize: 12, padding: "5px 8px", borderRadius: 6, border: "1px solid #3c2a1e",
+            background: "var(--sidebar-bg)", color: "var(--sidebar-active)", cursor: "pointer", maxWidth: 200 }}>
+          {locations.map(l => <option key={l.id} value={l.id}>{l.name}{l.city ? ` — ${l.city}` : ""}</option>)}
+        </select>
+      )}
+      {canAdd && (
+        <button onClick={() => setAddOpen(true)} title="Locatie toevoegen"
+          style={{ fontSize: 12, padding: "5px 9px", borderRadius: 6, border: "1px solid #3c2a1e",
+            background: "transparent", color: "var(--sidebar-active)", cursor: "pointer", whiteSpace: "nowrap" }}>
+          ＋ Locatie
+        </button>
+      )}
+    </div>
+  ) : null;
 
   async function handleLogout() {
     if (localStorage.getItem("pendingOrderEmail")) {
@@ -64,6 +107,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         <div className="customer-user-desktop" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {locationControls}
           <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{name}</span>
           <button onClick={handleLogout}
             style={{ fontSize: 12, padding: "5px 10px", borderRadius: 6, border: "1px solid #3c2a1e",
@@ -102,6 +146,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {locationControls && <div style={{ padding: "10px 12px" }}>{locationControls}</div>}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", marginTop: 4, borderTop: "1px solid #2c1a0e" }}>
             <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{name}</span>
             <button onClick={handleLogout}
@@ -127,6 +172,8 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1.5rem" }}>
         {children}
       </main>
+
+      {addOpen && <AddLocationModal onClose={() => setAddOpen(false)} onAdded={onLocationAdded} />}
     </div>
   );
 }

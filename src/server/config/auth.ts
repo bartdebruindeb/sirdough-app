@@ -44,10 +44,14 @@ export const authOptions: NextAuthOptions = {
 
         clearFailures(failKey);
 
-        // Find linked customer for customer role
-        const customer = await prisma.customer.findFirst({
+        // A customer login may own several locations (multi-restaurant owner). Load
+        // them all; the portal picks the active one and validates against this set.
+        const customers = await prisma.customer.findMany({
           where: { userId: user.id },
+          orderBy: { name: "asc" },
+          select: { id: true },
         });
+        const customerIds = customers.map(c => c.id);
 
         return {
           id: user.id,
@@ -55,7 +59,8 @@ export const authOptions: NextAuthOptions = {
           name: user.name ?? user.email,
           role: user.role,
           tenantId: user.tenantId,
-          customerId: customer?.id ?? null,
+          customerId: customerIds[0] ?? null,
+          customerIds,
         };
       },
     }),
@@ -66,6 +71,7 @@ export const authOptions: NextAuthOptions = {
         token.role     = (user as any).role;
         token.tenantId = (user as any).tenantId;
         token.customerId = (user as any).customerId;
+        (token as any).customerIds = (user as any).customerIds ?? [];
         return token;
       }
       // Subsequent requests: re-validate against the DB so deactivating a user or
@@ -80,8 +86,19 @@ export const authOptions: NextAuthOptions = {
           (token as any).invalid = true;
           token.role = undefined;
           (token as any).customerId = undefined;
+          (token as any).customerIds = undefined;
         } else {
           token.role = dbUser.role;
+          // Refresh linked locations so a newly linked (or unlinked) restaurant takes
+          // effect on the next request rather than only after re-login.
+          if (dbUser.role === "CUSTOMER") {
+            const customers = await prisma.customer.findMany({
+              where: { userId: token.sub }, orderBy: { name: "asc" }, select: { id: true },
+            });
+            const ids = customers.map(c => c.id);
+            (token as any).customerIds = ids;
+            token.customerId = ids[0] ?? null;
+          }
         }
       }
       return token;
@@ -94,9 +111,11 @@ export const authOptions: NextAuthOptions = {
         return session;
       }
       if (session.user) {
-        (session.user as any).role       = token.role;
-        (session.user as any).tenantId   = token.tenantId;
-        (session.user as any).customerId = token.customerId;
+        (session.user as any).id          = token.sub;
+        (session.user as any).role        = token.role;
+        (session.user as any).tenantId    = token.tenantId;
+        (session.user as any).customerId  = token.customerId;
+        (session.user as any).customerIds = (token as any).customerIds ?? [];
       }
       return session;
     },

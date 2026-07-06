@@ -13,14 +13,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
   const customerId = (session?.user as any)?.customerId;
-  if (!role && !customerId) return new Response("Unauthorized", { status: 401 });
+  const customerIds: string[] = (session?.user as any)?.customerIds ?? (customerId ? [customerId] : []);
+  if (!role && customerIds.length === 0) return new Response("Unauthorized", { status: 401 });
 
   const tid = await resolveTenantId(getTenantFromRequest(req));
   const invoice = await (prisma as any).invoice.findUnique({ where: { id: params.id } });
   if (!invoice || invoice.tenantId !== tid) return new Response("Not found", { status: 404 });
 
-  // Owner can see any invoice; customer can only see their own
-  if (role !== "OWNER" && role !== "BAKKER" && invoice.customerId !== customerId) {
+  // Owner/baker can see any invoice; a customer can see any of their own locations' invoices.
+  if (role !== "OWNER" && role !== "BAKKER" && !customerIds.includes(invoice.customerId)) {
     return new Response("Forbidden", { status: 403 });
   }
 

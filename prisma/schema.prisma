@@ -88,8 +88,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  customer Customer?
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  customers Customer[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -271,7 +271,7 @@ model Customer {
   kvk              String? // Chamber of Commerce number — more stable match key for Exact than email
   exactAccountId   String? // Exact Online Account GUID — cached so invoice sync doesn't re-search by email each time
   exactCustomerCode String? // Exact Online's own customer/relatienummer (Code field), for display only
-  userId    String? @unique  // linked User account for customer portal
+  userId    String?  // linked User account for customer portal (one login may own several locations)
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id])
   user            User?                @relation(fields: [userId], references: [id])
@@ -283,6 +283,7 @@ model Customer {
   invoices          Invoice[]
 
   @@index([tenantId])
+  @@index([userId])
 }
 
 model CustomerAddress {

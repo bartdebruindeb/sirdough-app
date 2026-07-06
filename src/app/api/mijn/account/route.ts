@@ -3,13 +3,14 @@ import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
+import { getMijnContext } from "@/server/lib/mijnCustomer";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-async function getCustomer(session: any) {
-  const customerId = (session?.user as any)?.customerId as string | undefined;
-  if (!customerId) throw new Error("UNAUTHORIZED");
+async function getCustomer(_session?: any) {
+  // The active location, validated against this login's own set — see getMijnContext.
+  const { customerId } = await getMijnContext();
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer) throw new Error("UNAUTHORIZED");
   return customer;
