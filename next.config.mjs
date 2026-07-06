@@ -16,6 +16,8 @@ const csp = [
   "img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.basemaps.cartocdn.com",
   "font-src 'self' data:",
   "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org",
+  // Invoice PDF preview renders the generated PDF as a blob: URL in an <iframe>.
+  "frame-src 'self' blob:",
 ].join("; ");
 
 const securityHeaders = [

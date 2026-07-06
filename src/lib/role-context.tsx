@@ -20,7 +20,7 @@ export const ROLE_ICONS: Record<AppRole, string> = {
 export const ROLE_PAGES: Record<AppRole, string[]> = {
   OWNER:        ["/", "/productie", "/recepten", "/winkel", "/bestellingen", "/logboek", "/bezorgen", "/klanten", "/team", "/facturatie", "/prijslijst"],
   ORDER_TABLET: ["/productie", "/bestellingen", "/bezorgen"],
-  BAKKER:       ["/", "/productie", "/bestellingen", "/logboek", "/bezorgen"],
+  BAKKER:       ["/productie", "/bestellingen", "/logboek", "/bezorgen"],
 };
 
 // Permissions per role (mirrors src/server/config/rbac.ts — keep in sync)

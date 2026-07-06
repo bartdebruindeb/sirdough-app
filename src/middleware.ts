@@ -5,9 +5,11 @@ export default withAuth(
   function middleware(req) {
     const { token } = req.nextauth;
     const path = req.nextUrl.pathname;
-    // Redirect ORDER_TABLET away from the dashboard
-    if (token?.role === "ORDER_TABLET" && path === "/") {
-      return NextResponse.redirect(new URL("/bestellingen", req.url));
+    // The dashboard ("/") is owner-only — route any other staff role to their own
+    // landing page. (Customers are handled by the block below.)
+    if (path === "/" && token?.role && token.role !== "OWNER" && token.role !== "CUSTOMER") {
+      const home = token.role === "ORDER_TABLET" ? "/bestellingen" : "/productie";
+      return NextResponse.redirect(new URL(home, req.url));
     }
     // Redirect customers to their portal (skip API routes)
     if (token?.role === "CUSTOMER" && !path.startsWith("/mijn-") && !path.startsWith("/api/")) {

@@ -50,6 +50,24 @@ export async function POST(req: Request) {
 
     const input = await parseJson(req, InviteWorkerSchema);
 
+    // Adding a NEW worker by email: refuse an address already taken by another
+    // account, instead of silently reusing it (e.g. attaching a worker invite to
+    // a customer's login — the "new" worker would then never appear in the team
+    // list). Regenerating an existing worker's link uses `id`, so it skips this.
+    if (!input.id && input.email) {
+      const existingUser = await prisma.user.findFirst({ where: { tenantId: tid, email: input.email } });
+      const existingCustomer = existingUser ? null : await prisma.customer.findFirst({ where: { tenantId: tid, email: input.email } });
+      if (existingUser || existingCustomer) {
+        const asWorker = existingUser && ["OWNER", "ORDER_TABLET", "BAKKER"].includes(existingUser.role);
+        return Response.json({
+          error: "EMAIL_IN_USE",
+          message: asWorker
+            ? "Er is al een teamlid met dit e-mailadres."
+            : "Dit e-mailadres is al in gebruik door een klant.",
+        }, { status: 409 });
+      }
+    }
+
     // If an id is given (regenerating a link for an existing user from the
     // Team page), look up by id — this works even when the email shown to
     // the client is masked (protected admin account).

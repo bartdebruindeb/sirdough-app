@@ -19,6 +19,17 @@ function currentWeek() {
   const wk = Math.ceil((((thu.getTime() - ys.getTime()) / 86400000) + 1) / 7);
   return `${thu.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
 }
+// Monday–Sunday date range of an ISO week (Jan 4 is always in week 1) — matches the
+// server's weekBounds() so the displayed dates line up with what gets invoiced.
+function weekDateRange(w: string): string {
+  const [y, wn] = w.split("-W").map(Number);
+  const jan4 = new Date(Date.UTC(y, 0, 4));
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (wn - 1) * 7);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString("nl-NL", { day: "numeric", month: "short", timeZone: "UTC" });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
 
 const inp: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 12, background: "var(--surface)", width: "100%" };
 
@@ -201,7 +212,7 @@ export default function FacturatiePage() {
   }
 
   const [y, wn] = week.split("-W");
-  const weekLabel = `Week ${wn}, ${y}`;
+  const weekLabel = `Week ${wn}, ${y} · ${weekDateRange(week)}`;
 
   const ENTITY_FIELDS: [keyof BillingEntity, string][] = [
     ["name", "Bedrijfsnaam *"], ["companyAddress", "Adres"], ["companyPostal", "Postcode"],

@@ -121,26 +121,44 @@ export async function GET(req: Request) {
       const shopCustomers = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
       const breadTypes = await prisma.breadType.findMany({ where: { tenantId: tid, active: true } });
 
+      // A shop gets ONE invoice row. If it also placed one-off orders this week it
+      // already has an order-based row above — merge the winkel bread into that row
+      // (keeping its orderIds) so vaste + eenmalig + winkel bread bill together, exactly
+      // like a normal customer. buildPdfData() combines the same two sources when the
+      // invoice is generated, so the row's total matches the produced PDF.
+      const seenShopNames = new Set<string>();
+
       for (const shop of shopCustomers) {
         if (alreadyInvoicedCustomerIds.has(shop.id)) continue;
+        // Collapse duplicate customer records sharing a shop name — winkel lines are
+        // keyed by name, so they'd be identical; invoice one.
+        if (seenShopNames.has(shop.name)) continue;
+        seenShopNames.add(shop.name);
         const discount = shop.discountPercent ?? 0;
         const dayLines = await buildShopDeliveryLines(tid, shop.name, start, end);
-        const lines = dayLines.flatMap(d => d.lines.map(l => {
+        const winkelLines = dayLines.flatMap(d => d.lines.map(l => {
           const bt = breadTypes.find(b => b.id === l.breadTypeId);
           const price = (bt?.price ? Number(bt.price) : 0) * (1 - discount / 100);
           return { name: l.breadTypeName, quantity: l.quantity, unitPrice: price, lineTotal: price * l.quantity, date: d.date };
         }));
-        if (lines.length === 0) continue;
-        const total = lines.reduce((s, l) => s + l.lineTotal, 0);
-        result.push({
-          customerId: shop.id,
-          customerName: shop.name,
-          customerEmail: shop.email,
-          discountPercent: discount,
-          lines,
-          total,
-          orderIds: [], // no real order rows to mark invoiced — see "already invoiced" check above
-        });
+        if (winkelLines.length === 0) continue;
+        const winkelTotal = winkelLines.reduce((s, l) => s + l.lineTotal, 0);
+
+        const existing = result.find(r => r.customerId === shop.id);
+        if (existing) {
+          existing.lines.push(...winkelLines);
+          existing.total += winkelTotal;
+        } else {
+          result.push({
+            customerId: shop.id,
+            customerName: shop.name,
+            customerEmail: shop.email,
+            discountPercent: discount,
+            lines: winkelLines,
+            total: winkelTotal,
+            orderIds: [], // no order rows — invoiced-check is by customerId + period overlap
+          });
+        }
       }
     }
 

@@ -391,6 +391,9 @@ export default function KlantenPage() {
   }
 
   async function startDelete(c: Customer) {
+    // Always confirm first — a customer with no orders would otherwise be deleted on
+    // a single click. (Customers WITH orders get the stronger force-delete modal below.)
+    if (!confirm(`Weet je zeker dat je klant "${c.name}" wilt verwijderen?`)) return;
     const res  = await fetch(`/api/customers?id=${c.id}`, { method: "DELETE", headers: { "x-role": role ?? "" } });
     const data = await res.json();
     if (data.deleted) { showToast(`✓ ${c.name} verwijderd.`); load(); return; }
