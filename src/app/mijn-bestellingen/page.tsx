@@ -271,6 +271,7 @@ export default function MijnBestellingenPage() {
   const [editOONotes, setEditOONotes]   = useState("");
   const [editOOPickup, setEditOOPickup] = useState<string>("");
   const [savingOO, setSavingOO]         = useState(false);
+  const [editOOError, setEditOOError]   = useState("");
 
   // New one-off
   const [showNewOO, setShowNewOO]       = useState(false);
@@ -407,15 +408,27 @@ export default function MijnBestellingenPage() {
   function startEditOO(o: OneOffOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditOOPickup(o.pickupLocation ?? ""); setEditingOOId(o.id);
+    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditOOPickup(o.pickupLocation ?? ""); setEditOOError(""); setEditingOOId(o.id);
   }
   async function saveOO(o: OneOffOrder) {
+    // Same minimum-delivery rule as placing a new order — editing a delivery order
+    // down below the minimum must be blocked here too, not just on create. The server
+    // enforces this regardless (real trust boundary); this is just the fast client check.
+    const isPickup = !!editOOPickup;
+    const total = calcBasketTotal(editOOQty, breadTypes, discountPercent);
+    if (!isPickup && minDeliveryAmount !== null && total > 0 && total < minDeliveryAmount) {
+      setEditOOError(`Bestelling is lager dan de minimale bestelwaarde (€ ${minDeliveryAmount.toFixed(2)}) voor bezorging.`);
+      return;
+    }
+    setEditOOError("");
     setSavingOO(true);
-    await fetch("/api/mijn/bestellingen", {
+    const res = await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, pickupLocation: editOOPickup || null, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
     });
-    setSavingOO(false); setEditingOOId(null); scheduleEmail(); load();
+    setSavingOO(false);
+    if (res.ok) { setEditingOOId(null); scheduleEmail(); load(); }
+    else { const d = await res.json().catch(() => ({})); setEditOOError(d.message ?? "Opslaan mislukt."); }
   }
   async function deleteOO(id: string) {
     if (!confirm("Bestelling annuleren?")) return;
@@ -952,9 +965,19 @@ export default function MijnBestellingenPage() {
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                         <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} options={pickupOptions} mapTarget={mapTargetFor} />
+                        {(() => {
+                          const t = calcBasketTotal(editOOQty, breadTypes, discountPercent);
+                          const isPickup = !!editOOPickup;
+                          return !isPickup && minDeliveryAmount !== null && t > 0 && t < minDeliveryAmount
+                            ? <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>Minimale bestelwaarde voor bezorging is € {minDeliveryAmount.toFixed(2)}. Voeg meer toe, kies afhalen, of neem contact op met de bakkerij.</p>
+                            : null;
+                        })()}
+                        {editOOError && <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>{editOOError}</p>}
                         <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                           <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-                          <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 13 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
+                          <button onClick={() => saveOO(order)}
+                            disabled={savingOO || (!editOOPickup && minDeliveryAmount !== null && calcBasketTotal(editOOQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editOOQty, breadTypes, discountPercent) > 0)}
+                            className="btn-primary" style={{ fontSize: 13 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
                         </div>
                       </div>
                     )}

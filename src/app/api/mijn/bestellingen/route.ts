@@ -4,6 +4,7 @@ import { prisma } from "@/server/config/db";
 import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
 import { getMijnContext } from "@/server/lib/mijnCustomer";
+import { isBelowMinimumDelivery } from "@/server/lib/orderMinimum";
 import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 
@@ -19,6 +20,36 @@ async function getCustomer(_session: any) {
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Server-side minimum-delivery-amount enforcement — the real trust boundary. The client
+ * disables its own save/create buttons below the minimum, but that's UX only; without
+ * this, a client-side bug (or a direct API call) can save a delivery order under the
+ * minimum with nothing stopping it. Pickup is exempt, same rule as everywhere else.
+ * Returns an error message if the given lines total below the minimum, else null.
+ */
+async function checkMinimumDelivery(
+  tenantId: string, discountPercent: number, pickupLocation: string | null | undefined,
+  lines: { breadTypeId: string; quantity: number }[],
+): Promise<string | null> {
+  const activeLines = lines.filter(l => l.quantity > 0);
+  if (pickupLocation || activeLines.length === 0) return null;
+
+  const tenant = await (prisma as any).tenant.findUnique({ where: { id: tenantId }, select: { minDeliveryAmount: true } });
+  const min = tenant?.minDeliveryAmount ? Number(tenant.minDeliveryAmount) : null;
+  if (min === null) return null;
+
+  const breadTypes = await prisma.breadType.findMany({
+    where: { id: { in: activeLines.map(l => l.breadTypeId) } },
+    select: { id: true, price: true },
+  });
+  const priceById = new Map(breadTypes.map(b => [b.id, (b as any).price != null ? Number((b as any).price) : 0]));
+
+  if (isBelowMinimumDelivery(activeLines, priceById, discountPercent, pickupLocation, min)) {
+    return `Bestelling is lager dan de minimale bestelwaarde (€ ${min.toFixed(2)}) voor bezorging.`;
+  }
+  return null;
 }
 
 function isCutoffPassed(deliveryDate: Date): boolean {
@@ -178,6 +209,9 @@ export async function POST(req: Request) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 
+    const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, input.pickupLocation, input.lines);
+    if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
+
     const order = await (prisma as any).oneOffOrder.create({
       data: {
         tenantId: customer.tenantId,
@@ -253,6 +287,10 @@ export async function PATCH(req: Request) {
         include: { lines: true },
       });
       if (!order) return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+
+      const effectivePickup = input.pickupLocation !== undefined ? input.pickupLocation : (order as any).pickupLocation;
+      const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, effectivePickup, input.lines);
+      if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
 
       // UTC throughout — must match the date construction used everywhere else
       // (isCutoffPassed, the "Deze week" display), or the stored exception date
@@ -333,6 +371,14 @@ export async function PATCH(req: Request) {
       return Response.json({ message: "De besteldeadline is verstreken." }, { status: 400 });
     }
 
+    // Same minimum-delivery rule as placing a new order — editing an existing order
+    // down to a smaller basket must be rejected exactly like creating one below the
+    // minimum would be. Effective pickup = whatever this request sets, or what the
+    // order already had if this edit doesn't touch it.
+    const effectivePickup = input.pickupLocation !== undefined ? input.pickupLocation : order.pickupLocation;
+    const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, effectivePickup, input.lines);
+    if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
+
     // Delete existing lines and recreate
     await prisma.oneOffOrderLine.deleteMany({ where: { oneOffId: input.id } });
     const updated = await (prisma as any).oneOffOrder.update({
@@ -368,6 +414,9 @@ export async function PUT(req: Request) {
       where: { tenantId: customer.tenantId, customerId: customer.id, weekday: input.weekday },
     });
     if (existing) return Response.json({ error: "CONFLICT", message: "Er bestaat al een vaste bestelling voor deze dag." }, { status: 409 });
+
+    const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, input.pickupLocation, input.lines);
+    if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
 
     const order = await (prisma as any).recurringOrder.create({
       data: {

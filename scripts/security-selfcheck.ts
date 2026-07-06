@@ -7,6 +7,7 @@ import assert from "node:assert";
 import { getClientIp, isLockedOut, recordFailure, clearFailures } from "../src/server/lib/ratelimit";
 import { readImageUpload } from "../src/server/lib/imageUpload";
 import { resolveSelectedCustomerId } from "../src/server/lib/mijnCustomer";
+import { isBelowMinimumDelivery } from "../src/server/lib/orderMinimum";
 
 function reqWith(headers: Record<string, string>): Request {
   return new Request("http://localhost/x", { headers });
@@ -42,6 +43,33 @@ async function main() {
   assert.equal(resolveSelectedCustomerId(own, "cust_EVIL"), "cust_A", "a foreign/forged location falls back to the first, never leaks");
   assert.equal(resolveSelectedCustomerId(own, null), "cust_A", "no selection -> first location");
   assert.equal(resolveSelectedCustomerId([], "cust_A"), null, "no locations -> null");
+
+  // --- minimum-delivery enforcement: pickup exempt, discount applied, edits included ---
+  const bread = new Map([["baguette", 5], ["boeren", 8]]);
+  assert.equal(
+    isBelowMinimumDelivery([{ breadTypeId: "baguette", quantity: 6 }], bread, 0, undefined, 50),
+    true, "6 x €5 = €30 delivery order under a €50 minimum is rejected (this session's reported bug)",
+  );
+  assert.equal(
+    isBelowMinimumDelivery([{ breadTypeId: "boeren", quantity: 10 }], bread, 0, undefined, 50),
+    false, "10 x €8 = €80 clears the minimum",
+  );
+  assert.equal(
+    isBelowMinimumDelivery([{ breadTypeId: "baguette", quantity: 6 }], bread, 0, "Winkel Delft", 50),
+    false, "pickup is exempt from the minimum regardless of total",
+  );
+  assert.equal(
+    isBelowMinimumDelivery([{ breadTypeId: "baguette", quantity: 18 }], bread, 50, undefined, 50),
+    true, "€90 order with 50% discount = €45 -- below the €50 minimum once the discount is applied",
+  );
+  assert.equal(
+    isBelowMinimumDelivery([], bread, 0, undefined, 50),
+    false, "an empty basket isn't 'too small', it's just empty — not this check's job",
+  );
+  assert.equal(
+    isBelowMinimumDelivery([{ breadTypeId: "baguette", quantity: 6 }], bread, 0, undefined, null),
+    false, "no minimum configured for this tenant -> never rejected",
+  );
 
   // --- readImageUpload: sniff real content, not the client MIME type ---
   const jpeg = new File([Buffer.from([0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0])], "a.jpg", { type: "image/jpeg" });
