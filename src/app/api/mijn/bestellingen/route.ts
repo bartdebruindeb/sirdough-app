@@ -118,6 +118,28 @@ export async function GET(req: Request) {
       if (io.invoice?.invoiceNumber) invoiceNumberMap[io.orderId] = io.invoice.invoiceNumber;
     }
 
+    // Pickup locations for the order form + map: the real shop addresses come from their
+    // Customer records (so the owner edits them in Klanten and they flow through here),
+    // falling back to config coords. Plus the bakery's own pickup point.
+    const shopCustomers = await prisma.customer.findMany({
+      where: { tenantId: customer.tenantId, name: { in: bakeryConfig.shops.map(s => s.name) } },
+      select: { name: true, address: true, postalCode: true, city: true, lat: true, lng: true },
+    });
+    const pickupLocations = bakeryConfig.shops.map(s => {
+      const c = shopCustomers.find(sc => sc.name === s.name);
+      return {
+        id: s.name,
+        label: s.name.replace("Winkel ", ""),
+        lat: c?.lat ?? s.lat,
+        lng: c?.lng ?? s.lon,
+        address: [c?.address, c?.postalCode, c?.city].filter(Boolean).join(", ") || null,
+      };
+    });
+    pickupLocations.push({
+      id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)",
+      lat: bakeryConfig.bakeryLat, lng: bakeryConfig.bakeryLng, address: bakeryConfig.bakeryAddress,
+    });
+
     return Response.json({
       orders: serializedOrders,
       breadTypes: breadTypesWithPrice,
@@ -128,6 +150,7 @@ export async function GET(req: Request) {
       discountPercent: (customer as any).discountPercent ?? 0,
       deliveryTimeMap,
       invoiceNumberMap,
+      pickupLocations,
       // For the order-form map: where a bezorgen order goes (the customer's own address).
       deliveryLat: customer.lat ?? null,
       deliveryLng: customer.lng ?? null,

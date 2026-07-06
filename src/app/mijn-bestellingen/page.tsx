@@ -7,16 +7,10 @@ import { LocationMap } from "./LocationMap";
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
-const PICKUP_LOCATIONS = [
-  ...bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") })),
-  { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
-];
-
-// Coordinates for each pickup location (from bakery.config), so the order form can map it.
-const PICKUP_COORDS: Record<string, { lat: number; lng: number; label: string }> = {
-  ...Object.fromEntries(bakeryConfig.shops.map(s => [s.name, { lat: s.lat, lng: s.lon, label: s.name }])),
-  "Ophalen Rotterdam": { lat: bakeryConfig.bakeryLat, lng: bakeryConfig.bakeryLng, label: bakeryConfig.bakeryAddress },
-};
+// Pickup locations (shop + bakery) come from the API (src/app/api/mijn/bestellingen),
+// which reads the real shop addresses off their Customer records — so when the owner
+// edits a shop's address/KvK in Klanten, the order form and map pick it up automatically.
+type PickupLocation = { id: string; label: string; lat: number; lng: number; address: string | null };
 
 type BreadType = { id: string; name: string; sortOrder: number; price: number | null; availableWeekdays: string | null; imageFile?: string | null };
 type RecurringException = { date: string; active: boolean };
@@ -184,45 +178,51 @@ function OrderDatePicker({ value, onChange, isAvailable }: {
   );
 }
 
-// Delivery/pickup chooser with a live map beside it: click a location and the map on
-// the right re-renders that spot's geolocation + address. Used in every order form
-// (new/edit one-off, new/edit recurring).
-function PickupAndMap({ value, onChange, mapTarget }: {
+// Delivery/pickup chooser with a map below it: click a location and the map
+// re-renders that spot's geolocation + address, with a link out to Google Maps.
+// Stacked vertically (buttons, then map) so the form reads top-to-bottom instead
+// of side-by-side. Used in every order form (new/edit one-off, new/edit recurring).
+function PickupAndMap({ value, onChange, options, mapTarget }: {
   value: string;
   onChange: (v: string) => void;
+  options: { id: string; label: string }[];
   mapTarget: (pickup: string) => { lat: number; lng: number; label: string } | null;
 }) {
   const t = mapTarget(value);
   return (
     <div>
       <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Bezorging of afhalen?</label>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: "1 1 200px", alignContent: "flex-start" }}>
-          {[{ id: "", label: "Bezorgen", icon: "🚚" }, ...PICKUP_LOCATIONS.map(l => ({ id: l.id, label: l.label, icon: "🏪" }))].map(loc => {
-            const active = value === loc.id;
-            return (
-              <button key={loc.id} type="button" onClick={() => onChange(loc.id)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12,
-                  border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                  background: active ? "var(--accent-light)" : "var(--surface-2)",
-                  color: active ? "var(--accent)" : "var(--text)",
-                }}>
-                <span>{loc.icon}</span> {loc.label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ flex: "1 1 220px", minWidth: 200 }}>
-          {t ? (
-            <>
-              <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
-              <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "5px 0 0" }}>📍 {t.label}</p>
-            </>
-          ) : !value ? (
-            <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p>
-          ) : null}
-        </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {[{ id: "", label: "Bezorgen" }, ...options].map(loc => {
+          const active = value === loc.id;
+          return (
+            <button key={loc.id} type="button" onClick={() => onChange(loc.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12,
+                border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                background: active ? "var(--accent-light)" : "var(--surface-2)",
+                color: active ? "var(--accent)" : "var(--text)",
+              }}>
+              <span>{loc.id ? "🏪" : "🚚"}</span> {loc.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        {t ? (
+          <>
+            <LocationMap lat={t.lat} lng={t.lng} label={t.label} />
+            <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "5px 0 0", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>📍 {t.label}</span>
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.lat},${t.lng}`)}`}
+                target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                Bekijk op Google Maps ↗
+              </a>
+            </p>
+          </>
+        ) : !value ? (
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p>
+        ) : null}
       </div>
     </div>
   );
@@ -290,6 +290,7 @@ export default function MijnBestellingenPage() {
   const [showChooser, setShowChooser]   = useState(false);
   // Delivery address (for the order-form map)
   const [delivery, setDelivery]         = useState<{ lat: number | null; lng: number | null; label: string }>({ lat: null, lng: null, label: "" });
+  const [pickupLocations, setPickupLocations] = useState<PickupLocation[]>([]);
   const [deliveryTimeMap, setDeliveryTimeMap] = useState<Record<string,string>>({});
   const [invoiceNumberMap, setInvoiceNumberMap] = useState<Record<string,string>>({});
   // Week overview scroller — 0 = this week, -1 = last week, +1 = next week, etc.
@@ -308,6 +309,7 @@ export default function MijnBestellingenPage() {
         setDeliveryTimeMap(d.deliveryTimeMap ?? {});
         setInvoiceNumberMap(d.invoiceNumberMap ?? {});
         setDelivery({ lat: d.deliveryLat ?? null, lng: d.deliveryLng ?? null, label: d.deliveryLabel ?? "" });
+        setPickupLocations(d.pickupLocations ?? []);
         setLoading(false);
       });
   }
@@ -417,13 +419,18 @@ export default function MijnBestellingenPage() {
     setSavingNew(false); setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
   }
 
-  // Where an order goes, for the form map: a pickup shop (from config) or, for delivery
-  // (pickup === ""), the customer's own geocoded address. null when we have no coords.
+  // Where an order goes, for the form map: a pickup shop (its real address, from the
+  // owner-edited Customer record) or, for delivery (pickup === ""), the customer's own
+  // geocoded address. null when we have no coords.
   function mapTargetFor(pickup: string): { lat: number; lng: number; label: string } | null {
-    if (pickup) return PICKUP_COORDS[pickup] ?? null;
+    if (pickup) {
+      const loc = pickupLocations.find(l => l.id === pickup);
+      return loc ? { lat: loc.lat, lng: loc.lng, label: loc.address ?? loc.label } : null;
+    }
     if (delivery.lat != null && delivery.lng != null) return { lat: delivery.lat, lng: delivery.lng, label: delivery.label || "Bezorgadres" };
     return null;
   }
+  const pickupOptions = pickupLocations.map(l => ({ id: l.id, label: l.label }));
 
   const usedWeekdays = new Set(recurring.map(r => r.weekday));
   const validDeliveryWeekdays = [1,2,3,4,5,6,7].filter(d => !closedWeekdays.includes(d));
@@ -647,13 +654,7 @@ export default function MijnBestellingenPage() {
                         {order.active && !isEditing && (
                           <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
-                        {isEditing && (
-                          <>
-                            <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                            <button onClick={() => saveRec(order)} disabled={savingRec || (!editRecPickup && minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 11 }}>{savingRec ? "..." : "Opslaan"}</button>
-                          </>
-                        )}
-                        {editable && (
+                        {!isEditing && editable && (
                           <>
                             <button onClick={() => toggleRecActive(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: order.active ? "var(--text-subtle)" : "var(--success)" }}>
                               {order.active ? "Pauzeer" : "Hervatten"}
@@ -696,7 +697,7 @@ export default function MijnBestellingenPage() {
                         <input value={editRecNotes} onChange={e => setEditRecNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
                       </div>
                       <div style={{ marginTop: 10 }}>
-                        <PickupAndMap value={editRecPickup} onChange={setEditRecPickup} mapTarget={mapTargetFor} />
+                        <PickupAndMap value={editRecPickup} onChange={setEditRecPickup} options={pickupOptions} mapTarget={mapTargetFor} />
                       </div>
                       {(() => {
                         const t = calcBasketTotal(editRecQty, breadTypes, discountPercent);
@@ -711,6 +712,10 @@ export default function MijnBestellingenPage() {
                           Deze wijziging gaat in vanaf {nextEditable ? new Date(nextEditable+"T12:00:00Z").toLocaleDateString("nl-NL",{day:"numeric",month:"short"}) : "volgende week"}.
                         </p>
                       )}
+                      <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                        <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+                        <button onClick={() => saveRec(order)} disabled={savingRec || (!editRecPickup && minDeliveryAmount !== null && calcBasketTotal(editRecQty, breadTypes, discountPercent) < minDeliveryAmount && calcBasketTotal(editRecQty, breadTypes, discountPercent) > 0)} className="btn-primary" style={{ fontSize: 13 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
+                      </div>
                     </>}
 
                     {/* Upcoming 2 weeks skip planning */}
@@ -757,7 +762,7 @@ export default function MijnBestellingenPage() {
                     <input value={newRecNotes} onChange={e => setNewRecNotes(e.target.value)} placeholder="bijv. licht gebakken" style={inputStyle} />
                   </div>
                   <QtyGrid qty={newRecQty} onChange={setNewRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
-                  <PickupAndMap value={newRecPickup} onChange={setNewRecPickup} mapTarget={mapTargetFor} />
+                  <PickupAndMap value={newRecPickup} onChange={setNewRecPickup} options={pickupOptions} mapTarget={mapTargetFor} />
                   {(() => {
                     const t = calcBasketTotal(newRecQty, breadTypes, discountPercent);
                     const isPickup = !!newRecPickup;
@@ -794,7 +799,7 @@ export default function MijnBestellingenPage() {
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
                 <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
 
-                <PickupAndMap value={newPickup} onChange={setNewPickup} mapTarget={mapTargetFor} />
+                <PickupAndMap value={newPickup} onChange={setNewPickup} options={pickupOptions} mapTarget={mapTargetFor} />
 
                 {/* Basket total + min delivery warning */}
                 {(() => {
@@ -872,12 +877,6 @@ export default function MijnBestellingenPage() {
                         {editable && !isEditing && (
                           <button onClick={() => startEditOO(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
                         )}
-                        {isEditing && (
-                          <>
-                            <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 11 }}>Annuleer</button>
-                            <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 11 }}>{savingOO ? "..." : "Opslaan"}</button>
-                          </>
-                        )}
                         {editable && !isEditing && (
                           <button onClick={() => deleteOO(order.id)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--danger)" }}>
                             Annuleren
@@ -892,7 +891,11 @@ export default function MijnBestellingenPage() {
                           <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. licht gebakken" />
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
-                        <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} mapTarget={mapTargetFor} />
+                        <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} options={pickupOptions} mapTarget={mapTargetFor} />
+                        <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                          <button onClick={() => setEditingOOId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+                          <button onClick={() => saveOO(order)} disabled={savingOO} className="btn-primary" style={{ fontSize: 13 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
+                        </div>
                       </div>
                     )}
                   </div>
