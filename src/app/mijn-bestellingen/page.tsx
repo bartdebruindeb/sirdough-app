@@ -296,6 +296,28 @@ export default function MijnBestellingenPage() {
   // Week overview scroller — 0 = this week, -1 = last week, +1 = next week, etc.
   const [weekOffset, setWeekOffset] = useState(0);
 
+  // This login's own restaurant locations (separate KvK/invoice each) — shown as
+  // buttons above "Deze week" so switching which one's orders you're viewing/placing
+  // is a single click. Managing them (adding, editing KvK/address) lives on Mijn account.
+  const [myLocations, setMyLocations] = useState<{ id: string; name: string; city: string | null }[]>([]);
+  const [activeLocation, setActiveLocation] = useState("");
+
+  useEffect(() => {
+    fetch("/api/mijn/locations").then(r => r.json()).then(d => {
+      setMyLocations(d.locations ?? []);
+      setActiveLocation(d.selected ?? "");
+    }).catch(() => {});
+  }, []);
+
+  // Switch which location's orders are shown: persist the choice in a cookie (the
+  // server validates it against this login's own locations — see mijnCustomer.ts)
+  // and reload so every section on the page refetches scoped to it.
+  function switchLocation(id: string) {
+    if (id === activeLocation) return;
+    document.cookie = `mijn_location=${id}; path=/; max-age=31536000; samesite=lax`;
+    window.location.reload();
+  }
+
   function load() {
     fetch(`/api/mijn/bestellingen?from=${new Date().toISOString().slice(0,10)}`).then(r => r.json())
       .then(d => {
@@ -459,6 +481,27 @@ export default function MijnBestellingenPage() {
 
       {!loading && (
         <>
+          {/* ── Locatie kiezen (alleen als er meer dan één is) ── */}
+          {myLocations.length > 1 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+              {myLocations.map(loc => {
+                const active = loc.id === activeLocation;
+                return (
+                  <button key={loc.id} onClick={() => switchLocation(loc.id)}
+                    style={{
+                      fontSize: 13, padding: "7px 14px", borderRadius: 8, cursor: "pointer",
+                      border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                      background: active ? "var(--accent-light)" : "var(--surface-2)",
+                      color: active ? "var(--accent)" : "var(--text)",
+                      fontWeight: active ? 600 : 400,
+                    }}>
+                    {loc.name}{loc.city ? ` — ${loc.city}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* ── Weekoverzicht (scrollbaar) ── */}
           {(() => {
             const todayUTC = new Date().toISOString().slice(0,10);

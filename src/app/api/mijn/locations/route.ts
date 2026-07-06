@@ -13,13 +13,14 @@ export const dynamic = "force-dynamic";
 const MAX_LOCATIONS = 3;
 
 // GET /api/mijn/locations — the restaurants this login can order for, plus the active one.
+// Full detail (not just id/name/city) so the account page can list + edit them directly.
 export async function GET() {
   try {
     const { customerId, customerIds } = await getMijnContext();
     const locations = await prisma.customer.findMany({
       where: { id: { in: customerIds } },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, city: true },
+      select: { id: true, name: true, city: true, address: true, postalCode: true, kvk: true, phone: true, email: true },
     });
     return Response.json({ locations, selected: customerId, canAdd: customerIds.length < MAX_LOCATIONS });
   } catch (e) { return toResponse(e); }
@@ -70,5 +71,51 @@ export async function POST(req: Request) {
     });
 
     return Response.json({ ok: true, id: created.id }, { status: 201 });
+  } catch (e) { return toResponse(e); }
+}
+
+const UpdateLocationSchema = z.object({
+  id:         z.string(),
+  name:       z.string().min(1).optional(),
+  address:    z.string().min(1).optional(),
+  postalCode: z.string().min(1).optional(),
+  city:       z.string().min(1).optional(),
+  kvk:        z.string().optional(),
+  phone:      z.string().optional(),
+});
+
+// PATCH /api/mijn/locations — a customer edits one of their own locations. discountPercent
+// stays owner-controlled and is never accepted here.
+export async function PATCH(req: Request) {
+  try {
+    const { customerIds } = await getMijnContext();
+    const input = await parseJson(req, UpdateLocationSchema);
+
+    // The location must be one this login actually owns — never trust the client id
+    // beyond that check (same IDOR boundary as getMijnContext's cookie handling).
+    if (!customerIds.includes(input.id)) {
+      return Response.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
+    const addressChanged = input.address !== undefined || input.postalCode !== undefined || input.city !== undefined;
+    let coords: { lat: number; lng: number } | null = null;
+    if (addressChanged && input.address && input.postalCode && input.city) {
+      coords = await geocodeAddress(input.address, input.postalCode, input.city).catch(() => null);
+    }
+
+    await prisma.customer.update({
+      where: { id: input.id },
+      data: {
+        ...(input.name !== undefined && { name: input.name.trim() }),
+        ...(input.address !== undefined && { address: input.address }),
+        ...(input.postalCode !== undefined && { postalCode: input.postalCode }),
+        ...(input.city !== undefined && { city: input.city }),
+        ...(input.kvk !== undefined && { kvk: input.kvk || null }),
+        ...(input.phone !== undefined && { phone: input.phone || null }),
+        ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+      },
+    });
+
+    return Response.json({ ok: true });
   } catch (e) { return toResponse(e); }
 }
