@@ -256,7 +256,7 @@ function LocationCard({ location, onChanged }: { location: LocationT; onChanged:
         <>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div>
-              <label style={label}>Restaurantnaam</label>
+              <label style={label}>Naam</label>
               <input value={name} onChange={e => setName(e.target.value)} style={inp} />
             </div>
             <div>

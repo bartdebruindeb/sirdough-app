@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 const FIELDS: [keyof FormState, string][] = [
-  ["name", "Restaurantnaam *"], ["address", "Adres *"], ["postalCode", "Postcode *"],
+  ["name", "Naam *"], ["address", "Adres *"], ["postalCode", "Postcode *"],
   ["city", "Plaats *"], ["kvk", "KvK-nummer"], ["phone", "Telefoon"],
 ];
 type FormState = { name: string; address: string; postalCode: string; city: string; kvk: string; phone: string };
