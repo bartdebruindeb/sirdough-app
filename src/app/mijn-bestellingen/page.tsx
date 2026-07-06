@@ -481,6 +481,23 @@ export default function MijnBestellingenPage() {
 
       {!loading && (
         <>
+          {/* ── Minimale bestelwaarde: always-visible notice, not just inside the basket
+              total once you're mid-order — that's easy to miss since it only ever showed
+              reactively when your current basket happened to be below the threshold. ── */}
+          {minDeliveryAmount !== null && (
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: 8, marginBottom: "1.25rem",
+              background: "#fef3c7", border: "1px solid #fde68a", color: "#92400e",
+              borderRadius: 8, padding: "10px 14px", fontSize: 13,
+            }}>
+              <span style={{ flexShrink: 0 }}>ℹ️</span>
+              <span>
+                Voor bezorging geldt een minimale bestelwaarde van <strong>€ {minDeliveryAmount.toFixed(2)}</strong> (excl. BTW) per bezorgmoment.
+                Bij afhalen geldt geen minimum.
+              </span>
+            </div>
+          )}
+
           {/* ── Locatie kiezen (alleen als er meer dan één is) ── */}
           {myLocations.length > 1 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "1.25rem" }}>
