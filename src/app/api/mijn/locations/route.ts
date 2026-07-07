@@ -28,6 +28,7 @@ export async function GET() {
 
 const CreateLocationSchema = z.object({
   name:       z.string().min(1),
+  email:      z.string().email().optional().or(z.literal("")),
   address:    z.string().min(1),
   postalCode: z.string().min(1),
   city:       z.string().min(1),
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
         tenantId,
         userId,
         name: input.name.trim(),
+        email: input.email || null,
         address: input.address,
         postalCode: input.postalCode,
         city: input.city,
@@ -77,6 +79,7 @@ export async function POST(req: Request) {
 const UpdateLocationSchema = z.object({
   id:         z.string(),
   name:       z.string().min(1).optional(),
+  email:      z.string().email().optional().or(z.literal("")),
   address:    z.string().min(1).optional(),
   postalCode: z.string().min(1).optional(),
   city:       z.string().min(1).optional(),
@@ -107,6 +110,7 @@ export async function PATCH(req: Request) {
       where: { id: input.id },
       data: {
         ...(input.name !== undefined && { name: input.name.trim() }),
+        ...(input.email !== undefined && { email: input.email || null }),
         ...(input.address !== undefined && { address: input.address }),
         ...(input.postalCode !== undefined && { postalCode: input.postalCode }),
         ...(input.city !== undefined && { city: input.city }),

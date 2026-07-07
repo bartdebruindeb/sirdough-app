@@ -2,10 +2,10 @@
 import { useState } from "react";
 
 const FIELDS: [keyof FormState, string][] = [
-  ["name", "Naam *"], ["address", "Adres *"], ["postalCode", "Postcode *"],
+  ["name", "Naam *"], ["email", "E-mailadres"], ["address", "Adres *"], ["postalCode", "Postcode *"],
   ["city", "Plaats *"], ["kvk", "KvK-nummer"], ["phone", "Telefoon"],
 ];
-type FormState = { name: string; address: string; postalCode: string; city: string; kvk: string; phone: string };
+type FormState = { name: string; email: string; address: string; postalCode: string; city: string; kvk: string; phone: string };
 
 const inp: React.CSSProperties = {
   border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px",
@@ -13,7 +13,7 @@ const inp: React.CSSProperties = {
 };
 
 export function AddLocationModal({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
-  const [form, setForm]   = useState<FormState>({ name: "", address: "", postalCode: "", city: "", kvk: "", phone: "" });
+  const [form, setForm]   = useState<FormState>({ name: "", email: "", address: "", postalCode: "", city: "", kvk: "", phone: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
 
