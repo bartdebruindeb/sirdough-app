@@ -15,7 +15,11 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
   "img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.basemaps.cartocdn.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org",
+  // api.pdok.nl: the postcode/huisnummer address lookup used on Klanten, Mijn account,
+  // and the delivery-address forms — without it the browser silently blocks the lookup
+  // and "Zoek adres" never resolves, which also blocks saving (the save button/flow
+  // requires a resolved address).
+  "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.pdok.nl",
   // Invoice PDF preview renders the generated PDF as a blob: URL in an <iframe>.
   "frame-src 'self' blob:",
 ].join("; ");

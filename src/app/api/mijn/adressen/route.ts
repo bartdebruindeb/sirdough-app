@@ -58,10 +58,17 @@ export async function POST(req: Request) {
     const customerId = await getCustomerId(req);
     const input = await parseJson(req, AddressSchema);
 
+    // Geocode every address, not only the default one — a delivery order can be pointed
+    // at any of a location's saved addresses, so the map needs real coordinates for all
+    // of them, not just whichever one happens to be the primary/default.
+    const coords = await geocodeAddress(input.street, input.postalCode, input.city).catch(() => null);
+
     if (input.isDefault) {
       await (prisma as any).customerAddress.updateMany({ where: { customerId }, data: { isDefault: false } });
     }
-    const addr = await (prisma as any).customerAddress.create({ data: { customerId, ...input } });
+    const addr = await (prisma as any).customerAddress.create({
+      data: { customerId, ...input, ...(coords ? { lat: coords.lat, lng: coords.lng } : {}) },
+    });
     if (input.isDefault) await syncDefaultAddressToCustomer(customerId, input);
     return Response.json(addr, { status: 201 });
   } catch (e) { return toResponse(e); }
@@ -75,10 +82,16 @@ export async function PATCH(req: Request) {
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
 
     const input = await parseJson(req, AddressSchema.partial());
+    const addressChanged = input.street !== undefined && input.postalCode !== undefined && input.city !== undefined;
+    const coords = addressChanged ? await geocodeAddress(input.street!, input.postalCode!, input.city!).catch(() => null) : null;
+
     if (input.isDefault) {
       await (prisma as any).customerAddress.updateMany({ where: { customerId }, data: { isDefault: false } });
     }
-    await (prisma as any).customerAddress.updateMany({ where: { id, customerId }, data: input });
+    await (prisma as any).customerAddress.updateMany({
+      where: { id, customerId },
+      data: { ...input, ...(coords ? { lat: coords.lat, lng: coords.lng } : {}) },
+    });
 
     // Sync to Customer record if this address is (or became) the default
     const updated = await (prisma as any).customerAddress.findFirst({ where: { id, customerId } });

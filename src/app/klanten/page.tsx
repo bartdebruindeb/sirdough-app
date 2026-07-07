@@ -35,23 +35,30 @@ function parseHuisnr(addr: string): { huisnummer: string; huisletter: string } {
 // free-text q= query — free-text search is fuzzy and can match a nearby postcode
 // when there's no exact hit for the given house number.
 async function pdokLookup(postcode: string, huisnummer: string, huisletter: string): Promise<{ straat: string; stad: string; lat: number; lng: number } | null> {
-  const pc = postcode.replace(/\s/g, "").toUpperCase();
-  const params = new URLSearchParams({
-    q: "*",
-    fq: "type:adres",
-    fl: "straatnaam,woonplaatsnaam,centroide_ll",
-    rows: "1",
-  });
-  params.append("fq", `postcode:${pc}`);
-  params.append("fq", `huisnummer:${huisnummer}`);
-  if (huisletter) params.append("fq", `huisletter:${huisletter}`);
-  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
-  const data = await res.json();
-  const doc = data.response?.docs?.[0];
-  if (!doc?.straatnaam) return null;
-  const m = doc.centroide_ll?.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-  if (!m) return null;
-  return { straat: doc.straatnaam, stad: doc.woonplaatsnaam ?? "", lat: parseFloat(m[2]), lng: parseFloat(m[1]) };
+  // A network/CSP failure resolves to null (-> "fail" state), never throws -- an
+  // uncaught rejection would leave the caller's button stuck on "..." with no retry.
+  try {
+    const pc = postcode.replace(/\s/g, "").toUpperCase();
+    const params = new URLSearchParams({
+      q: "*",
+      fq: "type:adres",
+      fl: "straatnaam,woonplaatsnaam,centroide_ll",
+      rows: "1",
+    });
+    params.append("fq", `postcode:${pc}`);
+    params.append("fq", `huisnummer:${huisnummer}`);
+    if (huisletter) params.append("fq", `huisletter:${huisletter}`);
+    const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const doc = data.response?.docs?.[0];
+    if (!doc?.straatnaam) return null;
+    const m = doc.centroide_ll?.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+    if (!m) return null;
+    return { straat: doc.straatnaam, stad: doc.woonplaatsnaam ?? "", lat: parseFloat(m[2]), lng: parseFloat(m[1]) };
+  } catch {
+    return null;
+  }
 }
 
 const NOM = "https://nominatim.openstreetmap.org/search";

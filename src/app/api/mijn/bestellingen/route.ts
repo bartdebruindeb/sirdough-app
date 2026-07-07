@@ -74,14 +74,14 @@ export async function GET(req: Request) {
 
     const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-    const [orders, breadTypes, recurring, pastOrders, tenant, deliveryStatuses, invoiceOrders] = await Promise.all([
+    const [orders, breadTypes, recurring, pastOrders, tenant, deliveryStatuses, invoiceOrders, myAddresses] = await Promise.all([
       prisma.oneOffOrder.findMany({
         where: {
           tenantId: customer.tenantId,
           customerId: customer.id,
           deliveryDate: { gte: new Date(from + "T00:00:00Z") },
         },
-        include: { lines: { include: { breadType: true } } },
+        include: { lines: { include: { breadType: true } }, deliveryAddress: true },
         orderBy: { deliveryDate: "asc" },
       }),
       (prisma as any).breadType.findMany({
@@ -113,6 +113,10 @@ export async function GET(req: Request) {
       (prisma as any).invoiceOrder.findMany({
         where: { invoice: { tenantId: customer.tenantId, customerId: customer.id } },
         include: { invoice: { select: { invoiceNumber: true } } },
+      }),
+      (prisma as any).customerAddress.findMany({
+        where: { customerId: customer.id },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
       }),
     ]);
 
@@ -186,6 +190,10 @@ export async function GET(req: Request) {
       deliveryLat: customer.lat ?? null,
       deliveryLng: customer.lng ?? null,
       deliveryLabel: [customer.address, customer.postalCode, customer.city].filter(Boolean).join(", "),
+      // This location's saved delivery addresses — a bezorgen order can be pointed at any
+      // of these instead of the account's main (KvK) address, e.g. several branches under
+      // one invoice. See mijn-account's "Bezorgadressen".
+      myAddresses,
     });
   } catch (e) { return toResponse(e); }
 }
@@ -211,6 +219,13 @@ export async function POST(req: Request) {
 
     const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, input.pickupLocation, input.lines);
     if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
+
+    // A chosen delivery address must actually belong to this location — never trust the
+    // client id beyond that check.
+    if (input.deliveryAddressId) {
+      const addr = await (prisma as any).customerAddress.findFirst({ where: { id: input.deliveryAddressId, customerId: customer.id } });
+      if (!addr) return Response.json({ message: "Bezorgadres niet gevonden." }, { status: 400 });
+    }
 
     const order = await (prisma as any).oneOffOrder.create({
       data: {
@@ -379,6 +394,13 @@ export async function PATCH(req: Request) {
     const minViolation = await checkMinimumDelivery(customer.tenantId, (customer as any).discountPercent ?? 0, effectivePickup, input.lines);
     if (minViolation) return Response.json({ message: minViolation }, { status: 400 });
 
+    // Same ownership check as create — never trust the client's deliveryAddressId
+    // beyond confirming it belongs to this location.
+    if (input.deliveryAddressId) {
+      const addr = await (prisma as any).customerAddress.findFirst({ where: { id: input.deliveryAddressId, customerId: customer.id } });
+      if (!addr) return Response.json({ message: "Bezorgadres niet gevonden." }, { status: 400 });
+    }
+
     // Delete existing lines and recreate
     await prisma.oneOffOrderLine.deleteMany({ where: { oneOffId: input.id } });
     const updated = await (prisma as any).oneOffOrder.update({
@@ -386,6 +408,7 @@ export async function PATCH(req: Request) {
       data: {
         notes: input.notes ?? order.notes,
         ...(input.pickupLocation !== undefined && { pickupLocation: input.pickupLocation }),
+        ...(input.deliveryAddressId !== undefined && { deliveryAddressId: input.deliveryAddressId }),
         lines: { create: input.lines.filter((l: any) => l.quantity > 0) },
       },
       include: { lines: { include: { breadType: true } } },

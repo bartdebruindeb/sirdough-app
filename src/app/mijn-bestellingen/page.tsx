@@ -16,8 +16,10 @@ type BreadType = { id: string; name: string; sortOrder: number; price: number | 
 type RecurringException = { date: string; active: boolean };
 type RecurringLine = { breadTypeId: string; quantity: number; breadType: BreadType };
 type RecurringOrder = { id: string; weekday: number; active: boolean; pickupLocation?: string | null; notes?: string | null; lines: RecurringLine[]; exceptions: RecurringException[] };
+type DeliveryAddress = { id: string; label: string; street: string; postalCode: string; city: string; isDefault: boolean; lat: number | null; lng: number | null };
 type OneOffOrder = {
   id: string; deliveryDate: string; notes: string | null; pickupLocation?: string | null;
+  deliveryAddressId?: string | null;
   lines: { breadTypeId: string; quantity: number; breadType: BreadType }[];
 };
 
@@ -272,6 +274,7 @@ export default function MijnBestellingenPage() {
   const [editOOQty, setEditOOQty]       = useState<Record<string,number>>({});
   const [editOONotes, setEditOONotes]   = useState("");
   const [editOOPickup, setEditOOPickup] = useState<string>("");
+  const [editOODeliveryAddressId, setEditOODeliveryAddressId] = useState<string>("");
   const [savingOO, setSavingOO]         = useState(false);
   const [editOOError, setEditOOError]   = useState("");
 
@@ -283,6 +286,7 @@ export default function MijnBestellingenPage() {
   const [savingNew, setSavingNew]       = useState(false);
   const [dateError, setDateError]       = useState("");
   const [newOOError, setNewOOError]     = useState("");
+  const [newDeliveryAddressId, setNewDeliveryAddressId] = useState<string>("");
 
   // New one-off: pickup
   const [newPickup, setNewPickup]       = useState<string>(""); // "" = delivery, else location id
@@ -294,6 +298,7 @@ export default function MijnBestellingenPage() {
   const [showChooser, setShowChooser]   = useState(false);
   // Delivery address (for the order-form map)
   const [delivery, setDelivery]         = useState<{ lat: number | null; lng: number | null; label: string }>({ lat: null, lng: null, label: "" });
+  const [myAddresses, setMyAddresses]   = useState<DeliveryAddress[]>([]);
   const [pickupLocations, setPickupLocations] = useState<PickupLocation[]>([]);
   const [deliveryTimeMap, setDeliveryTimeMap] = useState<Record<string,string>>({});
   const [invoiceNumberMap, setInvoiceNumberMap] = useState<Record<string,string>>({});
@@ -336,6 +341,7 @@ export default function MijnBestellingenPage() {
         setInvoiceNumberMap(d.invoiceNumberMap ?? {});
         setDelivery({ lat: d.deliveryLat ?? null, lng: d.deliveryLng ?? null, label: d.deliveryLabel ?? "" });
         setPickupLocations(d.pickupLocations ?? []);
+        setMyAddresses(d.myAddresses ?? []);
         setLoading(false);
       });
   }
@@ -432,7 +438,9 @@ export default function MijnBestellingenPage() {
   function startEditOO(o: OneOffOrder) {
     const q: Record<string,number> = {};
     o.lines.forEach(l => { q[l.breadTypeId] = l.quantity; });
-    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditOOPickup(o.pickupLocation ?? ""); setEditOOError(""); setEditingOOId(o.id);
+    setEditOOQty(q); setEditOONotes(o.notes ?? ""); setEditOOPickup(o.pickupLocation ?? "");
+    setEditOODeliveryAddressId(o.deliveryAddressId ?? myAddresses.find(a => a.isDefault)?.id ?? myAddresses[0]?.id ?? "");
+    setEditOOError(""); setEditingOOId(o.id);
   }
   async function saveOO(o: OneOffOrder) {
     // Same minimum-delivery rule as placing a new order — editing a delivery order
@@ -448,7 +456,11 @@ export default function MijnBestellingenPage() {
     setSavingOO(true);
     const res = await fetch("/api/mijn/bestellingen", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: o.id, notes: editOONotes || undefined, pickupLocation: editOOPickup || null, lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0) }),
+      body: JSON.stringify({
+        id: o.id, notes: editOONotes || undefined, pickupLocation: editOOPickup || null,
+        deliveryAddressId: isPickup ? null : (editOODeliveryAddressId || null),
+        lines: breadTypes.map(bt => ({ breadTypeId: bt.id, quantity: editOOQty[bt.id] ?? 0 })).filter(l => l.quantity > 0),
+      }),
     });
     setSavingOO(false);
     if (res.ok) { setEditingOOId(null); scheduleEmail(); load(); }
@@ -478,6 +490,7 @@ export default function MijnBestellingenPage() {
         deliveryDate: newDate,
         notes: newNotes || undefined,
         pickupLocation: newPickup || undefined,
+        deliveryAddressId: (!newPickup && newDeliveryAddressId) ? newDeliveryAddressId : undefined,
         lines: Object.entries(newQty).filter(([,q]) => q > 0).map(([breadTypeId, quantity]) => ({ breadTypeId, quantity: quantity as number })),
       }),
     });
@@ -487,12 +500,18 @@ export default function MijnBestellingenPage() {
   }
 
   // Where an order goes, for the form map: a pickup shop (its real address, from the
-  // owner-edited Customer record) or, for delivery (pickup === ""), the customer's own
-  // geocoded address. null when we have no coords.
-  function mapTargetFor(pickup: string): { lat: number; lng: number; label: string } | null {
+  // owner-edited Customer record); for delivery (pickup === ""), a specifically chosen
+  // Bezorgadres if one is selected (it takes priority over the account's main address —
+  // e.g. several branches sharing one KvK but delivering to different spots), otherwise
+  // the account's own geocoded address. null when we have no coords.
+  function mapTargetFor(pickup: string, deliveryAddressId?: string): { lat: number; lng: number; label: string } | null {
     if (pickup) {
       const loc = pickupLocations.find(l => l.id === pickup);
       return loc ? { lat: loc.lat, lng: loc.lng, label: loc.address ?? loc.label } : null;
+    }
+    if (deliveryAddressId) {
+      const addr = myAddresses.find(a => a.id === deliveryAddressId);
+      if (addr?.lat != null && addr?.lng != null) return { lat: addr.lat, lng: addr.lng, label: `${addr.street}, ${addr.postalCode} ${addr.city}` };
     }
     if (delivery.lat != null && delivery.lng != null) return { lat: delivery.lat, lng: delivery.lng, label: delivery.label || "Bezorgadres" };
     return null;
@@ -878,7 +897,11 @@ export default function MijnBestellingenPage() {
           {activeSection === "eenmalig" && <section style={{ marginBottom: "2rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h2 style={{ fontSize: 17, margin: 0 }}>Eenmalige bestellingen</h2>
-              <button onClick={() => { setNewOOError(""); setShowNewOO(true); }} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
+              <button onClick={() => {
+                setNewOOError("");
+                setNewDeliveryAddressId(myAddresses.find(a => a.isDefault)?.id ?? myAddresses[0]?.id ?? "");
+                setShowNewOO(true);
+              }} className="btn-primary" style={{ fontSize: 13 }}>+ Bestelling plaatsen</button>
             </div>
 
             {showNewOO && (
@@ -894,7 +917,21 @@ export default function MijnBestellingenPage() {
                 {dateError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{dateError}</p>}
                 <QtyGrid qty={newQty} onChange={setNewQty} breadTypes={breadTypes} discountPercent={discountPercent} deliveryDate={newDate} />
 
-                <PickupAndMap value={newPickup} onChange={setNewPickup} options={pickupOptions} mapTarget={mapTargetFor} />
+                {/* Only relevant for delivery, and only when there's an actual choice — e.g.
+                    several branches billed under one KvK. This address takes priority over
+                    the account's main address once selected. */}
+                {!newPickup && myAddresses.length > 1 && (
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
+                    <select value={newDeliveryAddressId} onChange={e => setNewDeliveryAddressId(e.target.value)} style={inputStyle}>
+                      {myAddresses.map(a => (
+                        <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}{a.isDefault ? " (standaard)" : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <PickupAndMap value={newPickup} onChange={setNewPickup} options={pickupOptions} mapTarget={p => mapTargetFor(p, newDeliveryAddressId)} />
 
                 {/* Basket total (informational — always shown once there are prices) */}
                 {(() => {
@@ -982,7 +1019,17 @@ export default function MijnBestellingenPage() {
                           <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. licht gebakken" />
                         </div>
                         <QtyGrid qty={editOOQty} onChange={setEditOOQty} breadTypes={breadTypes} discountPercent={discountPercent} />
-                        <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} options={pickupOptions} mapTarget={mapTargetFor} />
+                        {!editOOPickup && myAddresses.length > 1 && (
+                          <div>
+                            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgadres</label>
+                            <select value={editOODeliveryAddressId} onChange={e => setEditOODeliveryAddressId(e.target.value)} style={inputStyle}>
+                              {myAddresses.map(a => (
+                                <option key={a.id} value={a.id}>{a.label} — {a.street}, {a.city}{a.isDefault ? " (standaard)" : ""}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <PickupAndMap value={editOOPickup} onChange={setEditOOPickup} options={pickupOptions} mapTarget={p => mapTargetFor(p, editOODeliveryAddressId)} />
                         {/* Shown only at the moment Opslaan is actually rejected, not while adjusting */}
                         {editOOError && <p style={{ fontSize: 12, color: "var(--danger)", margin: 0 }}>{editOOError}</p>}
                         <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border)" }}>

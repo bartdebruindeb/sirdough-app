@@ -14,16 +14,24 @@ const label: React.CSSProperties = {
 // free-text q= query — free-text search is fuzzy and can match a nearby postcode
 // when there's no exact hit for the given house number (same fix as klanten/page.tsx).
 async function pdokLookup(postcode: string, huisnummer: string, huisletter: string) {
-  const pc = postcode.replace(/\s/g, "").toUpperCase();
-  const params = new URLSearchParams({ q: "*", fq: "type:adres", fl: "straatnaam,woonplaatsnaam,centroide_ll", rows: "1" });
-  params.append("fq", `postcode:${pc}`);
-  params.append("fq", `huisnummer:${huisnummer}`);
-  if (huisletter) params.append("fq", `huisletter:${huisletter}`);
-  const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
-  const data = await res.json();
-  const doc = data.response?.docs?.[0];
-  if (!doc) return null;
-  return { straat: doc.straatnaam as string, stad: doc.woonplaatsnaam as string };
+  // A network/CSP failure here must resolve to null (-> "fail" state), never throw --
+  // an uncaught rejection would leave resolveAddress()/save() hanging and the
+  // Toevoegen/Opslaan button stuck on "..." forever with no way to retry.
+  try {
+    const pc = postcode.replace(/\s/g, "").toUpperCase();
+    const params = new URLSearchParams({ q: "*", fq: "type:adres", fl: "straatnaam,woonplaatsnaam,centroide_ll", rows: "1" });
+    params.append("fq", `postcode:${pc}`);
+    params.append("fq", `huisnummer:${huisnummer}`);
+    if (huisletter) params.append("fq", `huisletter:${huisletter}`);
+    const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const doc = data.response?.docs?.[0];
+    if (!doc) return null;
+    return { straat: doc.straatnaam as string, stad: doc.woonplaatsnaam as string };
+  } catch {
+    return null;
+  }
 }
 
 function parseHuisnr(addr: string) {

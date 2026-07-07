@@ -294,6 +294,8 @@ model CustomerAddress {
   postalCode String
   city       String
   isDefault  Boolean @default(false)
+  lat        Float?
+  lng        Float?
 
   customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   oneOffOrders OneOffOrder[]
