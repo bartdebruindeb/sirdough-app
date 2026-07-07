@@ -21,11 +21,169 @@ type LogEntry  = {
   weatherTemp: number | null; weatherCode: number | null;
   weatherIcon: { icon: string; label: string } | null;
 };
+type ShopCustomer = {
+  address: string | null; postalCode: string | null; city: string | null;
+  kvk: string | null; phone: string | null; email: string | null;
+  lat: number | null; lng: number | null;
+} | null;
 type WinkelData = {
   logs: LogEntry[];
   breadTypes: BreadType[];
   templateByWeekday: Record<number, Record<string, number>>;
+  shopCustomer?: ShopCustomer;
 };
+
+const winkelInp: React.CSSProperties = {
+  border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px",
+  fontSize: 13, background: "var(--surface)", width: "100%",
+};
+const winkelLabel: React.CSSProperties = {
+  fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4,
+};
+
+function parseHuisnr(addr: string) {
+  const m = addr.match(/(\d+)\s*([a-zA-Z]?)$/);
+  return { huisnummer: m?.[1] ?? "", huisletter: m?.[2] ?? "" };
+}
+
+// PDOK — same structured postcode+huisnummer lookup used everywhere else in the app
+// (mijn-account, klanten's CustomerForm). Deliberately NOT the loose free-text
+// fallback chain klanten's bulk geocode button uses — that's what once resolved a
+// shop's street name to the wrong city entirely.
+async function pdokLookup(postcode: string, huisnummer: string, huisletter: string) {
+  try {
+    const pc = postcode.replace(/\s/g, "").toUpperCase();
+    const params = new URLSearchParams({ q: "*", fq: "type:adres", fl: "straatnaam,woonplaatsnaam,centroide_ll", rows: "1" });
+    params.append("fq", `postcode:${pc}`);
+    params.append("fq", `huisnummer:${huisnummer}`);
+    if (huisletter) params.append("fq", `huisletter:${huisletter}`);
+    const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?${params}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const doc = data.response?.docs?.[0];
+    if (!doc) return null;
+    return { straat: doc.straatnaam as string, stad: doc.woonplaatsnaam as string };
+  } catch {
+    return null;
+  }
+}
+
+// Read view + editable form for a shop's own address/KvK/contact — this address is what
+// Bezorgen uses as the shop's delivery/route stop, and what the customer order-form map
+// shows for "Afhalen <shop>". Editing here (structured lookup) instead of via Klanten's
+// bulk geocode button is what keeps it from silently drifting to the wrong city.
+function ShopAddressCard({ shopName, shopCustomer, onChanged }: { shopName: string; shopCustomer: ShopCustomer; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [kvk, setKvk]     = useState(shopCustomer?.kvk ?? "");
+  const [phone, setPhone] = useState(shopCustomer?.phone ?? "");
+  const [email, setEmail] = useState(shopCustomer?.email ?? "");
+  const [postcode, setPostcode] = useState(shopCustomer?.postalCode ?? "");
+  const { huisnummer: hn0, huisletter: hl0 } = parseHuisnr(shopCustomer?.address ?? "");
+  const [huisnummer, setHuisnummer] = useState(hn0);
+  const [huisletter, setHuisletter] = useState(hl0);
+  const [foundStraat, setFoundStraat] = useState(shopCustomer?.address ?? "");
+  const [foundStad, setFoundStad]     = useState(shopCustomer?.city ?? "");
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(shopCustomer?.address ? "found" : "idle");
+  const [saving, setSaving] = useState(false);
+
+  // Re-sync local state whenever the selected shop changes (this component doesn't
+  // remount since it's keyed by nothing across shop switches).
+  useEffect(() => {
+    setEditing(false);
+    setKvk(shopCustomer?.kvk ?? ""); setPhone(shopCustomer?.phone ?? ""); setEmail(shopCustomer?.email ?? "");
+    setPostcode(shopCustomer?.postalCode ?? "");
+    const { huisnummer: hn, huisletter: hl } = parseHuisnr(shopCustomer?.address ?? "");
+    setHuisnummer(hn); setHuisletter(hl);
+    setFoundStraat(shopCustomer?.address ?? ""); setFoundStad(shopCustomer?.city ?? "");
+    setLookupStatus(shopCustomer?.address ? "found" : "idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopName]);
+
+  async function doLookup() {
+    if (!postcode.trim() || !huisnummer.trim()) return;
+    setLookupStatus("looking");
+    const result = await pdokLookup(postcode, huisnummer, huisletter);
+    if (result) { setFoundStraat(`${result.straat} ${huisnummer}${huisletter}`.trim()); setFoundStad(result.stad); setLookupStatus("found"); }
+    else setLookupStatus("fail");
+  }
+  async function save() {
+    setSaving(true);
+    await fetch("/api/winkel", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shopName, kvk, phone, email,
+        ...(lookupStatus === "found" && { address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad }),
+      }),
+    });
+    setSaving(false); setEditing(false); onChanged();
+  }
+
+  return (
+    <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
+      {!editing ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: "0 0 2px" }}>
+              {shopCustomer?.address ? `${shopCustomer.address}, ${shopCustomer.postalCode} ${shopCustomer.city}` : "Geen adres ingesteld"}
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: "0 0 2px" }}>
+              {shopCustomer?.email ?? "—"} {shopCustomer?.phone && `· ${shopCustomer.phone}`}
+            </p>
+            <p style={{ fontSize: 13, color: shopCustomer?.kvk ? "var(--text-subtle)" : "#f97316", margin: 0 }}>
+              KvK: {shopCustomer?.kvk ?? "niet ingevuld"}
+            </p>
+          </div>
+          <button onClick={() => setEditing(true)} className="btn-secondary" style={{ fontSize: 12, flexShrink: 0 }}>Wijzigen</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={winkelLabel}>E-mailadres</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} style={winkelInp} placeholder="winkel@bedrijf.nl" />
+            </div>
+            <div>
+              <label style={winkelLabel}>Telefoonnummer</label>
+              <input value={phone} onChange={e => setPhone(e.target.value)} style={winkelInp} placeholder="+31 6 ..." />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={winkelLabel}>KvK-nummer</label>
+              <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px", gap: 8, marginBottom: 8 }}>
+            <div>
+              <label style={winkelLabel}>Postcode</label>
+              <input value={postcode} onChange={e => { setPostcode(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="2514 CE" />
+            </div>
+            <div>
+              <label style={winkelLabel}>Huisnummer</label>
+              <input value={huisnummer} onChange={e => { setHuisnummer(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="16" />
+            </div>
+            <div>
+              <label style={winkelLabel}>Toev.</label>
+              <input value={huisletter} onChange={e => { setHuisletter(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="A" />
+            </div>
+          </div>
+          <button type="button" onClick={doLookup} disabled={lookupStatus === "looking" || !postcode.trim() || !huisnummer.trim()}
+            className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px", marginBottom: 10 }}>
+            {lookupStatus === "looking" ? "Zoeken..." : "Zoek adres"}
+          </button>
+          {lookupStatus === "found" && (
+            <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, marginBottom: 10 }}>
+              <span style={{ color: "var(--success)", marginRight: 8 }}>✓</span>{foundStraat}, {postcode.toUpperCase()} {foundStad}
+            </div>
+          )}
+          {lookupStatus === "fail" && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setEditing(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function getWeekday(date: string) {
   const d = new Date(date + "T12:00:00Z");
@@ -249,6 +407,12 @@ export default function WinkelPage() {
         <p style={{ color: "var(--text-subtle)" }}>Laden…</p>
       ) : (
         <>
+          {/* ── Winkeladres, KvK, contact — dit adres is de hoofdlocatie voor deze
+              winkel in Bezorgen en op de bestelkaart van klanten (afhalen). ── */}
+          {role === "OWNER" && (
+            <ShopAddressCard shopName={selectedShop} shopCustomer={shopData?.shopCustomer ?? null} onChanged={load} />
+          )}
+
           {/* ── Beheer broodtypen ── */}
           {role === "OWNER" && allBreadTypes.length > 0 && (
             <>

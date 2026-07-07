@@ -3,6 +3,7 @@ import { toResponse } from "@/server/lib/errors";
 import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz";
 import { prisma } from "@/server/config/db";
 import { parseJson } from "@/server/lib/validation";
+import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
@@ -18,8 +19,14 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const sortBy = url.searchParams.get("sort") ?? "name"; // "name" | "city"
 
+    // Shops are their own Customer records (for invoicing) but aren't "klanten" —
+    // they're managed on the Winkel page now, with a stricter address lookup, since a
+    // loose free-text geocode fallback here once resolved a shop's street name to the
+    // wrong city entirely (e.g. "Herengracht 16" matching Almelo instead of Den Haag).
+    const shopNames = bakeryConfig.shops.map(s => s.name);
+
     const customers = await (prisma as any).customer.findMany({
-      where: { tenantId: tid },
+      where: { tenantId: tid, name: { notIn: shopNames } },
       include: {
         user: { select: { id: true, email: true, active: true } },
         deliveryAddresses: { orderBy: [{ isDefault: "desc" }, { id: "asc" }] },
