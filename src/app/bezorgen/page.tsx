@@ -3,18 +3,11 @@ import { useRole } from "@/lib/role-context";
 import { useEffect, useState, Fragment } from "react";
 import { bakeryConfig } from "@/config/bakery.config";
 import { haversineKm } from "@/lib/geo";
+import { buildMapsUrls, MAX_WAYPOINTS_PER_SEGMENT, type DeliveryRow } from "./routeSplit";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
 type BreadType = { id: string; name: string; slug: string };
-type DeliveryRow = {
-  customerId: string; name: string; city: string; address: string;
-  cityOrder: number; notes: string; isShop: boolean;
-  lat: number | null; lng: number | null;
-  postalCode: string | null; email: string | null; phone: string | null;
-  quantities: Record<string, number>;
-  pickupLocation: string | null;
-};
 type DeliveryData = {
   date: string; breadTypes: BreadType[];
   cityRoutes: { city: string; sortOrder: number }[];
@@ -29,18 +22,6 @@ function getWeekday(date: string) {
   const d = new Date(date + "T12:00:00Z");
   const j = d.getUTCDay();
   return j === 0 ? 7 : j;
-}
-
-function buildMapsUrl(rows: DeliveryRow[]): string {
-  const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(r.address));
-  if (addresses.length === 0) return "";
-  // Last stop is always back at the bakery
-  const destination = encodeURIComponent(bakeryConfig.bakeryAddress);
-  const waypoints = addresses.join("|");
-  let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
-  if (waypoints) url += `&waypoints=${waypoints}`;
-  url += "&travelmode=driving";
-  return url;
 }
 
 function shortName(name: string) {
@@ -381,7 +362,7 @@ export default function BezorgenPage() {
   const pendingRows = rows.filter(r => !delivered[r.customerId] && !busOrder.includes(r.customerId));
 
   const activeBreadTypes = breadTypes.filter(bt => rows.some(r => (r.quantities[bt.id] ?? 0) > 0));
-  const mapsUrl = buildMapsUrl(busRows);
+  const mapsUrls = buildMapsUrls(busRows);
 
 
   return (
@@ -446,14 +427,19 @@ export default function BezorgenPage() {
                     🧭 {optimizing ? "Bezig…" : "Optimaliseer route"}
                   </button>
                 )}
-                {mapsUrl && (
-                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ marginLeft: busRows.length > 1 ? 0 : "auto", display: "inline-flex", alignItems: "center", gap: 5,
-                      fontSize: 12, padding: "4px 10px", borderRadius: 7,
-                      background: "#1a73e8", color: "white", textDecoration: "none", fontWeight: 500,
-                      fontFamily: "var(--font-body)" }}>
-                    🗺️ Open route
-                  </a>
+                {mapsUrls.length > 0 && (
+                  <div style={{ marginLeft: busRows.length > 1 ? 0 : "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {mapsUrls.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        title={mapsUrls.length > 1 ? `Stops ${i * MAX_WAYPOINTS_PER_SEGMENT + 1}–${Math.min((i + 1) * MAX_WAYPOINTS_PER_SEGMENT, busRows.length)}: open dit deel pas als het vorige is afgerond` : undefined}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                          fontSize: 12, padding: "4px 10px", borderRadius: 7,
+                          background: "#1a73e8", color: "white", textDecoration: "none", fontWeight: 500,
+                          fontFamily: "var(--font-body)" }}>
+                        🗺️ {mapsUrls.length > 1 ? `Route deel ${i + 1}` : "Open route"}
+                      </a>
+                    ))}
+                  </div>
                 )}
               </h2>
               {busRows.length === 0 ? (
