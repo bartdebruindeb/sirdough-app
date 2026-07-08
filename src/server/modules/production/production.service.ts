@@ -1,5 +1,5 @@
 import { prisma } from "@/server/config/db";
-import { bakeryConfig } from "@/config/bakery.config";
+import { getShops } from "@/server/lib/shops";
 
 export type FlourComponent = { name: string; percentage: number };
 export type Topping = { name: string; gramsPerLoaf: number; waterRatio?: number | null };
@@ -94,16 +94,17 @@ export async function getProductionPlan(tenantId: string, productionDate: string
   const slugToId: Record<string, string> = {};
   for (const bt of breadTypes) slugToId[bt.slug] = bt.id;
 
-  // Get winkel templates for each configured shop
+  // Get winkel templates for each shop (owner-managed on the Winkel page)
+  const shops = await getShops(tenantId);
   const shopTemplates = await Promise.all(
-    bakeryConfig.shops.map(shop =>
+    shops.map(shop =>
       prisma.winkelTemplate.findMany({ where: { tenantId, shopName: shop.name, weekday: deliveryWeekday } })
     )
   );
 
   // Per-shop quantity maps, keyed by shop name
   const winkelByShop: Record<string, Record<string, number>> = {};
-  for (const shop of bakeryConfig.shops) winkelByShop[shop.name] = {};
+  for (const shop of shops) winkelByShop[shop.name] = {};
   const winkelMap: Record<string, number> = {};
 
   if (winkelLogs.length > 0) {
@@ -118,7 +119,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       }
     }
   } else {
-    bakeryConfig.shops.forEach((shop, i) => {
+    shops.forEach((shop, i) => {
       for (const row of shopTemplates[i]) {
         winkelByShop[shop.name][row.breadTypeId] = (winkelByShop[shop.name][row.breadTypeId] ?? 0) + row.quantity;
         winkelMap[row.breadTypeId] = (winkelMap[row.breadTypeId] ?? 0) + row.quantity;
@@ -126,10 +127,11 @@ export async function getProductionPlan(tenantId: string, productionDate: string
     });
   }
 
-  // Backwards-compat: first two configured shops map to Delft/DH columns
-  // (used by the aantallen table — for bakeries with 1 or >2 shops, extra
-  // shop totals are still included in winkelMap/winkelQty totals above)
-  const shopNames = bakeryConfig.shops.map(s => s.name);
+  // Backwards-compat: first two shops (alphabetical) map to the "aantallen" table's
+  // two fixed columns. Bakeries with 1 or >2 shops still get correct grand totals via
+  // winkelMap above — a 3rd+ shop's quantities just aren't broken out into their own
+  // column there yet (that table's layout is fixed at two shop columns).
+  const shopNames = shops.map(s => s.name);
   const winkelDelftMap = winkelByShop[shopNames[0]] ?? {};
   const winkelDHMap = winkelByShop[shopNames[1]] ?? {};
 

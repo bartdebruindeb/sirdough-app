@@ -2,7 +2,6 @@ import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
 import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz";
 import { prisma } from "@/server/config/db";
-import { bakeryConfig } from "@/config/bakery.config";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +38,7 @@ export async function GET(req: Request) {
     type DeliveryLine = { breadTypeId: string; breadTypeName: string; quantity: number };
     const deliveryMap = new Map<string, DeliveryLine[]>();
 
-    const shopNames = bakeryConfig.shops.map(s => s.name);
-    const isWinkel = shopNames.includes(customer.name);
+    const isWinkel = (customer as any).isShop;
 
     if (isWinkel) {
       // Expand winkel template + logs into daily deliveries

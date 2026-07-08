@@ -2,7 +2,7 @@ import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
 import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz";
 import { prisma } from "@/server/config/db";
-import { bakeryConfig } from "@/config/bakery.config";
+import { getShops } from "@/server/lib/shops";
 
 export const dynamic = "force-dynamic";
 
@@ -113,11 +113,10 @@ export async function GET(req: Request) {
       }
     }
 
-    // Add winkel shop deliveries (past dates only) — driven by bakery.config.ts
-    for (const shopCfg of bakeryConfig.shops) {
-      const shopCustomer = await prisma.customer.findFirst({ where: { tenantId: tid, name: shopCfg.name } });
-      if (shopCustomer && (!filterCustomerId || filterCustomerId === shopCustomer.id)) {
-        await addWinkelEntries(tid, shopCfg.name, shopCustomer.id, shopCustomer.city, fromDate, toDatePast, entries);
+    // Add winkel shop deliveries (past dates only)
+    for (const shop of await getShops(tid)) {
+      if (!filterCustomerId || filterCustomerId === shop.id) {
+        await addWinkelEntries(tid, shop.name, shop.id, shop.city, fromDate, toDatePast, entries);
       }
     }
 

@@ -2,7 +2,6 @@
 import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
-import { bakeryConfig } from "@/config/bakery.config";
 import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailabilityManager";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
@@ -38,12 +37,10 @@ function colName(name: string) {
 }
 
 // ── New order form ────────────────────────────────────────────────────────────
-const SHOP_PICKUP = [
-  ...bakeryConfig.shops.map(s => ({ id: s.name, label: s.name.replace("Winkel ", "") })),
-  { id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)" },
-];
+// Shop/pickup options are fetched from /api/shops (owner-managed on Winkel) and
+// passed down as `shopPickup`, replacing the old hardcoded list.
 
-function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliveryAmount }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null }) {
+function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliveryAmount, shopPickup }: { customers: Customer[]; breadTypes: BreadType[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null; shopPickup: { id: string; label: string }[] }) {
   const { role } = useRole();
   const today = new Date().toISOString().slice(0,10);
   const [customerId, setCustomerId] = useState("");
@@ -139,7 +136,7 @@ function NewOrderForm({ customers, breadTypes, onSaved, closedWeekdays, minDeliv
           style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===""?"var(--accent)":"var(--border)"}`, background:pickupLocation===""?"var(--accent-light)":"var(--surface)", color:pickupLocation===""?"var(--accent)":"var(--text)", fontFamily:"var(--font-body)" }}>
           🚚 Bezorgen
         </button>
-        {SHOP_PICKUP.map(s=>(
+        {shopPickup.map(s=>(
           <button key={s.id} type="button" onClick={()=>setPickupLocation(s.id)}
             style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===s.id?"#d97706":"var(--border)"}`, background:pickupLocation===s.id?"#fef3c7":"var(--surface)", color:pickupLocation===s.id?"#92400e":"var(--text)", fontFamily:"var(--font-body)" }}>
             🏪 Afhalen {s.label}
@@ -275,8 +272,8 @@ function NewRecurringOrderForm({ customers, breadTypes, onSaved, closedWeekdays 
 
 
 // ── New recurring order: week table form (one go for all days) ───────────────
-function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, closedWeekdays, minDeliveryAmount }: {
-  customers: Customer[]; breadTypes: BreadType[]; recurring: RecurringOrder[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null;
+function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, closedWeekdays, minDeliveryAmount, shopPickup }: {
+  customers: Customer[]; breadTypes: BreadType[]; recurring: RecurringOrder[]; onSaved: () => void; closedWeekdays: number[]; minDeliveryAmount: number | null; shopPickup: { id: string; label: string }[];
 }) {
   const { role } = useRole();
   const [customerId, setCustomerId] = useState("");
@@ -364,7 +361,7 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
                   style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===""?"var(--accent)":"var(--border)"}`, background:pickupLocation===""?"var(--accent-light)":"var(--surface)", color:pickupLocation===""?"var(--accent)":"var(--text)", fontFamily:"var(--font-body)" }}>
                   🚚 Bezorgen
                 </button>
-                {SHOP_PICKUP.map(s=>(
+                {shopPickup.map(s=>(
                   <button key={s.id} type="button" onClick={()=>setPickupLocation(s.id)}
                     style={{ fontSize:12, padding:"5px 12px", borderRadius:7, cursor:"pointer", border:`1px solid ${pickupLocation===s.id?"#d97706":"var(--border)"}`, background:pickupLocation===s.id?"#fef3c7":"var(--surface)", color:pickupLocation===s.id?"#92400e":"var(--text)", fontFamily:"var(--font-body)" }}>
                     🏪 Afhalen {s.label}
@@ -437,8 +434,8 @@ function NewRecurringWeekForm({ customers, breadTypes, recurring, onSaved, close
 }
 
 // ── Recurring order with exception planning ───────────────────────────────────
-function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek, minDeliveryAmount }: {
-  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void; minDeliveryAmount: number | null;
+function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek, minDeliveryAmount, shopPickup }: {
+  order: RecurringOrder; breadTypes: BreadType[]; onChanged: () => void; isOwner: boolean; onEditWeek?: () => void; minDeliveryAmount: number | null; shopPickup: { id: string; label: string }[];
 }) {
   const { role } = useRole();
   const [toggling, setToggling] = useState(false);
@@ -573,7 +570,7 @@ function RecurringCard({ order, breadTypes, onChanged, isOwner, onEditWeek, minD
             <label style={{ fontSize:10, color:"var(--text-subtle)", textTransform:"uppercase", display:"block", marginBottom:4 }}>Afhalen (optioneel)</label>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
               <button type="button" onClick={()=>setEditPickup("")} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", cursor:"pointer", background:!editPickup?"var(--accent)":"none", color:!editPickup?"white":"var(--text-subtle)" }}>Bezorgen</button>
-              {SHOP_PICKUP.map(p=>(
+              {shopPickup.map(p=>(
                 <button key={p.id} type="button" onClick={()=>setEditPickup(p.id)} style={{ fontSize:11, padding:"4px 9px", borderRadius:6, border:"1px solid var(--border)", cursor:"pointer", background:editPickup===p.id?"var(--accent)":"none", color:editPickup===p.id?"white":"var(--text-subtle)" }}>{p.label}</button>
               ))}
             </div>
@@ -629,6 +626,7 @@ export default function BestellingenPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [breadTypes, setBreadTypes] = useState<BreadType[]>([]);
   const [minDeliveryAmount, setMinDeliveryAmount] = useState<number | null>(null);
+  const [shopPickup, setShopPickup] = useState<{ id: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [fromDate, setFromDate] = useState(today);
   const toDefault = new Date(today); toDefault.setDate(toDefault.getDate()+7);
@@ -736,6 +734,13 @@ export default function BestellingenPage() {
         if (d.closedWeekdays) setClosedWeekdays(d.closedWeekdays);
       });
   }
+  // Shop/pickup locations — owner-managed on Winkel, adding one there makes it
+  // selectable here immediately.
+  function loadShops() {
+    fetch("/api/shops",{headers:{"x-role":role ?? ""}})
+      .then(r=>r.json())
+      .then(d => setShopPickup((d.shops ?? []).map((s: any) => ({ id: s.name, label: s.name.replace("Winkel ", "") }))));
+  }
   function loadHistory() {
     setLoadingHistory(true);
     const params = new URLSearchParams({ from: logboekFrom, to: logboekTo });
@@ -744,7 +749,7 @@ export default function BestellingenPage() {
       .then(r=>r.json()).then(d=>{ setLogboekEntries(d.entries??[]); setLogboekBreadTypes(d.breadTypes??[]); setLoadingHistory(false); })
       .catch(()=>setLoadingHistory(false));
   }
-  useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); },[fromDate,toDate]);
+  useEffect(()=>{ loadOneOff(); loadRecurring(); loadSettings(); loadShops(); },[fromDate,toDate]);
   useEffect(()=>{ loadHistory(); },[historyCustomerId, logboekFrom, logboekTo]);
 
   async function saveClosedWeekdays(days: number[]) {
@@ -954,7 +959,7 @@ export default function BestellingenPage() {
                   </div>
                 </>
               )}
-              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} />
+              <NewOrderForm customers={customers} breadTypes={breadTypes} onSaved={loadOneOff} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} shopPickup={shopPickup} />
             </>
           )}
 
@@ -1121,7 +1126,7 @@ export default function BestellingenPage() {
             </>
           )}
           {canWriteRecurring && (
-            <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} />
+            <NewRecurringWeekForm customers={customers} breadTypes={breadTypes} recurring={recurring} onSaved={loadRecurring} closedWeekdays={closedWeekdays} minDeliveryAmount={minDeliveryAmount} shopPickup={shopPickup} />
           )}
 
           {/* filters */}
@@ -1161,7 +1166,7 @@ export default function BestellingenPage() {
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   {dayOrders.map(order=>(
-                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} onEditWeek={()=>openWeekEdit(order.customerId)} minDeliveryAmount={minDeliveryAmount} />
+                    <RecurringCard key={order.id} order={order} breadTypes={breadTypes} onChanged={loadRecurring} isOwner={canWriteRecurring} onEditWeek={()=>openWeekEdit(order.customerId)} minDeliveryAmount={minDeliveryAmount} shopPickup={shopPickup} />
                   ))}
                 </div>
               </section>

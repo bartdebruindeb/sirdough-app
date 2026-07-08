@@ -5,7 +5,6 @@ import {
   Document, Page, Text, View, Image, StyleSheet, renderToBuffer,
 } from "@react-pdf/renderer";
 import { prisma } from "@/server/config/db";
-import { bakeryConfig } from "@/config/bakery.config";
 import { buildShopDeliveryLines } from "@/server/lib/winkelInvoicing";
 
 function loadLogo(): string | null {
@@ -313,9 +312,9 @@ export async function buildPdfData(
     }
   }
 
-  // Shops (Winkel Delft, Winkel Den Haag, ...) have no OneOffOrder rows — their bread
-  // flows through WinkelTemplate/WinkelLog instead — so their lines come from there.
-  const isShop = customer && bakeryConfig.shops.some(s => s.name === customer.name);
+  // Shops have no OneOffOrder rows — their bread flows through WinkelTemplate/WinkelLog
+  // instead — so their lines come from there.
+  const isShop = customer && (customer as any).isShop;
   if (isShop && customer) {
     const { start, end } = weekBounds(week);
     const breadTypes = await prisma.breadType.findMany({ where: { tenantId, active: true } });

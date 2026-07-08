@@ -5,6 +5,7 @@ import { toResponse } from "@/server/lib/errors";
 import { parseJson } from "@/server/lib/validation";
 import { getMijnContext } from "@/server/lib/mijnCustomer";
 import { isBelowMinimumDelivery } from "@/server/lib/orderMinimum";
+import { getShops } from "@/server/lib/shops";
 import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 
@@ -149,27 +150,15 @@ export async function GET(req: Request) {
       if (io.invoice?.invoiceNumber) invoiceNumberMap[io.orderId] = io.invoice.invoiceNumber;
     }
 
-    // Pickup locations for the order form + map: the real shop addresses come from their
-    // Customer records (so the owner edits them in Klanten and they flow through here),
-    // falling back to config coords. Plus the bakery's own pickup point.
-    const shopCustomers = await prisma.customer.findMany({
-      where: { tenantId: customer.tenantId, name: { in: bakeryConfig.shops.map(s => s.name) } },
-      select: { name: true, address: true, postalCode: true, city: true, lat: true, lng: true },
-    });
-    const pickupLocations = bakeryConfig.shops.map(s => {
-      const c = shopCustomers.find(sc => sc.name === s.name);
-      return {
-        id: s.name,
-        label: s.name.replace("Winkel ", ""),
-        lat: c?.lat ?? s.lat,
-        lng: c?.lng ?? s.lon,
-        address: [c?.address, c?.postalCode, c?.city].filter(Boolean).join(", ") || null,
-      };
-    });
-    pickupLocations.push({
-      id: "Ophalen Rotterdam", label: "Rotterdam (bakkerij)",
-      lat: bakeryConfig.bakeryLat, lng: bakeryConfig.bakeryLng, address: bakeryConfig.bakeryAddress,
-    });
+    // Pickup locations for the order form + map — every shop, owner-managed on Winkel
+    // (adding a shop there makes it selectable here immediately, no code change needed).
+    const shops = await getShops(customer.tenantId);
+    const pickupLocations = shops.map(s => ({
+      id: s.name,
+      label: s.name.replace("Winkel ", ""),
+      lat: s.lat, lng: s.lng,
+      address: [s.address, s.postalCode, s.city].filter(Boolean).join(", ") || null,
+    }));
 
     return Response.json({
       orders: serializedOrders,

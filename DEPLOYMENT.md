@@ -106,17 +106,15 @@ Onboarding a new bakery's Exact connection after that is just: generate a
 This is the ONE file with bakery-specific settings:
 
 - `businessName` — shown in sidebar, login page
-- `shops` — for a shop-only bakery with one location, set:
-  ```ts
-  shops: [
-    { name: "Winkel", lat: <your lat>, lon: <your lon> },
-  ],
-  ```
-  (Get lat/lon from Google Maps — right-click the location → copy coordinates)
 - `hasDelivery` — set to `false` if there are no horeca/delivery customers yet.
   This doesn't remove the Bezorgen page, but signals the deployment is shop-first.
   If small customers get added later, `hasDelivery` can stay `false` — the
   Bezorgen page will simply show their orders too once they exist.
+
+Shops/pickup locations are **not** configured here anymore — after the app is running,
+add them from the UI on the Winkel page ("+ Nieuwe winkel"), which geocodes the address
+and makes the shop selectable everywhere immediately (customer pickup, Bezorgen,
+invoicing). No code change or redeploy needed for a new shop.
 
 ### 5. Set up the seed script
 
@@ -129,7 +127,8 @@ cp scripts/seed-template.ts scripts/seed-<newbakery>.ts
 Edit `scripts/seed-<newbakery>.ts`:
 - `BAKERY.slug` — must match `TENANT_SLUG` in `.env`
 - `BAKERY.name`, owner/worker emails
-- `SHOP` — name (must match `bakery.config.ts` shops[0].name exactly), city, address
+- `SHOP` — name, city, address (mark it `isShop: true` in the seed, or just add it from
+  the Winkel page's "+ Nieuwe winkel" after first login instead)
 - `DOUGH_TYPES` — the bakery's base recipes (water%, desem%, salt%, etc.)
 - `BREAD_TYPES` — their bread range, with dough weights INCLUDING the 1% residue
   (e.g. a 750g loaf → enter `758`)

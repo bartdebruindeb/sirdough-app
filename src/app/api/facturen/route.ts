@@ -13,7 +13,6 @@ import { createExactInvoice } from "@/server/lib/exact";
 import { buildInvoiceHtml } from "@/server/lib/invoiceHtml";
 import { buildPdfData, generateInvoicePdf } from "@/server/lib/invoicePdf";
 import { buildShopDeliveryLines } from "@/server/lib/winkelInvoicing";
-import { bakeryConfig } from "@/config/bakery.config";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -115,10 +114,9 @@ export async function GET(req: Request) {
     // bread flows through WinkelTemplate/WinkelLog instead — so they need a separate
     // "already invoiced" check (by customerId + period overlap, since there are no
     // order rows to track via InvoiceOrder).
-    const shopNames = bakeryConfig.shops.map(s => s.name);
-    if (shopNames.length > 0) {
+    const shopCustomers = await (prisma as any).customer.findMany({ where: { tenantId: tid, isShop: true } });
+    if (shopCustomers.length > 0) {
       const alreadyInvoicedCustomerIds = new Set(invoiced.map((inv: any) => inv.customerId));
-      const shopCustomers = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
       const breadTypes = await prisma.breadType.findMany({ where: { tenantId: tid, active: true } });
 
       // A shop gets ONE invoice row. If it also placed one-off orders this week it

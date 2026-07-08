@@ -1,16 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // BAKERY CONFIG — edit this file per deployment to set up a new bakery.
-// Everything bakery-specific (name, shops, branding) lives here so the rest
-// of the codebase stays generic and reusable.
+// Everything bakery-specific (name, branding) lives here so the rest of the
+// codebase stays generic and reusable. Shops/pickup locations are no longer
+// configured here — they're owner-managed on the Winkel page (see
+// src/server/lib/shops.ts).
 // ─────────────────────────────────────────────────────────────────────────────
-
-export type ShopConfig = {
-  /** Must match the Customer.name in the database exactly */
-  name: string;
-  /** Used for weather lookups on the Winkel page */
-  lat: number;
-  lon: number;
-};
 
 export const bakeryConfig = {
   /** Product/platform name shown on the login screen and browser tab */
@@ -21,17 +15,6 @@ export const bakeryConfig = {
 
   /** Short tagline under the logo in the sidebar */
   tagline: "bakkerij beheer",
-
-  /**
-   * Shop locations with daily winkel production templates.
-   * Leave empty array [] for bakeries with no shop / horeca-only.
-   * Each shop must exist as a Customer record (see seed script) with
-   * a matching `name` so winkel templates and facturatie can link to it.
-   */
-  shops: [
-    { name: "Winkel Delft",     lat: 52.0021, lon: 4.3698 },  // Delfgauwseweg 67
-    { name: "Winkel Den Haag",  lat: 52.0798, lon: 4.3127 },  // Herengracht 16
-  ] as ShopConfig[],
 
   /**
    * Whether this bakery does horeca/delivery routes.
@@ -63,6 +46,3 @@ export const bakeryConfig = {
   bakeryLat: 51.966196,
   bakeryLng: 4.463144,
 } as const;
-
-/** Convenience: shop names only, for places that need a simple list */
-export const SHOP_NAMES = bakeryConfig.shops.map(s => s.name);

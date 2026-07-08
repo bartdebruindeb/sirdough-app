@@ -2,7 +2,7 @@ import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
 import { toResponse } from "@/server/lib/errors";
 import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz";
 import { prisma } from "@/server/config/db";
-import { bakeryConfig } from "@/config/bakery.config";
+import { getShops } from "@/server/lib/shops";
 
 export const dynamic = "force-dynamic";
 
@@ -35,18 +35,15 @@ export async function GET(req: Request) {
     const cityOrder: Record<string, number> = {};
     for (const c of cityRoutes) cityOrder[c.city] = c.sortOrder;
 
-    // Pre-load shop customers for pickup address resolution
-    const shopNames = bakeryConfig.shops.map(s => s.name);
-    const shopCustomerRows = await prisma.customer.findMany({ where: { tenantId: tid, name: { in: shopNames } } });
-    // Shop Customer records aren't always geocoded — bakeryConfig.shops already has
-    // reliable coordinates (used for weather lookups), so fall back to those.
-    const shopCoords: Record<string, { lat: number; lng: number }> = {};
-    for (const s of bakeryConfig.shops) shopCoords[s.name] = { lat: s.lat, lng: s.lon };
-    const shopCustomers = new Map(shopCustomerRows.map(sc => [
+    // Pre-load shops for pickup address resolution — every shop is now a real,
+    // owner-managed Customer row (Winkel page), including the bakery's own pickup
+    // point, so there's no separate "is this the bakery pickup" special case anymore.
+    const shopList = await getShops(tid);
+    const shopNames = shopList.map(s => s.name);
+    const shopCustomers = new Map(shopList.map(sc => [
       sc.name, {
         city: sc.city ?? sc.name, address: sc.address ?? sc.name, id: sc.id,
-        lat: sc.lat ?? shopCoords[sc.name]?.lat ?? null,
-        lng: sc.lng ?? shopCoords[sc.name]?.lng ?? null,
+        lat: sc.lat, lng: sc.lng,
         postalCode: sc.postalCode ?? null, email: sc.email ?? null, phone: sc.phone ?? null,
       },
     ]));
@@ -85,17 +82,14 @@ export async function GET(req: Request) {
       const pickup = (ro as any).pickupLocation as string | null;
       if (pickup) {
         const shop = shopCustomers.get(pickup);
-        const isBakeryPickup = pickup === "Ophalen Rotterdam";
-        const shopCity = shop?.city ?? (isBakeryPickup ? "Rotterdam" : pickup);
         const key = ro.customerId + "@" + pickup;
         addOrder(
           key,
-          ro.customerId, ro.customer.name, shopCity,
-          shop?.address ?? (isBakeryPickup ? bakeryConfig.bakeryAddress : pickup), ro.notes ?? "", false,
+          ro.customerId, ro.customer.name, shop?.city ?? pickup,
+          shop?.address ?? pickup, ro.notes ?? "", false,
           ro.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
           pickup,
-          shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
-          shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
+          shop?.lat, shop?.lng,
           ro.customer.postalCode, ro.customer.email, ro.customer.phone,
         );
       } else {
@@ -115,17 +109,14 @@ export async function GET(req: Request) {
       if (pickup) {
         // Pickup order: delivery destination is the shop, show with customer name + pickup badge
         const shop = shopCustomers.get(pickup);
-        const isBakeryPickup = pickup === "Ophalen Rotterdam";
-        const shopCity = shop?.city ?? (isBakeryPickup ? "Rotterdam" : pickup);
         const key = oo.customerId + "@" + pickup;
         addOrder(
           key,
-          oo.customerId, oo.customer.name, shopCity,
-          shop?.address ?? (isBakeryPickup ? bakeryConfig.bakeryAddress : pickup), oo.notes ?? "", false,
+          oo.customerId, oo.customer.name, shop?.city ?? pickup,
+          shop?.address ?? pickup, oo.notes ?? "", false,
           oo.lines.map(l => ({ breadTypeId: l.breadTypeId, quantity: l.quantity })),
           pickup,
-          shop?.lat ?? (isBakeryPickup ? bakeryConfig.bakeryLat : undefined),
-          shop?.lng ?? (isBakeryPickup ? bakeryConfig.bakeryLng : undefined),
+          shop?.lat, shop?.lng,
           oo.customer.postalCode, oo.customer.email, oo.customer.phone,
         );
       } else {
@@ -153,14 +144,14 @@ export async function GET(req: Request) {
       if (!winkelByShop.has(r.shopName)) winkelByShop.set(r.shopName, []);
       winkelByShop.get(r.shopName)!.push(r);
     }
-    for (const shopCfg of bakeryConfig.shops) {
-      const shopCustomer = shopCustomers.get(shopCfg.name);
+    for (const shopName of shopNames) {
+      const shopCustomer = shopCustomers.get(shopName);
       if (!shopCustomer) continue;
-      const lines = (winkelByShop.get(shopCfg.name) ?? [])
+      const lines = (winkelByShop.get(shopName) ?? [])
         .map(r => ({ breadTypeId: r.breadTypeId, quantity: r.quantity }))
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
-        addOrder(shopCustomer.id, shopCustomer.id, shopCfg.name, shopCustomer.city,
+        addOrder(shopCustomer.id, shopCustomer.id, shopName, shopCustomer.city,
           shopCustomer.address, "", true, lines, null, shopCustomer.lat, shopCustomer.lng,
           shopCustomer.postalCode, shopCustomer.email, shopCustomer.phone);
       }
