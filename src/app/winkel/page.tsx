@@ -121,7 +121,14 @@ function ShopDetailsModal({ shop, shops, onSwitchShop, onClose, onChanged }: {
       onClose();
     } else {
       const d = await res.json().catch(() => ({}));
-      setError(d.message ?? "Opslaan mislukt.");
+      // On a generic "Validation failed" (400), show WHICH field and why instead of the
+      // opaque headline — this is a Zod schema mismatch and the field name is the whole
+      // diagnosis, no need to go dig through server logs for it.
+      const fieldErrors = d.details?.fieldErrors;
+      const detail = fieldErrors && Object.keys(fieldErrors).length > 0
+        ? Object.entries(fieldErrors).map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`).join(" · ")
+        : null;
+      setError(detail ? `${d.message} (${detail})` : (d.message ?? "Opslaan mislukt."));
     }
   }
   async function remove() {

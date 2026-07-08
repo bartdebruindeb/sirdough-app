@@ -28,7 +28,8 @@ const csp = [
   // and the delivery-address forms — without it the browser silently blocks the lookup
   // and "Zoek adres" never resolves, which also blocks saving (the save button/flow
   // requires a resolved address).
-  "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.pdok.nl",
+  // api.open-meteo.com: weather lookup used on the delivery/route pages.
+  "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.pdok.nl https://api.open-meteo.com",
   // Invoice PDF preview renders the generated PDF as a blob: URL in an <iframe>.
   "frame-src 'self' blob:",
 ].join("; ");
