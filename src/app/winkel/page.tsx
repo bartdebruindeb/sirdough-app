@@ -70,120 +70,26 @@ async function pdokLookup(postcode: string, huisnummer: string, huisletter: stri
 // bulk geocode button is what keeps it from silently drifting to the wrong city.
 // Modal (not an always-visible card) so the shop's address/KvK/contact form doesn't
 // take up permanent space on the page — it's rarely touched once set up correctly.
-// Includes a shop switcher so you can jump to a different shop's details without
-// closing and reopening — switching re-keys the modal (see the call site) so its
-// fields reset to that shop's own data.
+// Doubles as the "add a new shop" flow: picking "+ Nieuwe winkel" in the switcher sets
+// shop to null, which switches the form into create mode (POST instead of PATCH).
+const NEW_SHOP = "__new__";
+
 function ShopDetailsModal({ shop, shops, onSwitchShop, onClose, onChanged }: {
-  shop: Shop; shops: Shop[]; onSwitchShop: (name: string) => void; onClose: () => void; onChanged: () => void;
+  shop: Shop | null; shops: Shop[]; onSwitchShop: (name: string) => void; onClose: () => void; onChanged: (selectShopId?: string) => void;
 }) {
-  const [kvk, setKvk]     = useState(shop.kvk ?? "");
-  const [phone, setPhone] = useState(shop.phone ?? "");
-  const [email, setEmail] = useState(shop.email ?? "");
-  const [postcode, setPostcode] = useState(shop.postalCode ?? "");
-  const { huisnummer: hn0, huisletter: hl0 } = parseHuisnr(shop.address ?? "");
+  const isNew = shop === null;
+  const [name, setName] = useState(shop?.name ?? "");
+  const [kvk, setKvk]   = useState(shop?.kvk ?? "");
+  const [postcode, setPostcode] = useState(shop?.postalCode ?? "");
+  const { huisnummer: hn0, huisletter: hl0 } = parseHuisnr(shop?.address ?? "");
   const [huisnummer, setHuisnummer] = useState(hn0);
   const [huisletter, setHuisletter] = useState(hl0);
-  const [foundStraat, setFoundStraat] = useState(shop.address ?? "");
-  const [foundStad, setFoundStad]     = useState(shop.city ?? "");
-  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(shop.address ? "found" : "idle");
+  const [foundStraat, setFoundStraat] = useState(shop?.address ?? "");
+  const [foundStad, setFoundStad]     = useState(shop?.city ?? "");
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(shop?.address ? "found" : "idle");
   const [saving, setSaving] = useState(false);
-
-  async function doLookup() {
-    if (!postcode.trim() || !huisnummer.trim()) return;
-    setLookupStatus("looking");
-    const result = await pdokLookup(postcode, huisnummer, huisletter);
-    if (result) { setFoundStraat(`${result.straat} ${huisnummer}${huisletter}`.trim()); setFoundStad(result.stad); setLookupStatus("found"); }
-    else setLookupStatus("fail");
-  }
-  async function save() {
-    setSaving(true);
-    await fetch("/api/shops", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: shop.id, kvk, phone, email,
-        ...(lookupStatus === "found" && { address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad }),
-      }),
-    });
-    setSaving(false); onChanged(); onClose();
-  }
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 24 }}>
-      <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 460, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 4, maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10 }}>
-          {shops.length > 1 ? (
-            <select value={shop.name} onChange={e => onSwitchShop(e.target.value)}
-              style={{ fontSize: 16, fontWeight: 600, border: "none", background: "transparent", color: "var(--text)", cursor: "pointer" }}>
-              {shops.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-            </select>
-          ) : (
-            <h2 style={{ margin: 0, fontSize: 18 }}>{shop.name}</h2>
-          )}
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div>
-            <label style={winkelLabel}>E-mailadres</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} style={winkelInp} placeholder="winkel@bedrijf.nl" />
-          </div>
-          <div>
-            <label style={winkelLabel}>Telefoonnummer</label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} style={winkelInp} placeholder="+31 6 ..." />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={winkelLabel}>KvK-nummer</label>
-            <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px", gap: 8, marginBottom: 8 }}>
-          <div>
-            <label style={winkelLabel}>Postcode</label>
-            <input value={postcode} onChange={e => { setPostcode(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="2514 CE" />
-          </div>
-          <div>
-            <label style={winkelLabel}>Huisnummer</label>
-            <input value={huisnummer} onChange={e => { setHuisnummer(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="16" />
-          </div>
-          <div>
-            <label style={winkelLabel}>Toev.</label>
-            <input value={huisletter} onChange={e => { setHuisletter(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="A" />
-          </div>
-        </div>
-        <button type="button" onClick={doLookup} disabled={lookupStatus === "looking" || !postcode.trim() || !huisnummer.trim()}
-          className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px", marginBottom: 10, alignSelf: "flex-start" }}>
-          {lookupStatus === "looking" ? "Zoeken..." : "Zoek adres"}
-        </button>
-        {lookupStatus === "found" && (
-          <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, marginBottom: 10 }}>
-            <span style={{ color: "var(--success)", marginRight: 8 }}>✓</span>{foundStraat}, {postcode.toUpperCase()} {foundStad}
-          </div>
-        )}
-        {lookupStatus === "fail" && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-          <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-          <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Add a brand-new shop/pickup location. Immediately usable everywhere shops are listed
-// (customer pickup selector, staff order pickup, Bezorgen, Winkel production) since
-// they all read the same isShop-flagged Customer rows via getShops().
-function AddShopModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [name, setName]   = useState("");
-  const [email, setEmail] = useState("");
-  const [kvk, setKvk]     = useState("");
-  const [phone, setPhone] = useState("");
-  const [postcode, setPostcode]     = useState("");
-  const [huisnummer, setHuisnummer] = useState("");
-  const [huisletter, setHuisletter] = useState("");
-  const [foundStraat, setFoundStraat] = useState("");
-  const [foundStad, setFoundStad]     = useState("");
-  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">("idle");
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
 
   async function doLookup() {
     if (!postcode.trim() || !huisnummer.trim()) return;
@@ -194,44 +100,58 @@ function AddShopModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   }
   async function save() {
     if (!name.trim()) { setError("Vul een naam in."); return; }
-    if (lookupStatus !== "found") { setError("Zoek eerst het adres op."); return; }
+    if (isNew && lookupStatus !== "found") { setError("Zoek eerst het adres op."); return; }
     setSaving(true); setError("");
-    const res = await fetch("/api/shops", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(), email, kvk, phone,
-        address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad,
-      }),
-    });
+    const res = isNew
+      ? await fetch("/api/shops", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), kvk, address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad }),
+        })
+      : await fetch("/api/shops", {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: shop!.id, name: name.trim(), kvk,
+            ...(lookupStatus === "found" && { address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad }),
+          }),
+        });
     setSaving(false);
-    if (res.ok) onAdded();
-    else { const d = await res.json().catch(() => ({})); setError(d.message ?? "Toevoegen mislukt."); }
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      onChanged(isNew ? data.id : undefined);
+      onClose();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setError(d.message ?? "Opslaan mislukt.");
+    }
+  }
+  async function remove() {
+    if (!shop) return;
+    if (!confirm(`Weet je zeker dat je "${shop.name}" wilt verwijderen?`)) return;
+    setDeleting(true); setError("");
+    const res = await fetch(`/api/shops?id=${shop.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (res.ok) { onChanged(); onClose(); }
+    else { const d = await res.json().catch(() => ({})); setError(d.message ?? "Verwijderen mislukt."); }
   }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 24 }}>
       <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 460, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 4, maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Nieuwe winkel</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10 }}>
+          <select value={isNew ? NEW_SHOP : shop!.name} onChange={e => onSwitchShop(e.target.value)}
+            style={{ fontSize: 16, fontWeight: 600, border: "none", background: "transparent", color: "var(--text)", cursor: "pointer" }}>
+            {shops.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            <option value={NEW_SHOP}>+ Nieuwe winkel</option>
+          </select>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label style={winkelLabel}>Naam *</label>
+          <label style={winkelLabel}>Naam</label>
           <input value={name} onChange={e => setName(e.target.value)} style={winkelInp} placeholder="Winkel Utrecht" />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div>
-            <label style={winkelLabel}>E-mailadres</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} style={winkelInp} placeholder="winkel@bedrijf.nl" />
-          </div>
-          <div>
-            <label style={winkelLabel}>Telefoonnummer</label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} style={winkelInp} placeholder="+31 6 ..." />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={winkelLabel}>KvK-nummer</label>
-            <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
-          </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={winkelLabel}>KvK-nummer</label>
+          <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px", gap: 8, marginBottom: 8 }}>
           <div>
@@ -258,9 +178,16 @@ function AddShopModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         )}
         {lookupStatus === "fail" && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>}
         {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>{error}</p>}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-          <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-          <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Toevoegen..." : "Toevoegen"}</button>
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", marginTop: 8 }}>
+          {!isNew ? (
+            <button onClick={remove} disabled={deleting || saving} style={{ fontSize: 13, padding: "7px 12px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>
+              {deleting ? "Verwijderen..." : "🗑 Verwijderen"}
+            </button>
+          ) : <span />}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+            <button onClick={save} disabled={saving || deleting} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -332,23 +259,30 @@ export default function WinkelPage() {
 
   const [shops, setShops]               = useState<Shop[]>([]);
   const [shopsLoading, setShopsLoading] = useState(true);
-  const [selectedShop, setSelectedShop] = useState("");
+  // Keyed by id, not name — a name can change (renaming a shop) and must not reset
+  // which tab/shop is active.
+  const [selectedShopId, setSelectedShopId] = useState("");
+  const selectedShop = shops.find(s => s.id === selectedShopId)?.name ?? "";
   const [weekOffset, setWeekOffset]     = useState(0);
   const [shopData, setShopData]         = useState<WinkelData | null>(null);
   const [loading, setLoading]           = useState(true);
   const [showShopDetails, setShowShopDetails] = useState(false);
-  const [showAddShop, setShowAddShop]   = useState(false);
+  // Which shop the details modal targets — independent of the active tab, so switching
+  // shops inside the modal (or picking "+ Nieuwe winkel") doesn't change the page tab
+  // until the user actually saves.
+  const [modalTarget, setModalTarget] = useState("");
 
   // ── Load shops (owner-managed here — no more hardcoded bakery.config.ts list) ──
-  const loadShops = useCallback(() => {
+  const loadShops = useCallback((selectId?: string) => {
     fetch("/api/shops", { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => {
         const list: Shop[] = d.shops ?? [];
         setShops(list);
+        if (selectId) { setSelectedShopId(selectId); return; }
         // Default to the first shop, and re-pick if the currently selected one
-        // disappeared (shouldn't normally happen, but keeps the tab valid).
-        setSelectedShop(prev => (prev && list.some(s => s.name === prev)) ? prev : (list[0]?.name ?? ""));
+        // disappeared (e.g. it was just deleted).
+        setSelectedShopId(prev => (prev && list.some(s => s.id === prev)) ? prev : (list[0]?.id ?? ""));
       })
       .catch(() => {})
       .finally(() => setShopsLoading(false));
@@ -476,6 +410,13 @@ export default function WinkelPage() {
     .filter(l => (!histFrom || l.date >= histFrom) && (!histTo || l.date <= histTo))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // Opening the details modal for a fresh, shop-less tenant targets "+ Nieuwe winkel"
+  // directly since there's nothing else to show yet.
+  function openShopDetails() {
+    setModalTarget(selectedShop || NEW_SHOP);
+    setShowShopDetails(true);
+  }
+
   if (!shopsLoading && shops.length === 0) {
     return (
       <div style={{ padding: "2rem 2.5rem" }}>
@@ -483,28 +424,35 @@ export default function WinkelPage() {
         <div className="card" style={{ padding: "2.5rem", textAlign: "center", color: "var(--text-subtle)" }}>
           <p style={{ margin: "0 0 14px" }}>Nog geen winkels.</p>
           {role === "OWNER" && (
-            <button onClick={() => setShowAddShop(true)} className="btn-primary" style={{ fontSize: 13 }}>+ Nieuwe winkel</button>
+            <button onClick={openShopDetails} className="btn-primary" style={{ fontSize: 13 }}>+ Nieuwe winkel</button>
           )}
         </div>
-        {showAddShop && <AddShopModal onClose={() => setShowAddShop(false)} onAdded={() => { setShowAddShop(false); loadShops(); }} />}
+        {showShopDetails && (
+          <ShopDetailsModal
+            key={modalTarget}
+            shop={null}
+            shops={shops}
+            onSwitchShop={setModalTarget}
+            onClose={() => setShowShopDetails(false)}
+            onChanged={id => { loadShops(id); }}
+          />
+        )}
       </div>
     );
   }
-
-  const currentShop = shops.find(s => s.name === selectedShop) ?? null;
 
   return (
     <div style={{ padding: "2rem 2.5rem", maxWidth: 1300 }}>
       <h1 style={{ fontSize: 28, marginBottom: "1.25rem" }}>Winkel productie</h1>
 
-      {/* ── Shop selector, with "+ Nieuwe winkel" and "Winkeldetails wijzigen" on the
-          same row, pushed to the right. ── */}
+      {/* ── Shop selector, with "Beheer broodsoorten" and "Winkeldetails wijzigen"
+          (which also covers adding a new shop) on the same row, pushed right. ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
         {shops.map(shop => (
           <button
             key={shop.id}
-            onClick={() => setSelectedShop(shop.name)}
-            className={selectedShop === shop.name ? "btn-primary" : "btn-secondary"}
+            onClick={() => setSelectedShopId(shop.id)}
+            className={selectedShopId === shop.id ? "btn-primary" : "btn-secondary"}
             style={{ fontSize: 14, padding: "8px 20px" }}
           >
             {shop.name}
@@ -512,46 +460,45 @@ export default function WinkelPage() {
         ))}
         {role === "OWNER" && (
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            <button onClick={() => setShowAddShop(true)} className="btn-secondary" style={{ fontSize: 13 }}>
-              + Nieuwe winkel
-            </button>
-            {currentShop && (
-              <button onClick={() => setShowShopDetails(true)} className="btn-secondary" style={{ fontSize: 13 }}>
-                🏪 Winkeldetails wijzigen
+            {allBreadTypes.length > 0 && (
+              <button onClick={() => setShowBreadMgr(true)} className="btn-secondary" style={{ fontSize: 13 }}>
+                Beheer broodsoorten
               </button>
             )}
+            <button onClick={openShopDetails} className="btn-secondary" style={{ fontSize: 13 }}>
+              Winkeldetails wijzigen
+            </button>
           </div>
         )}
       </div>
 
-      {showAddShop && (
-        <AddShopModal onClose={() => setShowAddShop(false)} onAdded={() => { setShowAddShop(false); loadShops(); }} />
-      )}
-      {showShopDetails && currentShop && (
+      {showShopDetails && (
         <ShopDetailsModal
-          key={currentShop.id}
-          shop={currentShop}
+          key={modalTarget}
+          shop={modalTarget === NEW_SHOP ? null : shops.find(s => s.name === modalTarget) ?? null}
           shops={shops}
-          onSwitchShop={setSelectedShop}
+          onSwitchShop={setModalTarget}
           onClose={() => setShowShopDetails(false)}
-          onChanged={loadShops}
+          onChanged={id => { loadShops(id); }}
         />
+      )}
+
+      {showBreadMgr && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 24 }}>
+          <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 640, padding: "1.75rem", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Beheer broodsoorten</h2>
+              <button onClick={() => setShowBreadMgr(false)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
+            </div>
+            <BreadTypeAvailabilityManager breadTypes={allBreadTypes} onChanged={load} />
+          </div>
+        </div>
       )}
 
       {loading ? (
         <p style={{ color: "var(--text-subtle)" }}>Laden…</p>
       ) : (
         <>
-          {/* ── Beheer broodtypen ── */}
-          {role === "OWNER" && allBreadTypes.length > 0 && (
-            <>
-              <button onClick={() => setShowBreadMgr(v => !v)} className="btn-secondary" style={{ fontSize: 12, alignSelf: "flex-start" }}>
-                {showBreadMgr ? "▲ Verberg broodsoorten" : "▼ Beheer broodsoorten"}
-              </button>
-              {showBreadMgr && <BreadTypeAvailabilityManager breadTypes={allBreadTypes} onChanged={load} />}
-            </>
-          )}
-
           {/* ── Week navigator ── */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <button onClick={() => setWeekOffset(w => w - 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>← Vorige week</button>
