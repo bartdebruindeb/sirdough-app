@@ -429,25 +429,14 @@ export default function BezorgenPage() {
                 )}
                 {mapsUrls.length > 0 && (
                   <div style={{ marginLeft: busRows.length > 1 ? 0 : "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {mapsUrls.length > 1 && (
-                      <button type="button"
-                        onClick={() => { mapsUrls.forEach(url => window.open(url, "_blank", "noopener,noreferrer")); }}
-                        title="Opent alle delen tegelijk in nieuwe tabbladen (werkt op een computer; op een telefoon opent alleen het eerste deel echt, want die schakelt over naar de Maps-app)"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5,
-                          fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "none", cursor: "pointer",
-                          background: "#0b57a4", color: "white", fontWeight: 500,
-                          fontFamily: "var(--font-body)" }}>
-                        📂 Open alle routes ({mapsUrls.length})
-                      </button>
-                    )}
                     {mapsUrls.map((url, i) => (
                       <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        title={mapsUrls.length > 1 ? `Stops ${i * MAX_WAYPOINTS_PER_SEGMENT + 1}–${Math.min((i + 1) * MAX_WAYPOINTS_PER_SEGMENT, busRows.length)}: open dit deel pas als het vorige is afgerond` : undefined}
+                        title={mapsUrls.length > 1 ? `Stops ${i * MAX_WAYPOINTS_PER_SEGMENT + 1}–${Math.min((i + 1) * MAX_WAYPOINTS_PER_SEGMENT, busRows.length)}: open deze route pas als de vorige is afgerond` : undefined}
                         style={{ display: "inline-flex", alignItems: "center", gap: 5,
                           fontSize: 12, padding: "4px 10px", borderRadius: 7,
                           background: "#1a73e8", color: "white", textDecoration: "none", fontWeight: 500,
                           fontFamily: "var(--font-body)" }}>
-                        🗺️ {mapsUrls.length > 1 ? `Route deel ${i + 1}` : "Open route"}
+                        🗺️ {mapsUrls.length > 1 ? `Route ${i + 1}` : "Open route"}
                       </a>
                     ))}
                   </div>
