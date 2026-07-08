@@ -1,4 +1,13 @@
 /** @type {import('next').NextConfig} */
+import { execSync } from "child_process";
+
+// Embeds the exact commit that produced this build, read once at build time — shown as
+// a small marker in the sidebar/header so "is this actually deployed?" is a glance
+// instead of a guess. No manual bumping needed; it's whatever HEAD was at `next build`.
+const buildSha = (() => {
+  try { return execSync("git rev-parse --short HEAD").toString().trim(); }
+  catch { return "unknown"; }
+})();
 
 // Security headers applied to every response Next serves.
 // CSP allowlist mirrors the external hosts the delivery map actually uses
@@ -34,6 +43,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  env: { NEXT_PUBLIC_BUILD_SHA: buildSha },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

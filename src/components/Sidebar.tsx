@@ -100,6 +100,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         )}
       </div>
 
+      {/* Which commit this build was compiled from — glance-check for "is my change
+          actually live" instead of guessing after a deploy. */}
+      <p style={{ fontSize: 9, color: "#5c4a3a", textAlign: "center", margin: "0 0 8px" }}>
+        build {process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
+      </p>
+
       <style>{`
         nav a:hover { background: rgba(255,255,255,0.08) !important; color: var(--sidebar-active) !important; }
         @media (max-width: 860px) {
