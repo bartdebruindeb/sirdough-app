@@ -51,4 +51,17 @@ assert.ok(!decodeURIComponent(big[0]).includes("De Weegbreestraat"), "non-final 
 // No rows with no address -> no links at all (nothing to route).
 assert.deepEqual(buildMapsUrls([]), [], "no stops -> no links");
 
+// Every stop must include its postcode, not just the bare street name -- a street
+// name alone is ambiguous (many exist in multiple Dutch cities) and Google Maps can
+// resolve to the wrong city with nothing else to disambiguate it by. This is the
+// reported bug: street name correct, city wrong.
+const withPostcode = buildMapsUrls([{
+  customerId: "c1", name: "Klant", city: "Den Haag", address: "Herengracht 16",
+  cityOrder: 0, notes: "", isShop: false, lat: null, lng: null,
+  postalCode: "2511 EG", email: null, phone: null, quantities: {}, pickupLocation: null,
+}]);
+const decoded = decodeURIComponent(withPostcode[0]);
+assert.ok(decoded.includes("2511 EG"), "the stop's postcode must be sent to Google Maps, not just the street name");
+assert.ok(decoded.includes("Den Haag"), "the stop's city must be sent to Google Maps too");
+
 console.log("route-split-selfcheck: all assertions passed");

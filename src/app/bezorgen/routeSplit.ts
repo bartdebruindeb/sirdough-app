@@ -20,8 +20,17 @@ export type DeliveryRow = {
 // "My Location" each time — GPS-based, no need to chain an explicit start address).
 export const MAX_WAYPOINTS_PER_SEGMENT = 8;
 
+// The street name alone is ambiguous — many Dutch street names (e.g. "Herengracht")
+// exist in multiple cities, and Google Maps has to guess which one without more
+// context, sometimes guessing wrong. Postcode is the precise disambiguator (same
+// reason PDOK's own lookups key on postcode + huisnummer), so every stop always
+// includes it alongside the street/city for a human-readable destination label.
+function fullAddress(r: DeliveryRow): string {
+  return [r.address, r.postalCode, r.city].filter(Boolean).join(", ");
+}
+
 export function buildMapsUrls(rows: DeliveryRow[]): string[] {
-  const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(r.address));
+  const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(fullAddress(r)));
   if (addresses.length === 0) return [];
 
   const bakeryDest = encodeURIComponent(bakeryConfig.bakeryAddress);
