@@ -72,8 +72,9 @@ async function pdokLookup(postcode: string, huisnummer: string, huisletter: stri
 // Bezorgen uses as the shop's delivery/route stop, and what the customer order-form map
 // shows for "Afhalen <shop>". Editing here (structured lookup) instead of via Klanten's
 // bulk geocode button is what keeps it from silently drifting to the wrong city.
-function ShopAddressCard({ shopName, shopCustomer, onChanged }: { shopName: string; shopCustomer: ShopCustomer; onChanged: () => void }) {
-  const [editing, setEditing] = useState(false);
+// Modal (not an always-visible card) so the shop's address/KvK/contact form doesn't
+// take up permanent space on the page — it's rarely touched once set up correctly.
+function ShopDetailsModal({ shopName, shopCustomer, onClose, onChanged }: { shopName: string; shopCustomer: ShopCustomer; onClose: () => void; onChanged: () => void }) {
   const [kvk, setKvk]     = useState(shopCustomer?.kvk ?? "");
   const [phone, setPhone] = useState(shopCustomer?.phone ?? "");
   const [email, setEmail] = useState(shopCustomer?.email ?? "");
@@ -85,19 +86,6 @@ function ShopAddressCard({ shopName, shopCustomer, onChanged }: { shopName: stri
   const [foundStad, setFoundStad]     = useState(shopCustomer?.city ?? "");
   const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(shopCustomer?.address ? "found" : "idle");
   const [saving, setSaving] = useState(false);
-
-  // Re-sync local state whenever the selected shop changes (this component doesn't
-  // remount since it's keyed by nothing across shop switches).
-  useEffect(() => {
-    setEditing(false);
-    setKvk(shopCustomer?.kvk ?? ""); setPhone(shopCustomer?.phone ?? ""); setEmail(shopCustomer?.email ?? "");
-    setPostcode(shopCustomer?.postalCode ?? "");
-    const { huisnummer: hn, huisletter: hl } = parseHuisnr(shopCustomer?.address ?? "");
-    setHuisnummer(hn); setHuisletter(hl);
-    setFoundStraat(shopCustomer?.address ?? ""); setFoundStad(shopCustomer?.city ?? "");
-    setLookupStatus(shopCustomer?.address ? "found" : "idle");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopName]);
 
   async function doLookup() {
     if (!postcode.trim() || !huisnummer.trim()) return;
@@ -115,72 +103,59 @@ function ShopAddressCard({ shopName, shopCustomer, onChanged }: { shopName: stri
         ...(lookupStatus === "found" && { address: foundStraat, postalCode: postcode.toUpperCase(), city: foundStad }),
       }),
     });
-    setSaving(false); setEditing(false); onChanged();
+    setSaving(false); onChanged(); onClose();
   }
 
   return (
-    <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: 20 }}>
-      {!editing ? (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: "0 0 2px" }}>
-              {shopCustomer?.address ? `${shopCustomer.address}, ${shopCustomer.postalCode} ${shopCustomer.city}` : "Geen adres ingesteld"}
-            </p>
-            <p style={{ fontSize: 13, color: "var(--text-subtle)", margin: "0 0 2px" }}>
-              {shopCustomer?.email ?? "—"} {shopCustomer?.phone && `· ${shopCustomer.phone}`}
-            </p>
-            <p style={{ fontSize: 13, color: shopCustomer?.kvk ? "var(--text-subtle)" : "#f97316", margin: 0 }}>
-              KvK: {shopCustomer?.kvk ?? "niet ingevuld"}
-            </p>
-          </div>
-          <button onClick={() => setEditing(true)} className="btn-secondary" style={{ fontSize: 12, flexShrink: 0 }}>Wijzigen</button>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 24 }}>
+      <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 460, padding: "1.75rem", display: "flex", flexDirection: "column", gap: 4, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{shopName}</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
         </div>
-      ) : (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={winkelLabel}>E-mailadres</label>
-              <input value={email} onChange={e => setEmail(e.target.value)} style={winkelInp} placeholder="winkel@bedrijf.nl" />
-            </div>
-            <div>
-              <label style={winkelLabel}>Telefoonnummer</label>
-              <input value={phone} onChange={e => setPhone(e.target.value)} style={winkelInp} placeholder="+31 6 ..." />
-            </div>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={winkelLabel}>KvK-nummer</label>
-              <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
-            </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={winkelLabel}>E-mailadres</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={winkelInp} placeholder="winkel@bedrijf.nl" />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px", gap: 8, marginBottom: 8 }}>
-            <div>
-              <label style={winkelLabel}>Postcode</label>
-              <input value={postcode} onChange={e => { setPostcode(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="2514 CE" />
-            </div>
-            <div>
-              <label style={winkelLabel}>Huisnummer</label>
-              <input value={huisnummer} onChange={e => { setHuisnummer(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="16" />
-            </div>
-            <div>
-              <label style={winkelLabel}>Toev.</label>
-              <input value={huisletter} onChange={e => { setHuisletter(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="A" />
-            </div>
+          <div>
+            <label style={winkelLabel}>Telefoonnummer</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} style={winkelInp} placeholder="+31 6 ..." />
           </div>
-          <button type="button" onClick={doLookup} disabled={lookupStatus === "looking" || !postcode.trim() || !huisnummer.trim()}
-            className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px", marginBottom: 10 }}>
-            {lookupStatus === "looking" ? "Zoeken..." : "Zoek adres"}
-          </button>
-          {lookupStatus === "found" && (
-            <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, marginBottom: 10 }}>
-              <span style={{ color: "var(--success)", marginRight: 8 }}>✓</span>{foundStraat}, {postcode.toUpperCase()} {foundStad}
-            </div>
-          )}
-          {lookupStatus === "fail" && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setEditing(false)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
-            <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={winkelLabel}>KvK-nummer</label>
+            <input value={kvk} onChange={e => setKvk(e.target.value)} style={winkelInp} placeholder="12345678" />
           </div>
-        </>
-      )}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px", gap: 8, marginBottom: 8 }}>
+          <div>
+            <label style={winkelLabel}>Postcode</label>
+            <input value={postcode} onChange={e => { setPostcode(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="2514 CE" />
+          </div>
+          <div>
+            <label style={winkelLabel}>Huisnummer</label>
+            <input value={huisnummer} onChange={e => { setHuisnummer(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="16" />
+          </div>
+          <div>
+            <label style={winkelLabel}>Toev.</label>
+            <input value={huisletter} onChange={e => { setHuisletter(e.target.value); setLookupStatus("idle"); }} style={winkelInp} placeholder="A" />
+          </div>
+        </div>
+        <button type="button" onClick={doLookup} disabled={lookupStatus === "looking" || !postcode.trim() || !huisnummer.trim()}
+          className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px", marginBottom: 10, alignSelf: "flex-start" }}>
+          {lookupStatus === "looking" ? "Zoeken..." : "Zoek adres"}
+        </button>
+        {lookupStatus === "found" && (
+          <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, marginBottom: 10 }}>
+            <span style={{ color: "var(--success)", marginRight: 8 }}>✓</span>{foundStraat}, {postcode.toUpperCase()} {foundStad}
+          </div>
+        )}
+        {lookupStatus === "fail" && <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 10px" }}>Adres niet gevonden. Controleer postcode en huisnummer.</p>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+          <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
+          <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? "Opslaan..." : "Opslaan"}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -252,6 +227,7 @@ export default function WinkelPage() {
   const [weekOffset, setWeekOffset]     = useState(0);
   const [shopData, setShopData]         = useState<WinkelData | null>(null);
   const [loading, setLoading]           = useState(true);
+  const [showShopDetails, setShowShopDetails] = useState(false);
 
   // editQtys: date → slug → quantity
   const [editQtys, setEditQtys, undoEditQtys, canUndoEditQtys] = useUndoStack<Record<string, Record<string, number>>>({});
@@ -407,10 +383,24 @@ export default function WinkelPage() {
         <p style={{ color: "var(--text-subtle)" }}>Laden…</p>
       ) : (
         <>
-          {/* ── Winkeladres, KvK, contact — dit adres is de hoofdlocatie voor deze
-              winkel in Bezorgen en op de bestelkaart van klanten (afhalen). ── */}
+          {/* ── Winkeldetails: adres/KvK/contact — dit adres is de hoofdlocatie voor
+              deze winkel in Bezorgen en op de bestelkaart van klanten (afhalen).
+              Alleen een knop; het formulier hoeft niet permanent zichtbaar te zijn. ── */}
           {role === "OWNER" && (
-            <ShopAddressCard shopName={selectedShop} shopCustomer={shopData?.shopCustomer ?? null} onChanged={load} />
+            <div style={{ marginBottom: 20 }}>
+              <button onClick={() => setShowShopDetails(true)} className="btn-secondary" style={{ fontSize: 13 }}>
+                🏪 Winkeldetails wijzigen
+              </button>
+            </div>
+          )}
+          {showShopDetails && (
+            <ShopDetailsModal
+              key={selectedShop}
+              shopName={selectedShop}
+              shopCustomer={shopData?.shopCustomer ?? null}
+              onClose={() => setShowShopDetails(false)}
+              onChanged={load}
+            />
           )}
 
           {/* ── Beheer broodtypen ── */}
