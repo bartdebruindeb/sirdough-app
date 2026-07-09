@@ -44,9 +44,15 @@ for (let i = 0; i < 20; i++) {
   assert.ok(allEncoded.includes(needle), `stop ${i} must appear somewhere across the split links`);
 }
 
-// Only the final segment ends at the bakery; earlier segments end at their own last stop.
-assert.ok(decodeURIComponent(big[big.length - 1]).includes("De Weegbreestraat"), "last segment's destination is the bakery");
-assert.ok(!decodeURIComponent(big[0]).includes("De Weegbreestraat"), "non-final segments do not route back to the bakery early");
+// The bakery is never injected as a stop — the route is delivery addresses only, and
+// the driver's own current location is the origin. (Regression: the bakery address was
+// force-appended as the destination and Google rendered it as a stray "Rotterdam" pin.)
+for (const url of big) {
+  assert.ok(!decodeURIComponent(url).includes("Weegbreestraat"), `no segment routes through the bakery: ${url}`);
+  assert.ok(url.includes("origin=My+Location"), "every segment starts from the driver's current location");
+}
+// Each segment's destination is its own last delivery stop, not a shared endpoint.
+assert.ok(decodeURIComponent(big[big.length - 1]).includes("Straat 19 1"), "last segment ends at the final delivery stop");
 
 // No rows with no address -> no links at all (nothing to route).
 assert.deepEqual(buildMapsUrls([]), [], "no stops -> no links");

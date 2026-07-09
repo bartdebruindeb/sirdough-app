@@ -1,5 +1,3 @@
-import { bakeryConfig } from "@/config/bakery.config";
-
 export type DeliveryRow = {
   customerId: string; name: string; city: string; address: string;
   cityOrder: number; notes: string; isShop: boolean;
@@ -20,6 +18,12 @@ export type DeliveryRow = {
 // "My Location" each time — GPS-based, no need to chain an explicit start address).
 export const MAX_WAYPOINTS_PER_SEGMENT = 8;
 
+// origin=My+Location: Google Maps starts the route from the driver's current GPS
+// position and uses it to order the stops. If the driver denies location access,
+// Maps just asks them to pick a start — we don't inject the bakery as a fake first/last
+// stop, since it isn't a delivery address and showed up as a stray "Rotterdam" pin.
+const ORIGIN = "My+Location";
+
 // The street name alone is ambiguous — many Dutch street names (e.g. "Herengracht")
 // exist in multiple cities, and Google Maps has to guess which one without more
 // context, sometimes guessing wrong. Postcode is the precise disambiguator (same
@@ -33,20 +37,18 @@ export function buildMapsUrls(rows: DeliveryRow[]): string[] {
   const addresses = rows.filter(r => r.address).map(r => encodeURIComponent(fullAddress(r)));
   if (addresses.length === 0) return [];
 
-  const bakeryDest = encodeURIComponent(bakeryConfig.bakeryAddress);
   const chunks: string[][] = [];
   for (let i = 0; i < addresses.length; i += MAX_WAYPOINTS_PER_SEGMENT) {
     chunks.push(addresses.slice(i, i + MAX_WAYPOINTS_PER_SEGMENT));
   }
 
-  return chunks.map((chunk, i) => {
-    const isLastChunk = i === chunks.length - 1;
-    // Every chunk but the last drives through all its addresses and ends AT the last
-    // one (so it's not also listed as a waypoint); the final chunk's destination is
-    // always the bakery, same as the single-link version.
-    const stops = isLastChunk ? chunk : chunk.slice(0, -1);
-    const destination = isLastChunk ? bakeryDest : chunk[chunk.length - 1];
-    let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
+  return chunks.map(chunk => {
+    // Every chunk drives through its addresses and ends AT its own last delivery stop
+    // (so that stop is the destination, not also a waypoint). No bakery endpoint — the
+    // route is delivery stops only, started from the driver's current location.
+    const stops = chunk.slice(0, -1);
+    const destination = chunk[chunk.length - 1];
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${ORIGIN}&destination=${destination}`;
     if (stops.length > 0) url += `&waypoints=${stops.join("|")}`;
     url += "&travelmode=driving";
     return url;
