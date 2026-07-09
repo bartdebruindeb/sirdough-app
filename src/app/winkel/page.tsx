@@ -86,7 +86,12 @@ function ShopDetailsModal({ shop, shops, onSwitchShop, onClose, onChanged }: {
   const [huisletter, setHuisletter] = useState(hl0);
   const [foundStraat, setFoundStraat] = useState(shop?.address ?? "");
   const [foundStad, setFoundStad]     = useState(shop?.city ?? "");
-  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(shop?.address ? "found" : "idle");
+  // Only treat as "found" if postalCode/city actually exist — the Rotterdam bootstrap
+  // shop was created with just an address string (no structured postcode/city), so
+  // gating on address alone would silently submit empty postalCode/city on save.
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "looking" | "found" | "fail">(
+    shop?.address && shop?.postalCode && shop?.city ? "found" : "idle"
+  );
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
