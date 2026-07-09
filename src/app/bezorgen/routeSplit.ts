@@ -41,14 +41,16 @@ export function buildMapsUrls(rows: DeliveryRow[]): string[] {
 
   return chunks.map((chunk, i) => {
     const isLastChunk = i === chunks.length - 1;
-    // origin=My+Location so Maps starts turn-by-turn navigation from the driver's GPS
-    // immediately — a fixed address origin opens a route *preview* instead. Waypoints are
+    // No origin param at all: in Google Maps' api=1 directions format an absent origin
+    // makes Maps start from the device's *current location* and launch navigation. Passing
+    // origin=My+Location instead made Maps try to geocode the literal text "My Location" as
+    // a place, which resolved to a stray spot and dropped into route preview. Waypoints are
     // the delivery stops in their optimized order; only the final segment ends at the
     // bakery (Weegbreestraat) to close the loop, earlier segments end at their own last
     // stop so the next segment picks up from there.
     const stops = isLastChunk ? chunk : chunk.slice(0, -1);
     const destination = isLastChunk ? bakeryDest : chunk[chunk.length - 1];
-    let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
+    let url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
     if (stops.length > 0) url += `&waypoints=${stops.join("|")}`;
     url += "&travelmode=driving";
     return url;

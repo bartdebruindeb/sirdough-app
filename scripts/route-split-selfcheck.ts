@@ -44,10 +44,11 @@ for (let i = 0; i < 20; i++) {
   assert.ok(allEncoded.includes(needle), `stop ${i} must appear somewhere across the split links`);
 }
 
-// origin=My+Location on every segment — a fixed address origin opens a route preview
-// instead of starting turn-by-turn navigation from the driver's GPS.
+// No origin param at all — in Maps' api=1 format an absent origin starts from the
+// device's current location and launches navigation. A literal "My Location" (or any
+// fixed origin) gets geocoded to a stray place and opens a route preview instead.
 for (const url of big) {
-  assert.ok(url.includes("origin=My+Location"), `every segment starts from the driver's current location: ${url}`);
+  assert.ok(!/[?&]origin=/.test(url), `no origin param so Maps uses current location: ${url}`);
 }
 // Only the final segment ends at the bakery (return trip to Weegbreestraat); earlier
 // segments end at their own last stop so the next segment picks up from there.
