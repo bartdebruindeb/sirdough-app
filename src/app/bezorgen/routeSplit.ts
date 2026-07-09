@@ -41,16 +41,15 @@ export function buildMapsUrls(rows: DeliveryRow[]): string[] {
 
   return chunks.map((chunk, i) => {
     const isLastChunk = i === chunks.length - 1;
-    // Start each segment at its own first delivery stop — no fixed "My Location" origin
-    // (on some phones it started the route from a stray spot). The stop order is already
-    // optimized client-side (optimizeRoute). Only the final segment ends back at the
-    // bakery so the whole loop returns to Weegbreestraat; earlier segments end at their
-    // own last stop so the next segment picks up from there.
-    const origin = chunk[0];
-    const middle = isLastChunk ? chunk.slice(1) : chunk.slice(1, -1);
+    // origin=My+Location so Maps starts turn-by-turn navigation from the driver's GPS
+    // immediately — a fixed address origin opens a route *preview* instead. Waypoints are
+    // the delivery stops in their optimized order; only the final segment ends at the
+    // bakery (Weegbreestraat) to close the loop, earlier segments end at their own last
+    // stop so the next segment picks up from there.
+    const stops = isLastChunk ? chunk : chunk.slice(0, -1);
     const destination = isLastChunk ? bakeryDest : chunk[chunk.length - 1];
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
-    if (middle.length > 0) url += `&waypoints=${middle.join("|")}`;
+    let url = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${destination}`;
+    if (stops.length > 0) url += `&waypoints=${stops.join("|")}`;
     url += "&travelmode=driving";
     return url;
   });

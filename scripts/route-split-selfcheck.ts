@@ -44,11 +44,10 @@ for (let i = 0; i < 20; i++) {
   assert.ok(allEncoded.includes(needle), `stop ${i} must appear somewhere across the split links`);
 }
 
-// No fixed "My Location" origin — each segment starts at its own first delivery stop
-// (it was starting the route from a stray spot on some phones).
+// origin=My+Location on every segment — a fixed address origin opens a route preview
+// instead of starting turn-by-turn navigation from the driver's GPS.
 for (const url of big) {
-  assert.ok(!url.includes("origin=My+Location"), `no fixed My Location origin: ${url}`);
-  assert.ok(/origin=Straat/.test(url), `segment starts at its own first delivery stop: ${url}`);
+  assert.ok(url.includes("origin=My+Location"), `every segment starts from the driver's current location: ${url}`);
 }
 // Only the final segment ends at the bakery (return trip to Weegbreestraat); earlier
 // segments end at their own last stop so the next segment picks up from there.
