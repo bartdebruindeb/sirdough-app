@@ -160,7 +160,29 @@ export async function GET(req: Request) {
       }
     }
 
-    return Response.json({ week, customers: result, invoiced: invoiced.map((inv: any) => ({ ...inv, orders: undefined })) });
+    // Recurring (vaste) deliveries only become invoiceable once they're marked bezorgd —
+    // the pakbon step materializes a OneOffOrder (see /api/bezorgen/pakbon). A vaste order
+    // with no matching OneOffOrder this week silently won't be invoiced, so surface it so
+    // the owner can go mark it in Bezorgen. One-off orders and shops are invoiced
+    // regardless of bezorgd status, so they're not at risk and aren't checked here.
+    const activeRecurring = await prisma.recurringOrder.findMany({
+      where: { tenantId: tid, active: true },
+      include: { customer: { select: { name: true, city: true } } },
+    });
+    const orderKey = new Set(orders.map(o => `${o.customerId}|${o.deliveryDate.toISOString().slice(0, 10)}`));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const undelivered: { customerName: string; city: string | null; date: string }[] = [];
+    for (const ro of activeRecurring) {
+      const d = new Date(start);
+      d.setUTCDate(start.getUTCDate() + ((ro as any).weekday - 1));
+      const dateStr = d.toISOString().slice(0, 10);
+      if (dateStr >= todayStr) continue; // a vaste order still upcoming this week isn't "missed" yet
+      if (!orderKey.has(`${ro.customerId}|${dateStr}`)) {
+        undelivered.push({ customerName: ro.customer.name, city: ro.customer.city, date: dateStr });
+      }
+    }
+
+    return Response.json({ week, customers: result, invoiced: invoiced.map((inv: any) => ({ ...inv, orders: undefined })), undelivered });
   } catch (e) { return toResponse(e); }
 }
 

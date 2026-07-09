@@ -6,6 +6,7 @@ import { useRole } from "@/lib/role-context";
 type InvoiceLine = { name: string; quantity: number; unitPrice: number; lineTotal: number; date: string };
 type CustomerRow = { customerId: string; customerName: string; customerEmail: string | null; discountPercent: number; lines: InvoiceLine[]; total: number; orderIds: string[] };
 type SentInvoice = { id: string; customerId: string; invoiceNumber: string | null; sentAt: string | null; totalAmountExcl: string };
+type Undelivered = { customerName: string; city: string | null; date: string };
 type BillingEntity = { id: string; name: string; companyAddress?: string; companyPostal?: string; companyCity?: string; kvk?: string; btwNumber?: string; iban?: string; bic?: string; companyPhone?: string; companyEmail?: string; companyWebsite?: string; paymentTermDays?: number; paymentCondition?: string; isDefault?: boolean };
 
 const EMPTY_ENTITY: Partial<BillingEntity> = { name: "", paymentTermDays: 30, paymentCondition: "30 dagen", isDefault: false };
@@ -75,6 +76,7 @@ export default function FacturatiePage() {
   const [week, setWeek] = useState(() => prevWeek(currentWeek()));
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [sent, setSent] = useState<SentInvoice[]>([]);
+  const [undelivered, setUndelivered] = useState<Undelivered[]>([]);
   const [loading, setLoading] = useState(false);
   const [exactConnected, setExactConnected] = useState<boolean | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -104,6 +106,7 @@ export default function FacturatiePage() {
     fetch(`/api/facturen?week=${w}`).then(r => r.json()).then(d => {
       setCustomers(d.customers ?? []);
       setSent(d.invoiced ?? []);
+      setUndelivered(d.undelivered ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -324,6 +327,22 @@ export default function FacturatiePage() {
         <button onClick={() => setWeek(nextWeek(week))} className="btn-secondary" style={{ fontSize: 12, padding: "5px 10px" }}>Volgende ›</button>
         {entities.length === 0 && <span style={{ marginLeft: "auto", fontSize: 12, color: "#f97316" }}>⚠ Voeg eerst een BV toe via "BV's beheren"</span>}
       </div>
+
+      {/* Vaste bezorgingen die niet als bezorgd zijn verwerkt worden niet gefactureerd —
+          waarschuw zodat de eigenaar ze eerst in Bezorgen afrondt. */}
+      {!loading && undelivered.length > 0 && (
+        <div style={{ background: "var(--warn-bg, #fff7ed)", border: "1px solid #fca5a5", borderRadius: 10, padding: "1rem", color: "var(--warn, #b45309)", fontSize: 13, marginBottom: 16 }}>
+          <strong>⚠️ {undelivered.length} vaste {undelivered.length === 1 ? "bezorging staat" : "bezorgingen staan"} niet op ‘bezorgd’</strong> — deze worden niet gefactureerd zolang ze niet in Bezorgen zijn afgerond:
+          <ul style={{ margin: "8px 0 0", paddingLeft: 22 }}>
+            {undelivered.map((u, i) => (
+              <li key={i}>
+                {u.customerName}{u.city ? ` — ${u.city}` : ""}
+                <span style={{ color: "var(--text-subtle)" }}> · {new Date(u.date + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {loading && <p style={{ color: "var(--text-subtle)", fontSize: 13 }}>Laden…</p>}
 
