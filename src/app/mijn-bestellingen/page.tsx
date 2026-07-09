@@ -587,6 +587,12 @@ export default function MijnBestellingenPage() {
             // exists for a date, it reflects reality better than the plain computed
             // occurrence, so skip the computed one for that date.
             const oneOffDates = new Set([...upcoming, ...pastOrders].map(o => o.deliveryDate));
+            // A delivery on a weekday that has an active vaste bestelling IS that vaste
+            // bestelling (possibly materialized/adjusted on delivery via the pakbon flow),
+            // so it should read as "vast" — not "eenmalig". Without this, once a recurring
+            // day is delivered this week it flips to "eenmalig", making Deze week look
+            // different from Volgende week (whose recurring days aren't materialized yet).
+            const recurringWeekdays = new Set(recurring.filter(o => o.active).map(o => o.weekday));
 
             recurring.filter(o => o.active).forEach(o => {
               const d = new Date(monStr+"T12:00:00Z");
@@ -605,10 +611,11 @@ export default function MijnBestellingenPage() {
             });
             [...upcoming, ...pastOrders].forEach(o => {
               if (o.deliveryDate >= showFrom && o.deliveryDate <= sunStr) {
+                const wd = jsWeekdayToISO(new Date(o.deliveryDate + "T12:00:00Z"));
                 weekItems.push({
                   date: o.deliveryDate,
                   lines: o.lines.map(l => ({ name: l.breadType.name, quantity: l.quantity, price: l.breadType.price })),
-                  source: "eenmalig", locked: !isEditable(o.deliveryDate),
+                  source: recurringWeekdays.has(wd) ? "vast" : "eenmalig", locked: !isEditable(o.deliveryDate),
                   pickup: o.pickupLocation ?? null,
                   deviationNote: o.notes && o.notes.startsWith("Afwijking bezorging") ? o.notes : null,
                 });
