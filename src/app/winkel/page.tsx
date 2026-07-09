@@ -38,7 +38,10 @@ const winkelLabel: React.CSSProperties = {
 };
 
 function parseHuisnr(addr: string) {
-  const m = addr.match(/(\d+)\s*([a-zA-Z]?)$/);
+  // Strip a trailing ", City" first — legacy shop rows store "Street 23a, Rotterdam",
+  // and the number must be matched at the end of the street part, not the city.
+  const street = addr.split(",")[0].trim();
+  const m = street.match(/(\d+)\s*([a-zA-Z]?)$/);
   return { huisnummer: m?.[1] ?? "", huisletter: m?.[2] ?? "" };
 }
 
@@ -95,26 +98,6 @@ function ShopDetailsModal({ shop, shops, onSwitchShop, onClose, onChanged }: {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
-
-  // Shops created before postalCode/city were tracked (e.g. the Rotterdam bootstrap
-  // row) only have an address + lat/lng — reverse-geocode once on open so the
-  // postcode/huisnummer fields show real values instead of just the placeholder.
-  useEffect(() => {
-    if (!shop || shop.postalCode || shop.lat == null || shop.lng == null) return;
-    (async () => {
-      try {
-        const res = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/reverse?lat=${shop.lat}&lon=${shop.lng}&type=adres&rows=1`);
-        if (!res.ok) return;
-        const doc = (await res.json())?.response?.docs?.[0];
-        if (doc?.postcode) setPostcode(doc.postcode);
-        if (doc?.huis_nlt) {
-          const { huisnummer: hn, huisletter: hl } = parseHuisnr(doc.huis_nlt);
-          if (hn) setHuisnummer(hn);
-          if (hl) setHuisletter(hl);
-        }
-      } catch { /* leave fields as-is, user can type them manually */ }
-    })();
-  }, [shop]);
 
   async function doLookup() {
     if (!postcode.trim() || !huisnummer.trim()) return;
