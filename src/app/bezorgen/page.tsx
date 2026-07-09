@@ -420,15 +420,18 @@ export default function BezorgenPage() {
                     {busRows.length} stops
                   </span>
                 )}
-                {busRows.length > 1 && (
-                  <button onClick={optimizeRoute} disabled={optimizing}
-                    title="Vaste stops (📌) blijven voorop staan; de rest wordt op afstand gesorteerd vanaf de laatste vaste stop"
-                    style={{ marginLeft: "auto", fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", color: "var(--text)" }}>
-                    🧭 {optimizing ? "Bezig…" : "Optimaliseer route"}
-                  </button>
-                )}
-                {mapsUrls.length > 0 && (
-                  <div style={{ marginLeft: busRows.length > 1 ? 0 : "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(busRows.length > 1 || mapsUrls.length > 0) && (
+                  // Optimaliseer + Open route grouped in one right-aligned row so they
+                  // stay aligned side by side and wrap together on a narrow phone instead
+                  // of "Open route" dropping onto its own line under the other.
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {busRows.length > 1 && (
+                      <button onClick={optimizeRoute} disabled={optimizing}
+                        title="Vaste stops (📌) blijven voorop staan; de rest wordt op afstand gesorteerd vanaf de laatste vaste stop"
+                        style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", color: "var(--text)" }}>
+                        🧭 {optimizing ? "Bezig…" : "Optimaliseer route"}
+                      </button>
+                    )}
                     {mapsUrls.map((url, i) => (
                       <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                         title={mapsUrls.length > 1 ? `Stops ${i * MAX_WAYPOINTS_PER_SEGMENT + 1}–${Math.min((i + 1) * MAX_WAYPOINTS_PER_SEGMENT, busRows.length)}: open deze route pas als de vorige is afgerond` : undefined}
