@@ -18,6 +18,17 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
+
+  // Exact redirects back with ?error=…&error_description=… (and no code) when it rejects
+  // the authorize — an unregistered/mismatched redirect URI, the app not being linked to
+  // this Exact account, consent denied, etc. Surface Exact's own message instead of a
+  // generic MISSING_PARAMS so the reason is visible rather than a guessing game.
+  const oauthError = url.searchParams.get("error");
+  const oauthErrorDesc = url.searchParams.get("error_description");
+  if (oauthError || oauthErrorDesc) {
+    return Response.json({ error: "EXACT_REJECTED", exactError: oauthError, description: oauthErrorDesc }, { status: 400 });
+  }
+
   if (!code || !state) return Response.json({ error: "MISSING_PARAMS" }, { status: 400 });
 
   const verified = verifyState(state);
