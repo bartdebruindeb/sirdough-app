@@ -228,6 +228,23 @@ function PickupAndMap({ value, onChange, options, mapTarget }: {
   );
 }
 
+// The order forms (with the full bread-product picture grid) are tall, so they open in
+// a centered popup instead of pushing the week overview down the page. Click the dimmed
+// backdrop or the × to close; each caller passes its own reset as onClose.
+function FormModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(28,16,9,0.5)", zIndex: 60, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ width: "100%", maxWidth: 640, margin: "2rem 0", padding: "1.5rem", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: 17, margin: 0 }}>{title}</h2>
+          <button type="button" onClick={onClose} style={{ background: "none", border: "none", fontSize: 24, lineHeight: 1, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function MijnBestellingenPage() {
   const [recurring, setRecurring]         = useState<RecurringOrder[]>([]);
   const [upcoming, setUpcoming]           = useState<OneOffOrder[]>([]);
@@ -784,7 +801,8 @@ export default function MijnBestellingenPage() {
                       </div>
                     )}
 
-                    {isEditing && <>
+                    {isEditing && (
+                      <FormModal title={`Wijzigen — ${WEEKDAYS[order.weekday]}`} onClose={() => setEditingRecId(null)}>
                       <QtyGrid qty={editRecQty} onChange={setEditRecQty} breadTypes={breadTypes} discountPercent={discountPercent} />
                       <div style={{ marginTop: 10 }}>
                         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
@@ -805,7 +823,8 @@ export default function MijnBestellingenPage() {
                         <button onClick={() => setEditingRecId(null)} className="btn-secondary" style={{ fontSize: 13 }}>Annuleer</button>
                         <button onClick={() => saveRec(order)} disabled={savingRec} className="btn-primary" style={{ fontSize: 13 }}>{savingRec ? "Opslaan..." : "Opslaan"}</button>
                       </div>
-                    </>}
+                      </FormModal>
+                    )}
 
                     {/* Upcoming 2 weeks skip planning */}
                     {order.active && upcomingDates.length > 0 && !isEditing && (
@@ -839,7 +858,7 @@ export default function MijnBestellingenPage() {
               })}
 
               {showNewRec && (
-                <div className="card" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
+                <FormModal title="Vaste bestelling toevoegen" onClose={() => { setShowNewRec(false); setNewRecPickup(""); setNewRecError(""); }}>
                   <div>
                     <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdag</label>
                     <select value={newRecWeekday} onChange={e => setNewRecWeekday(Number(e.target.value))} style={inputStyle}>
@@ -858,7 +877,7 @@ export default function MijnBestellingenPage() {
                     <button onClick={() => { setShowNewRec(false); setNewRecPickup(""); setNewRecError(""); }} className="btn-secondary" style={{ fontSize: 13 }}>Annuleren</button>
                     <button onClick={createRec} disabled={savingNewRec} className="btn-primary" style={{ fontSize: 13 }}>{savingNewRec ? "Opslaan..." : "Vaste bestelling toevoegen"}</button>
                   </div>
-                </div>
+                </FormModal>
               )}
             </div>
           </section>}
@@ -871,7 +890,7 @@ export default function MijnBestellingenPage() {
             </div>
 
             {showNewOO && (
-              <div className="card" style={{ padding: "1.25rem", marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+              <FormModal title="Bestelling plaatsen" onClose={() => { setShowNewOO(false); setDateError(""); setNewPickup(""); setNewOOError(""); }}>
                 <div>
                   <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Bezorgdatum</label>
                   <OrderDatePicker value={newDate} onChange={d => { setNewDate(d); setDateError(validateDate(d)); }} isAvailable={dateStr => !validateDate(dateStr)} />
@@ -917,7 +936,7 @@ export default function MijnBestellingenPage() {
                     {savingNew ? "Plaatsen..." : "Bestelling plaatsen"}
                   </button>
                 </div>
-              </div>
+              </FormModal>
             )}
 
             {upcoming.length === 0 && !showNewOO && (
@@ -965,7 +984,7 @@ export default function MijnBestellingenPage() {
                       </div>
                     </div>
                     {isEditing && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <FormModal title={`Wijzigen — ${formatDate(order.deliveryDate)}`} onClose={() => setEditingOOId(null)}>
                         <div>
                           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
                           <input value={editOONotes} onChange={e => setEditOONotes(e.target.value)} style={inputStyle} placeholder="bijv. licht gebakken" />
@@ -980,7 +999,7 @@ export default function MijnBestellingenPage() {
                             disabled={savingOO}
                             className="btn-primary" style={{ fontSize: 13 }}>{savingOO ? "Opslaan..." : "Opslaan"}</button>
                         </div>
-                      </div>
+                      </FormModal>
                     )}
                   </div>
                 );
