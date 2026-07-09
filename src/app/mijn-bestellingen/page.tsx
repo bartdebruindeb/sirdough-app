@@ -761,21 +761,23 @@ export default function MijnBestellingenPage() {
                         {order.active && editable && <span style={{ fontSize: 11, color: "var(--success)" }}>{timeUntilCutoff(next)}</span>}
                         {order.active && !editable && <span style={{ fontSize: 11, color: "#b45309" }}>Wijzigingen gelden vanaf volgende week</span>}
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {order.active && !isEditing && (
-                          <button onClick={() => startEditRec(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}>Wijzigen</button>
-                        )}
-                        {!isEditing && editable && (
-                          <>
-                            <button onClick={() => toggleRecActive(order)} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: order.active ? "var(--text-subtle)" : "var(--success)" }}>
-                              {order.active ? "Pauzeer" : "Hervatten"}
-                            </button>
-                            <button onClick={() => deleteRec(order.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "none", color: "var(--danger)", cursor: "pointer" }}>
-                              Verwijder
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {/* All three actions in one compact dropdown so they don't wrap/
+                          overflow horizontally on a phone. Selecting runs the action; the
+                          menu resets to "Acties…" since value stays "". */}
+                      {!isEditing && (order.active || editable) && (
+                        <select value="" className="btn-secondary" style={{ fontSize: 11, padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}
+                          onChange={e => {
+                            const v = e.target.value;
+                            if (v === "edit") startEditRec(order);
+                            else if (v === "toggle") toggleRecActive(order);
+                            else if (v === "delete") deleteRec(order.id);
+                          }}>
+                          <option value="" disabled>Acties…</option>
+                          {order.active && <option value="edit">Wijzigen</option>}
+                          {editable && <option value="toggle">{order.active ? "Pauzeer" : "Hervatten"}</option>}
+                          {editable && <option value="delete">Verwijder</option>}
+                        </select>
+                      )}
                     </div>
 
                     {!isEditing && (
