@@ -183,16 +183,20 @@ sudo certbot --nginx -d <newbakery>.jouwdomein.nl
 
 ### 9. Daily reminder cron
 
-The order-reminder email (sent 2 days before delivery) is triggered by a VPS
-cron hitting this bakery's own URL — it does **not** run automatically per
+The order-reminder email (sent 2 days before delivery, at noon) is triggered by
+a VPS cron hitting this bakery's own URL — it does **not** run automatically per
 deployment, so add one crontab entry per bakery:
 
 ```bash
 crontab -e
 ```
 ```
-0 0 * * * curl -s -H "x-cron-secret: <this bakery's CRON_SECRET>" https://<newbakery>.jouwdomein.nl/api/cron/order-reminder
+0 12 * * * curl -s -H "x-cron-secret: <this bakery's CRON_SECRET>" https://<newbakery>.jouwdomein.nl/api/cron/order-reminder
 ```
+
+Runs daily at 12:00, reminding every delivery 2 days ahead (so Monday noon →
+Wednesday's deliveries). Restrict to Monday only with `0 12 * * 1` if the
+bakery only wants to remind about Wednesday deliveries.
 
 Use the exact `CRON_SECRET` value from this bakery's `.env` and the exact
 subdomain — hitting the wrong port/subdomain sends no reminders and fails silently.

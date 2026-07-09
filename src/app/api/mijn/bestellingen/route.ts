@@ -212,9 +212,8 @@ export async function POST(req: Request) {
       include: { lines: { include: { breadType: true } } },
     });
 
-    // No immediate confirmation email — the client schedules a debounced summary
-    // email (/api/mijn/email-summary) instead, so multiple edits in a session
-    // result in one email rather than one per change.
+    // No confirmation email on order changes — customers only get the delivery
+    // reminder (2 days before), the pakbon, and the invoice.
     return Response.json({ ...order, deliveryDate: toDateStr(order.deliveryDate) }, { status: 201 });
   } catch (e) { return toResponse(e); }
 }

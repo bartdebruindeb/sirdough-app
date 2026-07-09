@@ -2,8 +2,10 @@ import { prisma } from "@/server/config/db";
 import { resolveTenantId } from "@/server/config/tenant";
 import { sendOrderReminder } from "@/server/lib/email";
 
-// Call daily at 00:00 from VPS cron:
-//   0 0 * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://yourdomain.nl/api/cron/order-reminder
+// Reminds customers of a delivery 2 days out (e.g. run on Monday → reminds Wednesday's
+// deliveries). Call at 12:00 from VPS cron so the Monday-noon → Wednesday timing holds:
+//   0 12 * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://yourdomain.nl/api/cron/order-reminder
+// (daily at noon reminds every delivery day 2 days ahead; use "0 12 * * 1" for Monday only.)
 export async function GET(req: Request) {
   // Fail closed: if CRON_SECRET isn't configured, refuse rather than run open —
   // otherwise anyone could trigger reminder emails to every customer.

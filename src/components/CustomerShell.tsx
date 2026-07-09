@@ -29,11 +29,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
-  async function handleLogout() {
-    if (localStorage.getItem("pendingOrderEmail")) {
-      localStorage.removeItem("pendingOrderEmail");
-      await fetch("/api/mijn/email-summary", { method: "POST" }).catch(() => {});
-    }
+  function handleLogout() {
     signOut({ callbackUrl: "/login" });
   }
 

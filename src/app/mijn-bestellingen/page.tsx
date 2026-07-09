@@ -1,11 +1,10 @@
 ﻿"use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { bakeryConfig } from "@/config/bakery.config";
 import { breadImageUrls } from "@/lib/breadImage";
 import { LocationMap } from "./LocationMap";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
-const EMAIL_DEBOUNCE_MS = 10 * 60 * 1000;
 
 // Pickup locations (shop + bakery) come from the API (src/app/api/mijn/bestellingen),
 // which reads the real shop addresses off their Customer records — so when the owner
@@ -255,17 +254,6 @@ export default function MijnBestellingenPage() {
   const [minDeliveryAmount, setMinDeliveryAmount] = useState<number | null>(null);
   const [loading, setLoading]             = useState(true);
 
-  // Email debounce
-  const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function scheduleEmail() {
-    localStorage.setItem("pendingOrderEmail", "1");
-    if (emailTimer.current) clearTimeout(emailTimer.current);
-    emailTimer.current = setTimeout(async () => {
-      localStorage.removeItem("pendingOrderEmail");
-      await fetch("/api/mijn/email-summary", { method: "POST" }).catch(() => {});
-    }, EMAIL_DEBOUNCE_MS);
-  }
-
   // Recurring edit
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [editRecQty, setEditRecQty]     = useState<Record<string,number>>({});
@@ -397,7 +385,7 @@ export default function MijnBestellingenPage() {
     const data = await res.json().catch(() => ({}));
     setSavingRec(false);
     if (!res.ok) { setEditRecError(data.message ?? "Opslaan mislukt."); return; }
-    setEditingRecId(null); scheduleEmail(); load();
+    setEditingRecId(null); load();
     if (data.appliesFrom) {
       setSavedRecAppliesFrom(data.appliesFrom);
       setTimeout(() => setSavedRecAppliesFrom(null), 8000);
@@ -442,7 +430,7 @@ export default function MijnBestellingenPage() {
     });
     setSavingNewRec(false);
     if (!res.ok) { const d = await res.json().catch(() => ({})); setNewRecError(d.message ?? "Opslaan mislukt."); return; }
-    setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); setNewRecNotes(""); scheduleEmail(); load();
+    setShowNewRec(false); setNewRecQty({}); setNewRecPickup(""); setNewRecNotes(""); load();
   }
 
   // One-off
@@ -472,7 +460,7 @@ export default function MijnBestellingenPage() {
       }),
     });
     setSavingOO(false);
-    if (res.ok) { setEditingOOId(null); scheduleEmail(); load(); }
+    if (res.ok) { setEditingOOId(null); load(); }
     else { const d = await res.json().catch(() => ({})); setEditOOError(d.message ?? "Opslaan mislukt."); }
   }
   async function deleteOO(id: string) {
@@ -504,7 +492,7 @@ export default function MijnBestellingenPage() {
     });
     setSavingNew(false);
     if (!res.ok) { const d = await res.json().catch(() => ({})); setNewOOError(d.message ?? "Opslaan mislukt."); return; }
-    setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); scheduleEmail(); load();
+    setShowNewOO(false); setNewQty({}); setNewNotes(""); setNewPickup(""); setDateError(""); load();
   }
 
   // Where an order goes, for the form map: a pickup shop (its real address, from the
