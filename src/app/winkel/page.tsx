@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
 import { isCutoffPassed } from "@/lib/cutoff";
 import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailabilityManager";
+import { bakeryConfig } from "@/config/bakery.config";
 
 const MAX_WEEKS_AHEAD = 4;
 const WEEKDAYS_SHORT = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
@@ -76,6 +77,21 @@ async function pdokLookup(postcode: string, huisnummer: string, huisletter: stri
 // Doubles as the "add a new shop" flow: picking "+ Nieuwe winkel" in the switcher sets
 // shop to null, which switches the form into create mode (POST instead of PATCH).
 const NEW_SHOP = "__new__";
+
+// The bakery's own pickup location (the shop sitting at the bakery address) belongs at
+// the end of the tab list — the delivery winkels come first. Matched by coordinates so
+// it works regardless of what the owner renamed that shop to (~100m tolerance).
+function isBakeryPickup(s: Shop): boolean {
+  return s.lat != null && s.lng != null
+    && Math.abs(s.lat - bakeryConfig.bakeryLat) < 0.001
+    && Math.abs(s.lng - bakeryConfig.bakeryLng) < 0.001;
+}
+function sortShops(list: Shop[]): Shop[] {
+  return [...list].sort((a, b) => {
+    const ap = isBakeryPickup(a) ? 1 : 0, bp = isBakeryPickup(b) ? 1 : 0;
+    return ap !== bp ? ap - bp : a.name.localeCompare(b.name);
+  });
+}
 
 function ShopDetailsModal({ shop, shops, onSwitchShop, onClose, onChanged }: {
   shop: Shop | null; shops: Shop[]; onSwitchShop: (name: string) => void; onClose: () => void; onChanged: (selectShopId?: string) => void;
@@ -292,7 +308,7 @@ export default function WinkelPage() {
     fetch("/api/shops", { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
       .then(d => {
-        const list: Shop[] = d.shops ?? [];
+        const list: Shop[] = sortShops(d.shops ?? []);
         setShops(list);
         if (selectId) { setSelectedShopId(selectId); return; }
         // Default to the first shop, and re-pick if the currently selected one

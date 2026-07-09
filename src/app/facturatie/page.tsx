@@ -229,12 +229,9 @@ export default function FacturatiePage() {
 
       {/* ── Header ─────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <LogoUpload isOwner={isOwner} role={role} />
-          <div>
-            <h1 style={{ fontSize: 26, margin: 0 }}>Facturatie</h1>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
-          </div>
+        <div>
+          <h1 style={{ fontSize: 26, margin: 0 }}>Facturatie</h1>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>Genereer en verstuur facturen per week.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => setShowEntities(s => !s)} className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
@@ -268,6 +265,12 @@ export default function FacturatiePage() {
       {/* ── BV management panel ─────────────────────── */}
       {showEntities && (
         <div className="card" style={{ padding: "1.25rem 1.5rem", marginBottom: "1.5rem" }}>
+          {/* Logo lives here (not the always-visible header) — it's set once and rarely
+              touched, so it doesn't need permanent page space. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid var(--border)" }}>
+            <LogoUpload isOwner={isOwner} role={role} />
+            <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Logo op facturen</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-subtle)", margin: 0 }}>Facturerende entiteiten</h2>
             <button onClick={() => setEditingEntity({ ...EMPTY_ENTITY })} className="btn-primary" style={{ fontSize: 12 }}>+ Toevoegen</button>
