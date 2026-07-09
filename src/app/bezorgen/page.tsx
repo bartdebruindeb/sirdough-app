@@ -398,6 +398,24 @@ export default function BezorgenPage() {
         </div>
       )}
 
+      {/* A past day with deliveries still not marked 'bezorgd' — those locations never
+          reach Facturatie, so the owner would silently miss invoicing them. Warn (past
+          days only; an unmarked delivery on today is just still in progress). */}
+      {!loading && !error && data && date < today && (() => {
+        const unmarked = rows.filter(r => !delivered[r.customerId]);
+        if (unmarked.length === 0) return null;
+        return (
+          <div style={{ background: "var(--warn-bg)", border: "1px solid #fca5a5", borderRadius: 10, padding: "1rem", color: "var(--warn)", fontSize: 14, marginBottom: 12 }}>
+            <strong>⚠️ {unmarked.length} {unmarked.length === 1 ? "bezorging staat" : "bezorgingen staan"} niet op ‘bezorgd’</strong> — deze dag is voorbij. Zolang ze niet als bezorgd zijn gemarkeerd, verschijnen ze niet in Facturatie:
+            <ul style={{ margin: "8px 0 0", paddingLeft: 22 }}>
+              {unmarked.map(r => (
+                <li key={r.customerId}>{r.name}{r.city ? ` — ${r.city}` : ""}</li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+
       {!loading && !error && data && rows.length === 0 && (
         <div className="card" style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
           <p style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: "0 0 6px" }}>Niets te bezorgen</p>
