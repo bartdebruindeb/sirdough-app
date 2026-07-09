@@ -34,11 +34,11 @@ export default withAuth(
 export const config = {
   // Protect everything except the login page, NextAuth API routes,
   // the customer invite/onboarding page, Next.js internals/static assets,
-  // and the two Exact OAuth relay endpoints — those are hit directly by Exact's
-  // redirect (no session cookie exists on the apex domain) and by the relay's own
-  // server-to-server handoff, and are authenticated by signed state / a shared
-  // secret header instead of a session.
+  // the daily reminder cron, and the two Exact OAuth relay endpoints — those are
+  // hit directly by Exact's redirect (no session cookie exists on the apex domain),
+  // by the relay's own server-to-server handoff, and by the VPS cron (no session),
+  // and are authenticated by signed state / a shared secret header instead of a session.
   matcher: [
-    "/((?!login|api/auth|api/exact/relay-callback|api/exact/relay-receive|uitnodiging|_next/static|_next/image|favicon.ico|brood/).*)",
+    "/((?!login|api/auth|api/cron|api/exact/relay-callback|api/exact/relay-receive|uitnodiging|_next/static|_next/image|favicon.ico|brood/).*)",
   ],
 };
