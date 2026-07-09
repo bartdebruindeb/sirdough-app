@@ -77,6 +77,7 @@ export default function FacturatiePage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [sent, setSent] = useState<SentInvoice[]>([]);
   const [undelivered, setUndelivered] = useState<Undelivered[]>([]);
+  const [showUndelivered, setShowUndelivered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exactConnected, setExactConnected] = useState<boolean | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -332,18 +333,25 @@ export default function FacturatiePage() {
       </div>
 
       {/* Vaste bezorgingen die niet als bezorgd zijn verwerkt worden niet gefactureerd —
-          waarschuw zodat de eigenaar ze eerst in Bezorgen afrondt. */}
+          waarschuw zodat de eigenaar ze eerst in Bezorgen afrondt. Ingeklapt: alleen de
+          samenvattingsregel, uitklapbaar voor de volledige lijst (kan lang zijn). */}
       {!loading && undelivered.length > 0 && (
         <div style={{ background: "var(--warn-bg, #fff7ed)", border: "1px solid #fca5a5", borderRadius: 10, padding: "1rem", color: "var(--warn, #b45309)", fontSize: 13, marginBottom: 16 }}>
-          <strong>⚠️ {undelivered.length} vaste {undelivered.length === 1 ? "bezorging staat" : "bezorgingen staan"} niet op ‘bezorgd’</strong> — deze worden niet gefactureerd zolang ze niet in Bezorgen zijn afgerond:
-          <ul style={{ margin: "8px 0 0", paddingLeft: 22 }}>
-            {undelivered.map((u, i) => (
-              <li key={i}>
-                {u.customerName}{u.city ? ` — ${u.city}` : ""}
-                <span style={{ color: "var(--text-subtle)" }}> · {new Date(u.date + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })}</span>
-              </li>
-            ))}
-          </ul>
+          <button type="button" onClick={() => setShowUndelivered(v => !v)}
+            style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", color: "inherit", font: "inherit", textAlign: "left", width: "100%" }}>
+            <span style={{ marginRight: 6 }}>{showUndelivered ? "▾" : "▸"}</span>
+            <strong>⚠️ {undelivered.length} vaste {undelivered.length === 1 ? "bezorging staat" : "bezorgingen staan"} niet op ‘bezorgd’</strong> — deze worden niet gefactureerd zolang ze niet in Bezorgen zijn afgerond.
+          </button>
+          {showUndelivered && (
+            <ul style={{ margin: "8px 0 0", paddingLeft: 22 }}>
+              {undelivered.map((u, i) => (
+                <li key={i}>
+                  {u.customerName}{u.city ? ` — ${u.city}` : ""}
+                  <span style={{ color: "var(--text-subtle)" }}> · {new Date(u.date + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
