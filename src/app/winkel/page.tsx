@@ -403,7 +403,6 @@ export default function WinkelPage() {
     setSaving(null);
     setSavedDates(prev => [...prev.filter(d => d !== date), date]);
     setTimeout(() => setSavedDates(prev => prev.filter(d => d !== date)), 3000);
-    load();
   }
 
   async function saveAll() {
@@ -412,6 +411,10 @@ export default function WinkelPage() {
       await saveDay(date);
     }
     setSavingAll(false);
+    // Reload ONCE, after every day is saved — reloading after each day fired
+    // overlapping refetches that reset the whole grid to partial/stale server
+    // state mid-save, so a just-typed value could flip back to the template value.
+    load();
   }
 
   // ── Copy last week's quantities into the currently viewed week (unsaved until "Alles opslaan") ──
