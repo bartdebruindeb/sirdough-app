@@ -41,6 +41,11 @@ export const bakeryConfig = {
    */
   protectedAdminEmail: "bdb785@gmail.com",
 
+  /** Contact e-mail for privacy/data requests. Only shown to logged-in customers on the
+   * privacy page — the public/generic version never names the bakery, so a non-customer
+   * can't trace the platform back to this specific bakkerij. */
+  contactEmail: "info@meneerleffers.nl",
+
   /** Bakery address shown on the map and used as route start point */
   bakeryAddress: "De Weegbreestraat 23a, Rotterdam",
   bakeryLat: 51.966196,
