@@ -238,7 +238,7 @@ export async function createExactInvoice(
   if (customer?.exactAccountId) {
     accountGuid = customer.exactAccountId;
   } else {
-    const account = await findOrCreateAccount(auth.token, division, opts.customerName, opts.customerEmail);
+    const account = await findOrCreateAccount(auth.token, division, opts.customerName, opts.customerEmail, customer?.kvk ?? null);
     accountGuid = account.guid;
     await prisma.customer.update({
       where: { id: opts.customerId },
@@ -320,18 +320,31 @@ export async function deleteExactInvoice(tenantId: string, exactGuid: string): P
   return true;
 }
 
-async function findOrCreateAccount(token: string, division: number, name: string, email: string): Promise<{ guid: string; code: string | null }> {
-  // Search by email
-  const search = await fetch(
-    `${BASE}/api/v1/${division}/crm/Accounts?$filter=Email eq '${encodeURIComponent(email)}'&$select=ID,Code`,
-    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
-  );
-  if (!search.ok) throw new Error(`Exact account search failed: ${await search.text()}`);
-  const sdata = await search.json();
-  const existing = sdata.d?.results?.[0];
+async function findOrCreateAccount(token: string, division: number, name: string, email: string, kvk: string | null): Promise<{ guid: string; code: string | null }> {
+  const query = async (filter: string) => {
+    const res = await fetch(
+      `${BASE}/api/v1/${division}/crm/Accounts?$filter=${encodeURIComponent(filter)}&$select=ID,Code`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
+    );
+    if (!res.ok) throw new Error(`Exact account search failed: ${await res.text()}`);
+    const data = await res.json();
+    return data.d?.results?.[0] as { ID: string; Code: string | null } | undefined;
+  };
+
+  // Match on KvK (ChamberOfCommerce) first — it's the stable key the owner's existing
+  // customers are filed under, and landing the invoice on that existing account is what
+  // makes automatic incasso work (a freshly-created account has no SEPA mandate, so it
+  // would silently never be collected). Fall back to email so customers without a KvK
+  // still match an existing account instead of spawning a duplicate.
+  const kvkTrim = kvk?.trim();
+  let existing = kvkTrim ? await query(`ChamberOfCommerce eq '${kvkTrim}'`) : undefined;
+  if (!existing && email) existing = await query(`Email eq '${email}'`);
   if (existing) return { guid: existing.ID, code: existing.Code ?? null };
 
-  // Create new account
+  // Create new account, stamping the KvK so it matches next time (and so the owner can
+  // set up the mandate against it).
+  // IsCustomer isn't a settable field on this REST endpoint ("not valid" from Exact) —
+  // an Account becomes a customer implicitly once a sales invoice is created against it.
   const create = await fetch(`${BASE}/api/v1/${division}/crm/Accounts`, {
     method: "POST",
     headers: {
@@ -339,9 +352,7 @@ async function findOrCreateAccount(token: string, division: number, name: string
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    // IsCustomer isn't a settable field on this REST endpoint ("not valid" from Exact) —
-    // an Account becomes a customer implicitly once a sales invoice is created against it.
-    body: JSON.stringify({ Name: name, Email: email }),
+    body: JSON.stringify({ Name: name, Email: email, ...(kvkTrim ? { ChamberOfCommerce: kvkTrim } : {}) }),
   });
   if (!create.ok) throw new Error(`Exact account creation failed: ${await create.text()}`);
   const cdata = await create.json();
