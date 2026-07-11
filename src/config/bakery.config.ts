@@ -41,10 +41,9 @@ export const bakeryConfig = {
    */
   protectedAdminEmail: "bdb785@gmail.com",
 
-  /** Contact e-mail for privacy/data requests. Only shown to logged-in customers on the
-   * privacy page — the public/generic version never names the bakery, so a non-customer
-   * can't trace the platform back to this specific bakkerij. */
-  contactEmail: "info@meneerleffers.nl",
+  /** Contact e-mail for privacy/data requests. A platform address (not the bakery's own),
+   * so it never reveals which bakkerij this deployment is. */
+  contactEmail: "info@sirdough.com",
 
   /** Bakery address shown on the map and used as route start point */
   bakeryAddress: "De Weegbreestraat 23a, Rotterdam",
