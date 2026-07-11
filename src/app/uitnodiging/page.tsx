@@ -23,6 +23,7 @@ function UitnodigingContent() {
   const [name, setName]         = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [agreed, setAgreed]     = useState(false);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
 
@@ -51,6 +52,7 @@ function UitnodigingContent() {
     if (!hadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Vul een geldig e-mailadres in."); return; }
     if (password.length < 8) { setError("Minimaal 8 tekens."); return; }
     if (password !== password2) { setError("Wachtwoorden komen niet overeen."); return; }
+    if (!agreed) { setError("U dient akkoord te gaan met het privacybeleid."); return; }
     setSaving(true); setError("");
 
     const res = await fetch("/api/invite", {
@@ -143,12 +145,19 @@ function UitnodigingContent() {
                 style={inp} placeholder="Herhaal wachtwoord"
               />
             </div>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+              <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                Ik ga akkoord met de verwerking van mijn gegevens volgens het{" "}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>privacybeleid</a>.
+              </span>
+            </label>
             {error && (
               <p style={{ color: "var(--danger)", background: "var(--danger-bg)", padding: "9px 12px", borderRadius: 8, fontSize: 13, margin: 0 }}>
                 {error}
               </p>
             )}
-            <button onClick={setWachtwoord} disabled={saving} className="btn-primary" style={{ fontSize: 15, padding: 11 }}>
+            <button onClick={setWachtwoord} disabled={saving || !agreed} className="btn-primary" style={{ fontSize: 15, padding: 11 }}>
               {saving ? "Activeren…" : "Account activeren"}
             </button>
           </>

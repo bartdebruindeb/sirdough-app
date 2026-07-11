@@ -93,6 +93,9 @@ export default function LoginPage() {
           <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
             Geen account? Neem contact op met de bakkerij.
           </p>
+          <Link href="/privacy" style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+            Privacybeleid
+          </Link>
         </div>
       </div>
     </div>

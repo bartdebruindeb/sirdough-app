@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { CustomerShell } from "@/components/CustomerShell";
 import { bakeryConfig } from "@/config/bakery.config";
 
-const PUBLIC_PATHS = ["/login", "/uitnodiging"];
+const PUBLIC_PATHS = ["/login", "/uitnodiging", "/privacy"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

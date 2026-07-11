@@ -127,6 +127,12 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1.5rem" }}>
         {children}
       </main>
+
+      <footer style={{ maxWidth: 860, margin: "0 auto", padding: "0 1.5rem 2rem", textAlign: "center" }}>
+        <Link href="/privacy" target="_blank" style={{ fontSize: 12, color: "var(--text-subtle)", textDecoration: "none" }}>
+          Privacybeleid
+        </Link>
+      </footer>
     </div>
   );
 }

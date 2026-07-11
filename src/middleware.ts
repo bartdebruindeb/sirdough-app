@@ -39,6 +39,6 @@ export const config = {
   // by the relay's own server-to-server handoff, and by the VPS cron (no session),
   // and are authenticated by signed state / a shared secret header instead of a session.
   matcher: [
-    "/((?!login|api/auth|api/cron|api/exact/relay-callback|api/exact/relay-receive|uitnodiging|_next/static|_next/image|favicon.ico|brood/).*)",
+    "/((?!login|privacy|api/auth|api/cron|api/exact/relay-callback|api/exact/relay-receive|uitnodiging|_next/static|_next/image|favicon.ico|brood/).*)",
   ],
 };
