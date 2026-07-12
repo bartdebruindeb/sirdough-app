@@ -15,6 +15,8 @@ export async function GET(req: Request) {
   }
 
   const tid = await resolveTenantId({ tenantId: process.env.TENANT_SLUG ?? "dev-tenant" });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tid }, select: { name: true } });
+  const tenantName = tenant?.name ?? "De bakkerij";
 
   // Target: delivery date = today + 2 days
   const target = new Date();
@@ -49,7 +51,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName });
     sent++;
   }
 
@@ -73,7 +75,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName });
     sent++;
   }
 

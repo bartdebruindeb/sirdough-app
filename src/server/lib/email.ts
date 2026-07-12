@@ -8,15 +8,15 @@ function getResend() {
 }
 
 export async function sendOrderReminder({
-  to, customerName, deliveryDate, cutoffLabel, lines,
+  to, customerName, deliveryDate, cutoffLabel, lines, tenantName,
 }: {
   to: string; customerName: string; deliveryDate: string; cutoffLabel: string;
-  lines: { name: string; quantity: number }[];
+  lines: { name: string; quantity: number }[]; tenantName: string;
 }) {
   const lineRows = lines.map(l => `<tr><td style="padding:4px 0">${l.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${l.quantity}×</td></tr>`).join("");
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
-      <p style="font-size:20px;font-weight:600;margin-bottom:4px">Digital Bakery</p>
+      <p style="font-size:20px;font-weight:600;margin-bottom:4px">${tenantName}</p>
       <p style="color:#666;margin-top:0">Herinnering bestelling</p>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
       <p>Beste ${customerName},</p>
