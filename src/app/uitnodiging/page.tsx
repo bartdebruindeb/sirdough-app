@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { bakeryConfig } from "@/config/bakery.config";
 
 export default function UitnodigingPage() {
   return (
@@ -101,7 +102,9 @@ function UitnodigingContent() {
             <p style={{ fontSize: 32, margin: "0 0 8px" }}>⚠️</p>
             <p style={{ color: "var(--danger)", fontWeight: 500 }}>{message}</p>
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Neem contact op met de bakkerij voor een nieuwe uitnodiging.
+              Neem contact op via{" "}
+              <a href={`mailto:${bakeryConfig.contactEmail}`} style={{ color: "var(--accent)" }}>{bakeryConfig.contactEmail}</a>{" "}
+              voor een nieuwe uitnodiging.
             </p>
           </div>
         )}

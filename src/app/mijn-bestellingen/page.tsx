@@ -220,7 +220,10 @@ function PickupAndMap({ value, onChange, options, mapTarget }: {
             </p>
           </>
         ) : !value ? (
-          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>Bezorgadres nog niet ingesteld — neem contact op met de bakkerij.</p>
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: 0 }}>
+            Bezorgadres nog niet ingesteld — neem contact op via{" "}
+            <a href={`mailto:${bakeryConfig.contactEmail}`} style={{ color: "var(--accent)" }}>{bakeryConfig.contactEmail}</a>.
+          </p>
         ) : null}
       </div>
     </div>

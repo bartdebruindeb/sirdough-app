@@ -90,8 +90,9 @@ export default function LoginPage() {
           <Link href="/login/forgot-password" style={{ fontSize: 12, color: "var(--accent)" }}>
             Wachtwoord vergeten?
           </Link>
-          <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
-            Geen account? Neem contact op met de bakkerij.
+          <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0, textAlign: "center" }}>
+            Geen account? Neem contact op via{" "}
+            <a href={`mailto:${bakeryConfig.contactEmail}`} style={{ color: "var(--accent)" }}>{bakeryConfig.contactEmail}</a>.
           </p>
           <Link href="/privacy" style={{ fontSize: 12, color: "var(--text-subtle)" }}>
             Privacybeleid
