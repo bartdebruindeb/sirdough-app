@@ -19,13 +19,16 @@ export async function GET(req: Request) {
     const users = await prisma.user.findMany({
       where: { tenantId: tid, role: { in: ["OWNER","ORDER_TABLET","BAKKER"] } },
       orderBy: { name: "asc" },
-      select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
+      select: { id: true, email: true, name: true, role: true, active: true, createdAt: true, passwordHash: true },
     });
 
-    // Never expose the protected admin's real email address to the client
-    const mapped = users.map(u => {
+    // Never expose the protected admin's real email address to the client.
+    // `activated` = has ever set a password: lets the UI tell "still awaiting invite"
+    // (never activated) apart from "deactivated" (was active, switched off) — a fresh
+    // account is created inactive, so without this it looks wrongly like it was disabled.
+    const mapped = users.map(({ passwordHash, ...u }) => {
       const isProtectedAdmin = u.email === bakeryConfig.protectedAdminEmail;
-      return { ...u, email: isProtectedAdmin ? "—" : u.email, isProtectedAdmin };
+      return { ...u, email: isProtectedAdmin ? "—" : u.email, isProtectedAdmin, activated: !!passwordHash };
     });
 
     return Response.json({ users: mapped });
@@ -85,7 +88,7 @@ export async function POST(req: Request) {
     // Generate invite token (reuse InviteToken with customerId = user.id)
     await prisma.inviteToken.deleteMany({ where: { tenantId: tid, customerId: user.id } });
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await prisma.inviteToken.create({ data: { tenantId: tid, customerId: user.id, token, expiresAt } });
 
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";

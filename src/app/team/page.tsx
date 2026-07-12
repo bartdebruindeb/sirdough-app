@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 const STAFF_ROLES: AppRole[] = ["OWNER", "ORDER_TABLET", "BAKKER"];
 
-type Worker = { id: string; email: string | null; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean };
+type Worker = { id: string; email: string | null; name: string | null; role: AppRole; active: boolean; createdAt: string; isProtectedAdmin?: boolean; activated?: boolean };
 
 export default function TeamPage() {
   const { role: myRole } = useRole();
@@ -140,7 +140,7 @@ export default function TeamPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                ✓ Uitnodigingslink aangemaakt{email ? <> voor <strong>{email}</strong></> : ""} als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 48 uur.
+                ✓ Uitnodigingslink aangemaakt{email ? <> voor <strong>{email}</strong></> : ""} als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 7 dagen.
                 {!email && " De medewerker vult zelf een e-mailadres in via de link."}
               </p>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
@@ -200,7 +200,9 @@ export default function TeamPage() {
               <div style={{ flex: 1, minWidth: 160 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontWeight: 500, fontSize: 14 }}>{w.name ?? w.email ?? "Uitnodiging in behandeling"}</span>
-                  {!w.active && <span style={{ fontSize: 10, color: "var(--danger)", background: "var(--danger-bg)", padding: "2px 8px", borderRadius: 10 }}>Inactief</span>}
+                  {!w.active && (w.activated
+                    ? <span style={{ fontSize: 10, color: "var(--danger)", background: "var(--danger-bg)", padding: "2px 8px", borderRadius: 10 }}>Gedeactiveerd</span>
+                    : <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>Uitgenodigd — wacht op activatie</span>)}
                   {isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Beheerder</span>}
                   {isLastOwner && !isProtectedAdmin && <span title={lockReason} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 10 }}>🔒 Laatste eigenaar</span>}
                 </div>
