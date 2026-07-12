@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     // Generate invite token (reuse InviteToken with customerId = user.id)
     await prisma.inviteToken.deleteMany({ where: { tenantId: tid, customerId: user.id } });
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     await prisma.inviteToken.create({ data: { tenantId: tid, customerId: user.id, token, expiresAt } });
 
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";

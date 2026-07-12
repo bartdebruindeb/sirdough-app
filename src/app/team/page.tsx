@@ -140,7 +140,7 @@ export default function TeamPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                ✓ Uitnodigingslink aangemaakt{email ? <> voor <strong>{email}</strong></> : ""} als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 7 dagen.
+                ✓ Uitnodigingslink aangemaakt{email ? <> voor <strong>{email}</strong></> : ""} als <strong>{ROLE_LABELS[inviteRole]}</strong>. Geldig 48 uur.
                 {!email && " De medewerker vult zelf een e-mailadres in via de link."}
               </p>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
