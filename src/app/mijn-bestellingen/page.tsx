@@ -915,9 +915,8 @@ export default function MijnBestellingenPage() {
                         <span style={{ fontSize: 13, color: "var(--text-subtle)" }}>Totaal (excl. BTW)</span>
                         <span style={{ fontSize: 16, fontWeight: 600 }}>€ {total.toFixed(2)}</span>
                       </div>
-                      {discountPercent > 0 && (
-                        <p style={{ fontSize: 11, color: "var(--success)", margin: "3px 0 0" }}>{discountPercent}% korting verwerkt</p>
-                      )}
+                      {/* Discount is applied to the shown prices, but the percentage itself
+                          is not surfaced to the customer. */}
                       {isPickup && minDeliveryAmount !== null && (
                         <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "3px 0 0" }}>Geen minimale bestelwaarde bij afhalen.</p>
                       )}

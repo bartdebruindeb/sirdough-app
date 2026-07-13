@@ -575,24 +575,26 @@ export default function KlantenPage() {
                   />
                 </div>
 
-                {/* Discount selector */}
+                {/* Discount — free numeric percentage (0–100), saved on blur */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 80 }}>
-                  <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase" }}>Korting</label>
-                  <select
+                  <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase" }}>Korting %</label>
+                  <input
+                    type="number" min={0} max={100}
                     value={c.discountPercent}
-                    onChange={async e => {
-                      const val = Number(e.target.value);
+                    onChange={e => {
+                      const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                      setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, discountPercent: val } : x));
+                    }}
+                    onBlur={async e => {
+                      const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
                       await fetch("/api/customers", {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ id: c.id, discountPercent: val }),
                       });
-                      setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, discountPercent: val } : x));
                     }}
-                    style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "4px 6px", cursor: "pointer" }}
-                  >
-                    {[0, 5, 10, 15, 20].map(v => <option key={v} value={v}>{v}%</option>)}
-                  </select>
+                    style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "4px 6px", width: 60, textAlign: "center" }}
+                  />
                 </div>
 
                 {/* Account status */}
