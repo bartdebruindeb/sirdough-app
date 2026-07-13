@@ -49,4 +49,13 @@ export const bakeryConfig = {
   bakeryAddress: "De Weegbreestraat 23a, Rotterdam",
   bakeryLat: 51.966196,
   bakeryLng: 4.463144,
+
+  // ── Exact Online booking codes (from the bakery's own Exact administration) ──
+  /** Grootboekrekening (revenue/omzet account) sales invoices book to. For a bakery this
+   * is usually the 9%/laag-tarief omzet account (e.g. "8010"). Confirm with the owner's
+   * accountant — a wrong code makes invoice creation fail with "No GLAccount found". */
+  exactRevenueGLCode: "8000",
+  /** The 9% (laag tarief) BTW code in the bakery's Exact administration. Read it off
+   * Exact's BTW-codes list. Leave "" to send no VAT code (Exact then applies its default). */
+  exactVatCodeLow: "",
 } as const;

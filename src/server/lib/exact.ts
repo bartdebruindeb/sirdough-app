@@ -21,6 +21,7 @@
  */
 
 import { prisma } from "@/server/config/db";
+import { bakeryConfig } from "@/config/bakery.config";
 import crypto from "crypto";
 
 export const BASE = "https://start.exactonline.nl";
@@ -135,6 +136,39 @@ export async function disconnectExact(tenantId: string): Promise<void> {
   await (prisma as any).exactToken.deleteMany({ where: { tenantId } });
 }
 
+export type ExactAccount = { id: string; code: string | null; name: string; email: string | null; kvk: string | null };
+
+/** Every CRM account in the connected Exact administration, with its KvK number
+ * (ChamberOfCommerce). Used to match Sirdough customers to their existing Exact account
+ * so invoices attach to the right relatie (and its SEPA mandate) instead of a duplicate. */
+export async function listExactAccounts(tenantId: string): Promise<ExactAccount[]> {
+  if (!CLIENT_ID) return [];
+  const auth = await getAccessToken(tenantId);
+  if (!auth) return [];
+  let division = auth.division;
+  if (!division) {
+    division = await getDivision(auth.token);
+    await (prisma as any).exactToken.update({ where: { tenantId }, data: { division } });
+  }
+
+  const out: ExactAccount[] = [];
+  // Exact paginates ~60/page and returns the next page URL in d.__next; follow it until
+  // exhausted. The guard caps runaway loops (100 pages ≈ 10k accounts, far more than any
+  // single bakery has).
+  let url: string | null = `${BASE}/api/v1/${division}/crm/Accounts?$select=ID,Code,Name,Email,ChamberOfCommerce&$top=100`;
+  let guard = 0;
+  while (url && guard++ < 100) {
+    const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } });
+    if (!res.ok) throw new Error(`Exact accounts list failed: ${await res.text()}`);
+    const data = await res.json();
+    for (const a of data.d?.results ?? []) {
+      out.push({ id: a.ID, code: a.Code ?? null, name: (a.Name ?? "").trim(), email: a.Email ?? null, kvk: (a.ChamberOfCommerce ?? "").trim() || null });
+    }
+    url = data.d?.__next ?? null;
+  }
+  return out;
+}
+
 // GLAccount GUIDs don't change during a process's lifetime — cache per division to avoid
 // an extra Exact API call on every invoice line.
 const glAccountGuidCache = new Map<string, string>();
@@ -247,22 +281,23 @@ export async function createExactInvoice(
   }
 
   // GLAccount expects the account's internal GUID, not its human-readable Code
-  // ("Error converting the value ... to type 'Guid'").
-  const glAccountGuid = await getGLAccountGuid(auth.token, division, "8000");
+  // ("Error converting the value ... to type 'Guid'"). The revenue account code and the
+  // 9% BTW code are per-administration and live in bakery.config.ts, not hardcoded.
+  const glAccountGuid = await getGLAccountGuid(auth.token, division, bakeryConfig.exactRevenueGLCode);
 
   // Exact requires each line to reference a real Item (product), not just free text
   // ("Mandatory: Item") — find-or-create one per bread type, cached going forward.
-  const invoiceLines = await Promise.all(opts.lines.map(async l => ({
-    Description: l.description,
-    Quantity: l.quantity,
-    UnitPrice: l.unitPrice,
-    // TODO: "8000" (Omzet binnenland hoog tarief) is a placeholder — this test
-    // administration has no VAT-code rights to confirm the real 9% code/account.
-    // Confirm against a real, fully-configured Exact administration before go-live.
-    GLAccount: glAccountGuid,
-    Item: await findOrCreateItemGuid(auth.token, division, l.breadTypeId),
-    ...(l.vatCode ? { VATCode: l.vatCode } : {}),
-  })));
+  const invoiceLines = await Promise.all(opts.lines.map(async l => {
+    const vatCode = l.vatCode ?? (bakeryConfig.exactVatCodeLow || undefined);
+    return {
+      Description: l.description,
+      Quantity: l.quantity,
+      UnitPrice: l.unitPrice,
+      GLAccount: glAccountGuid,
+      Item: await findOrCreateItemGuid(auth.token, division, l.breadTypeId),
+      ...(vatCode ? { VATCode: vatCode } : {}),
+    };
+  }));
 
   // Exact's REST API rejects a POST body wrapped in the OData-style { d: {...} } envelope
   // ("The property name 'd' ... is not valid") — only GET responses come wrapped like that.
