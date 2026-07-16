@@ -345,7 +345,7 @@ export async function buildPdfData(
   const nr = invoiceNumber ?? `DBK-${Math.floor(Date.now() / 1000).toString(36).toUpperCase()}`;
 
   return {
-    companyName: biller?.name ?? biller?.companyName ?? tenant?.name ?? "Digital Bakery",
+    companyName: biller?.name ?? biller?.companyName ?? tenant?.name ?? "Sirdough",
     companyAddress: biller?.companyAddress,
     companyPostal: biller?.companyPostal,
     companyCity: biller?.companyCity,

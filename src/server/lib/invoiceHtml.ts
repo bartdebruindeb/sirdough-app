@@ -36,7 +36,7 @@ export function buildInvoiceHtml(opts: {
   <!-- Header -->
   <div style="background:#2c1810;padding:28px 32px;display:flex;justify-content:space-between;align-items:flex-start">
     <div>
-      <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">Digital Bakery</p>
+      <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">Sirdough</p>
       <p style="margin:4px 0 0;font-size:13px;color:#c4a882">Ambachtelijk brood</p>
     </div>
     <div style="text-align:right">
@@ -92,7 +92,7 @@ export function buildInvoiceHtml(opts: {
 
   <!-- Footer -->
   <div style="background:#faf7f4;padding:16px 32px;border-top:1px solid #f0ebe5">
-    <p style="margin:0;font-size:11px;color:#aaa;text-align:center">Digital Bakery &nbsp;·&nbsp; Factuur ${opts.invoiceNumber}</p>
+    <p style="margin:0;font-size:11px;color:#aaa;text-align:center">Sirdough &nbsp;·&nbsp; Factuur ${opts.invoiceNumber}</p>
   </div>
 
 </div>

@@ -297,7 +297,7 @@ function InviteModal({ customer, onClose }: { customer: Customer; onClose: () =>
                 {copied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
               </button>
               {customer.email && (
-                <a href={`mailto:${customer.email}?subject=Uitnodiging%20Digital%20Bakery&body=Beste%20${customer.name},%0A%0AKlik%20op%20deze%20link%20om%20uw%20account%20te%20activeren:%0A${encodeURIComponent(inviteUrl)}`}
+                <a href={`mailto:${customer.email}?subject=Uitnodiging%20Sirdough&body=Beste%20${customer.name},%0A%0AKlik%20op%20deze%20link%20om%20uw%20account%20te%20activeren:%0A${encodeURIComponent(inviteUrl)}`}
                   className="btn-secondary" style={{ textDecoration: "none", padding: "9px 14px", fontSize: 13 }}>
                   ✉ Stuur e-mail
                 </a>

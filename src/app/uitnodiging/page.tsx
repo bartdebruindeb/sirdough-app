@@ -91,7 +91,7 @@ function UitnodigingContent() {
         display: "flex", flexDirection: "column", gap: 18,
       }}>
         <div style={{ textAlign: "center" }}>
-          <p style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "0 0 4px" }}>Digital Bakery</p>
+          <p style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "0 0 4px" }}>{bakeryConfig.productName}</p>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Uitnodiging activeren</p>
         </div>
 

@@ -151,7 +151,7 @@ export default function TeamPage() {
                   {copied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
                 </button>
                 {email && (
-                  <a href={`mailto:${email}?subject=Uitnodiging%20Digital%20Bakery&body=Hoi%20${name ? name : ""},%0A%0AKlik%20op%20deze%20link%20om%20je%20account%20in%20te%20stellen:%0A${encodeURIComponent(inviteUrl)}`}
+                  <a href={`mailto:${email}?subject=Uitnodiging%20Sirdough&body=Hoi%20${name ? name : ""},%0A%0AKlik%20op%20deze%20link%20om%20je%20account%20in%20te%20stellen:%0A${encodeURIComponent(inviteUrl)}`}
                     className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
                     ✉ Stuur e-mail
                   </a>
@@ -290,7 +290,7 @@ export default function TeamPage() {
                     {regenCopied ? "✓ Gekopieerd!" : "📋 Kopieer link"}
                   </button>
                   {regenFor.email && (
-                    <a href={`mailto:${regenFor.email}?subject=Nieuwe%20link%20Digital%20Bakery&body=${encodeURIComponent(regenUrl)}`}
+                    <a href={`mailto:${regenFor.email}?subject=Nieuwe%20link%20Sirdough&body=${encodeURIComponent(regenUrl)}`}
                       className="btn-secondary" style={{ textDecoration: "none", padding: "8px 14px", fontSize: 13 }}>
                       ✉ Stuur e-mail
                     </a>

@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 
-const FROM = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
+const FROM = process.env.RESEND_FROM ?? "Sirdough <onboarding@resend.dev>";
 function getResend() {
   const key = process.env.RESEND_API_KEY;
   if (!key) return null;

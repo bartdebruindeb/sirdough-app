@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const key = process.env.RESEND_API_KEY;
     if (!key) return Response.json({ error: "RESEND_NOT_CONFIGURED" }, { status: 500 });
 
-    const from = process.env.RESEND_FROM ?? "Digital Bakery <onboarding@resend.dev>";
+    const from = process.env.RESEND_FROM ?? "Sirdough <onboarding@resend.dev>";
     const number = invoice.invoiceNumber ?? `DBK-${invoice.id.slice(-6).toUpperCase()}`;
     const excl = Number(invoice.totalAmountExcl);
     const vat = excl * (Number(invoice.vatPercent) / 100);
@@ -65,9 +65,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await resend.emails.send({
       from,
       to,
-      subject: `Factuur ${number} – Digital Bakery`,
+      subject: `Factuur ${number} – Sirdough`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-        <p style="font-size:18px;font-weight:700">Digital Bakery</p>
+        <p style="font-size:18px;font-weight:700">Sirdough</p>
         <p>Beste ${invoice.customer?.name ?? "klant"},</p>
         <p>Bijgaand (opnieuw) de factuur ${number}.</p>
         <p style="font-size:15px;font-weight:700">Totaal te voldoen: € ${total.toFixed(2).replace(".", ",")}</p>
