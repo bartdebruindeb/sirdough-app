@@ -334,7 +334,7 @@ export default function WinkelPage() {
   const [histTo, setHistTo]     = useState("");
 
   // Weather per date
-  const [weathers, setWeathers] = useState<Record<string, { temp: number; icon: string } | null>>({});
+  const [weathers, setWeathers] = useState<Record<string, { temp: number; icon: string; code: number } | null>>({});
 
   const weekDays = getWeekDays(weekOffset);
 
@@ -377,7 +377,7 @@ export default function WinkelPage() {
   useEffect(() => {
     const shop = shops.find(s => s.name === selectedShop);
     if (!shop?.lat || !shop?.lng) return;
-    const newW: Record<string, { temp: number; icon: string } | null> = {};
+    const newW: Record<string, { temp: number; icon: string; code: number } | null> = {};
     Promise.all(
       weekDays.map(date =>
         fetchWeather(shop.lat!, shop.lng!, date).then(w => { newW[date] = w; })
@@ -397,7 +397,7 @@ export default function WinkelPage() {
       headers: { "Content-Type": "application/json", "x-role": role ?? "" },
       body: JSON.stringify({
         shopName: selectedShop, date, quantities: qty,
-        weatherTemp: w?.temp, weatherCode: undefined,
+        weatherTemp: w?.temp, weatherCode: w?.code,
       }),
     });
     setSaving(null);
