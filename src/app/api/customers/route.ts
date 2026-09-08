@@ -56,6 +56,7 @@ const CreateCustomerSchema = z.object({
   // of creating a duplicate.
   exactAccountId: z.string().optional().nullable(),
   exactCustomerCode: z.string().optional().nullable(),
+  customerNumber: z.number().int().nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
         ...(input.lat != null && input.lng != null && { lat: input.lat, lng: input.lng }),
         ...(input.exactAccountId !== undefined && { exactAccountId: input.exactAccountId }),
         ...(input.exactCustomerCode !== undefined && { exactCustomerCode: input.exactCustomerCode }),
+        ...(input.customerNumber !== undefined && { customerNumber: input.customerNumber }),
       },
     });
     return Response.json(customer, { status: 201 });

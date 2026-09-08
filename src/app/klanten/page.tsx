@@ -112,6 +112,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [kvk, setKvk]               = useState(initial?.kvk ?? "");
   const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
+  const [customerNumber, setCustomerNumber] = useState(initial?.customerNumber ?? null as number | null);
 
   // Exact account link — typing in Naam or KvK-nummer suggests matches from the connected
   // Exact administration (fetched once, filtered client-side); picking one links the
@@ -131,8 +132,13 @@ function CustomerForm({ initial, onSave, onCancel }: {
 
   const nameQuery = name.trim().toLowerCase();
   const kvkQuery = kvk.trim();
-  const suggestions = suggestField === "name" && nameQuery.length >= 2
-    ? exactAccounts.filter(a => a.name.toLowerCase().includes(nameQuery)).slice(0, 8)
+  // Word-based, not a single contiguous substring — a plain substring match misses common
+  // real-world mismatches between Sirdough and Exact naming: legal suffixes ("B.V."),
+  // different word order ("Café Johannes" vs "Johannes Café B.V."), or extra punctuation.
+  // Every word the owner typed just has to appear somewhere in the account name.
+  const nameWords = nameQuery.split(/\s+/).filter(w => w.length >= 2);
+  const suggestions = suggestField === "name" && nameWords.length > 0
+    ? exactAccounts.filter(a => { const n = a.name.toLowerCase(); return nameWords.every(w => n.includes(w)); }).slice(0, 8)
     : suggestField === "kvk" && kvkQuery.length >= 2
     ? exactAccounts.filter(a => a.kvk?.includes(kvkQuery)).slice(0, 8)
     : [];
@@ -141,6 +147,9 @@ function CustomerForm({ initial, onSave, onCancel }: {
     setKvk(a.kvk ?? kvk);
     setExactAccountId(a.id);
     setExactCustomerCode(a.code);
+    // Also carry Exact's relatienummer into Sirdough's own klantnummer, but only if one
+    // isn't already set — never silently overwrite a number the owner already assigned.
+    if (!customerNumber && a.code && /^\d+$/.test(a.code)) setCustomerNumber(parseInt(a.code, 10));
     setSuggestField(null);
   }
   function unlinkExactAccount() {
@@ -202,7 +211,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
         lat: foundLat,
         lng: foundLng,
         email, phone, kvk, notes, preferredBread,
-        exactAccountId, exactCustomerCode,
+        exactAccountId, exactCustomerCode, customerNumber,
       });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
@@ -293,6 +302,11 @@ function CustomerForm({ initial, onSave, onCancel }: {
             Typ om te zoeken in Exact — kies een resultaat om te koppelen.
           </p>
         )}
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Klantnummer</label>
+        <input type="number" value={customerNumber ?? ""} onChange={e => setCustomerNumber(e.target.value ? parseInt(e.target.value, 10) : null)}
+          style={inp} placeholder="wordt ingevuld bij koppelen aan Exact, of vul zelf in" />
       </div>
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
