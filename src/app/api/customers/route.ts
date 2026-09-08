@@ -51,6 +51,11 @@ const CreateCustomerSchema = z.object({
   preferredBread: z.string().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
+  // Linked Exact Online CRM account, picked from the KvK/name typeahead on this form —
+  // makes invoices attach to the existing Exact relatie (and its SEPA mandate) instead
+  // of creating a duplicate.
+  exactAccountId: z.string().optional().nullable(),
+  exactCustomerCode: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -81,6 +86,8 @@ export async function POST(req: Request) {
         notes: input.notes || null,
         preferredBread: input.preferredBread || null,
         ...(input.lat != null && input.lng != null && { lat: input.lat, lng: input.lng }),
+        ...(input.exactAccountId !== undefined && { exactAccountId: input.exactAccountId }),
+        ...(input.exactCustomerCode !== undefined && { exactCustomerCode: input.exactCustomerCode }),
       },
     });
     return Response.json(customer, { status: 201 });
@@ -105,6 +112,8 @@ const UpdateCustomerSchema = z.object({
   customerNumber: z.number().int().nullable().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
+  exactAccountId: z.string().optional().nullable(),
+  exactCustomerCode: z.string().optional().nullable(),
 });
 
 export async function PATCH(req: Request) {
@@ -134,6 +143,8 @@ export async function PATCH(req: Request) {
         ...(data.customerNumber !== undefined && { customerNumber: data.customerNumber }),
         ...(data.lat !== undefined && { lat: data.lat }),
         ...(data.lng !== undefined && { lng: data.lng }),
+        ...(data.exactAccountId !== undefined && { exactAccountId: data.exactAccountId }),
+        ...(data.exactCustomerCode !== undefined && { exactCustomerCode: data.exactCustomerCode }),
       },
     });
     return Response.json(customer);

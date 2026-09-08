@@ -1,6 +1,8 @@
 "use client";
 import { useRole } from "@/lib/role-context";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+type ExactAccount = { id: string; name: string; kvk: string | null; code: string | null };
 
 
 type User = { id: string; email: string; active: boolean } | null;
@@ -15,6 +17,7 @@ type Customer = {
   active: boolean; userId: string | null; user: User;
   discountPercent: number;
   customerNumber: number | null;
+  exactAccountId: string | null;
   exactCustomerCode: string | null;
   deliveryAddresses: DeliveryAddress[];
 };
@@ -110,6 +113,41 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
 
+  // Exact account link — typing in Naam or KvK-nummer suggests matches from the connected
+  // Exact administration (fetched once, filtered client-side); picking one links the
+  // account and fills KvK, so invoices attach to the existing Exact relatie (and its SEPA
+  // mandate) instead of creating a duplicate. Empty when Exact isn't connected.
+  const [exactAccountId, setExactAccountId]     = useState(initial?.exactAccountId ?? null as string | null);
+  const [exactCustomerCode, setExactCustomerCode] = useState(initial?.exactCustomerCode ?? null as string | null);
+  const [exactAccounts, setExactAccounts]       = useState<ExactAccount[]>([]);
+  const [suggestField, setSuggestField]         = useState<"name" | "kvk" | null>(null);
+  const exactFetched = useRef(false);
+
+  function ensureExactAccountsLoaded() {
+    if (exactFetched.current) return;
+    exactFetched.current = true;
+    fetch("/api/exact/accounts").then(r => r.json()).then(d => setExactAccounts(d.accounts ?? [])).catch(() => {});
+  }
+
+  const nameQuery = name.trim().toLowerCase();
+  const kvkQuery = kvk.trim();
+  const suggestions = suggestField === "name" && nameQuery.length >= 2
+    ? exactAccounts.filter(a => a.name.toLowerCase().includes(nameQuery)).slice(0, 8)
+    : suggestField === "kvk" && kvkQuery.length >= 2
+    ? exactAccounts.filter(a => a.kvk?.includes(kvkQuery)).slice(0, 8)
+    : [];
+
+  function pickExactAccount(a: ExactAccount) {
+    setKvk(a.kvk ?? kvk);
+    setExactAccountId(a.id);
+    setExactCustomerCode(a.code);
+    setSuggestField(null);
+  }
+  function unlinkExactAccount() {
+    setExactAccountId(null);
+    setExactCustomerCode(null);
+  }
+
   // Address lookup via PDOK
   const initHuisnr = parseHuisnr(initial?.address ?? "");
   const [postcode, setPostcode]       = useState(initial?.postalCode ?? "");
@@ -164,6 +202,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
         lat: foundLat,
         lng: foundLng,
         email, phone, kvk, notes, preferredBread,
+        exactAccountId, exactCustomerCode,
       });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
@@ -173,9 +212,21 @@ function CustomerForm({ initial, onSave, onCancel }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div>
+      <div style={{ position: "relative" }}>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam *</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes" />
+        <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes"
+          onFocus={() => { ensureExactAccountsLoaded(); setSuggestField("name"); }}
+          onBlur={() => setTimeout(() => setSuggestField(f => f === "name" ? null : f), 150)} />
+        {suggestField === "name" && suggestions.length > 0 && (
+          <div style={{ position: "absolute", zIndex: 10, top: "100%", left: 0, right: 0, marginTop: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", maxHeight: 200, overflowY: "auto" }}>
+            {suggestions.map(a => (
+              <button key={a.id} type="button" onMouseDown={() => pickExactAccount(a)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text)" }}>
+                {a.name}{a.kvk ? <span style={{ color: "var(--text-subtle)" }}> · KvK {a.kvk}</span> : ""}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Adres (voor bezorgroute)</label>
@@ -215,9 +266,33 @@ function CustomerForm({ initial, onSave, onCancel }: {
           <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="+31 6 12345678" />
         </div>
       </div>
-      <div>
+      <div style={{ position: "relative" }}>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>KvK-nummer</label>
-        <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678" />
+        <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678"
+          onFocus={() => { ensureExactAccountsLoaded(); setSuggestField("kvk"); }}
+          onBlur={() => setTimeout(() => setSuggestField(f => f === "kvk" ? null : f), 150)} />
+        {suggestField === "kvk" && suggestions.length > 0 && (
+          <div style={{ position: "absolute", zIndex: 10, top: "100%", left: 0, right: 0, marginTop: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", maxHeight: 200, overflowY: "auto" }}>
+            {suggestions.map(a => (
+              <button key={a.id} type="button" onMouseDown={() => pickExactAccount(a)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text)" }}>
+                {a.name}{a.kvk ? <span style={{ color: "var(--text-subtle)" }}> · KvK {a.kvk}</span> : ""}
+              </button>
+            ))}
+          </div>
+        )}
+        {exactAccountId ? (
+          <p style={{ fontSize: 11, color: "var(--success)", margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8 }}>
+            🔗 Gekoppeld aan Exact{exactCustomerCode ? ` (klant ${exactCustomerCode})` : ""}
+            <button type="button" onClick={unlinkExactAccount} style={{ fontSize: 11, background: "none", border: "none", color: "var(--text-subtle)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+              ontkoppelen
+            </button>
+          </p>
+        ) : (
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "6px 0 0" }}>
+            Typ om te zoeken in Exact — kies een resultaat om te koppelen.
+          </p>
+        )}
       </div>
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>

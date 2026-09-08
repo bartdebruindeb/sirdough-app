@@ -92,49 +92,6 @@ export default function FacturatiePage() {
   // BV picker — shown before generating
   const [pickingCustomer, setPickingCustomer] = useState<CustomerRow | null>(null);
 
-  // Exact KvK import (match customers to Exact accounts by name, link + fill KvK)
-  type ImportMatch = { customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean; exactAccountId: string; exactCustomerCode: string | null; exactName: string; exactKvk: string | null };
-  type ImportManual = { customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean; reason: "none" | "ambiguous" };
-  type ExactAccount = { id: string; name: string; kvk: string | null; code: string | null };
-  const [showImport, setShowImport] = useState(false);
-  const [importData, setImportData] = useState<{ matches: ImportMatch[]; needsManual: ImportManual[]; accounts: ExactAccount[]; exactAccountCount: number } | null>(null);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importSelected, setImportSelected] = useState<Set<string>>(new Set());
-  // Manual links the owner picks for the customers name-match couldn't resolve:
-  // customerId → chosen Exact account id.
-  const [importManual, setImportManual] = useState<Record<string, string>>({});
-  const [importApplying, setImportApplying] = useState(false);
-  const [importResult, setImportResult] = useState<string>("");
-
-  async function openImport() {
-    setShowImport(true); setImportData(null); setImportResult(""); setImportManual({}); setImportLoading(true);
-    const d = await fetch("/api/exact/import-accounts").then(r => r.json()).catch(() => null);
-    setImportLoading(false);
-    if (!d || d.error) { setImportResult("Kon Exact-accounts niet ophalen."); return; }
-    setImportData(d);
-    // Default: select every unambiguous match that isn't linked yet.
-    setImportSelected(new Set(d.matches.filter((m: ImportMatch) => !m.alreadyLinked).map((m: ImportMatch) => m.customerId)));
-  }
-  async function applyImport() {
-    if (!importData) return;
-    setImportApplying(true);
-    const auto = importData.matches.filter(m => importSelected.has(m.customerId))
-      .map(m => ({ customerId: m.customerId, exactAccountId: m.exactAccountId, exactCustomerCode: m.exactCustomerCode, kvk: m.exactKvk }));
-    const manual = Object.entries(importManual)
-      .filter(([, accId]) => accId)
-      .map(([customerId, accId]) => {
-        const a = importData.accounts.find(x => x.id === accId)!;
-        return { customerId, exactAccountId: a.id, exactCustomerCode: a.code, kvk: a.kvk };
-      });
-    const links = [...auto, ...manual];
-    const d = await fetch("/api/exact/import-accounts", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ links }),
-    }).then(r => r.json()).catch(() => null);
-    setImportApplying(false);
-    if (d?.ok) { setImportResult(`✓ ${d.updated} klant(en) gekoppeld aan Exact.`); openImport(); }
-    else setImportResult("Koppelen mislukt.");
-  }
-
   // Preview modal
   const [previewCustomer, setPreviewCustomer] = useState<CustomerRow | null>(null);
   const [previewEntityId, setPreviewEntityId] = useState<string | null>(null);
@@ -285,9 +242,6 @@ export default function FacturatiePage() {
           {exactConnected === true && (
             <>
               <span style={{ fontSize: 12, color: "var(--success)", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "4px 10px", borderRadius: 6 }}>✓ Exact</span>
-              <button onClick={openImport} className="btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
-                🔗 Koppel klanten (KvK)
-              </button>
               <button
                 disabled={disconnecting}
                 onClick={async () => {
@@ -539,95 +493,6 @@ export default function FacturatiePage() {
         </div>
       )}
 
-      {/* ── Exact KvK import modal ─────────────────── */}
-      {showImport && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 24, overflowY: "auto" }}>
-          <div className="card" style={{ width: "100%", maxWidth: 640, margin: "2rem 0", padding: "1.5rem", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ fontSize: 16, margin: 0 }}>Klanten koppelen aan Exact</h2>
-              <button onClick={() => setShowImport(false)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-subtle)" }}>×</button>
-            </div>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-              Matcht klanten op naam met hun Exact-account, vult het KvK-nummer aan en koppelt het account —
-              zodat facturen naar het bestaande Exact-account gaan (met de incasso-machtiging).
-            </p>
-
-            {importLoading && <p style={{ fontSize: 13, color: "var(--text-subtle)" }}>Exact-accounts ophalen…</p>}
-
-            {importData && (
-              <>
-                <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
-                  {importData.exactAccountCount} Exact-accounts · {importData.matches.length} op naam gematcht ·
-                  {" "}{importData.needsManual.length} handmatig te koppelen
-                </p>
-
-                {importData.matches.length > 0 && (
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, margin: "0 0 4px" }}>Op naam gematcht</p>
-                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 240, overflowY: "auto" }}>
-                      {importData.matches.map(m => (
-                        <label key={m.customerId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: 13, cursor: "pointer" }}>
-                          <input type="checkbox" checked={importSelected.has(m.customerId)}
-                            onChange={e => setImportSelected(prev => { const n = new Set(prev); e.target.checked ? n.add(m.customerId) : n.delete(m.customerId); return n; })} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 500 }}>{m.customerName}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>
-                              → {m.exactName}{m.exactKvk ? ` · KvK ${m.exactKvk}` : " · geen KvK in Exact"}
-                              {m.alreadyLinked && " · al gekoppeld"}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {importData.needsManual.length > 0 && (
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, margin: "0 0 4px" }}>Handmatig koppelen</p>
-                    <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px" }}>
-                      Kies zelf het juiste Exact-account uit de lijst ({importData.accounts.length} accounts).
-                    </p>
-                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 260, overflowY: "auto" }}>
-                      {importData.needsManual.map(c => (
-                        <div key={c.customerId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: 13, flexWrap: "wrap" }}>
-                          <div style={{ flex: "1 1 160px", minWidth: 0 }}>
-                            <span style={{ fontWeight: 500 }}>{c.customerName}</span>
-                            {c.alreadyLinked && <span style={{ fontSize: 10, color: "var(--text-subtle)" }}> · al gekoppeld</span>}
-                            {c.reason === "ambiguous" && <span style={{ fontSize: 10, color: "#b45309" }}> · meerdere met deze naam</span>}
-                          </div>
-                          <select value={importManual[c.customerId] ?? ""}
-                            onChange={e => setImportManual(prev => ({ ...prev, [c.customerId]: e.target.value }))}
-                            style={{ flex: "1 1 200px", fontSize: 12, padding: "5px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}>
-                            <option value="">— kies Exact-account —</option>
-                            {importData.accounts.map(a => (
-                              <option key={a.id} value={a.id}>{a.name}{a.kvk ? ` (KvK ${a.kvk})` : ""}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {importResult && <p style={{ fontSize: 13, color: importResult.startsWith("✓") ? "var(--success)" : "var(--danger)", margin: 0 }}>{importResult}</p>}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-              <button onClick={() => setShowImport(false)} className="btn-secondary" style={{ fontSize: 13 }}>Sluiten</button>
-              {importData && (() => {
-                const total = importSelected.size + Object.values(importManual).filter(Boolean).length;
-                return (
-                  <button onClick={applyImport} disabled={importApplying || total === 0} className="btn-primary" style={{ fontSize: 13 }}>
-                    {importApplying ? "Koppelen…" : `Koppel ${total} klant(en)`}
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
