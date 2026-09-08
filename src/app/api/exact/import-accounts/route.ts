@@ -43,8 +43,9 @@ export async function GET(req: Request) {
       customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean;
       exactAccountId: string; exactCustomerCode: string | null; exactName: string; exactKvk: string | null;
     }[] = [];
-    const ambiguous: { customerName: string; count: number }[] = [];
-    const unmatched: string[] = [];
+    // Everything the name match couldn't resolve on its own (no hit or 2+ hits) — the UI
+    // offers a dropdown of all Exact accounts so the owner links these by hand.
+    const needsManual: { customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean; reason: "none" | "ambiguous" }[] = [];
 
     for (const c of customers) {
       const hits = byName.get(normName(c.name)) ?? [];
@@ -54,14 +55,18 @@ export async function GET(req: Request) {
           customerId: c.id, customerName: c.name, currentKvk: c.kvk, alreadyLinked: !!c.exactAccountId,
           exactAccountId: a.id, exactCustomerCode: a.code, exactName: a.name, exactKvk: a.kvk,
         });
-      } else if (hits.length > 1) {
-        ambiguous.push({ customerName: c.name, count: hits.length });
       } else {
-        unmatched.push(c.name);
+        needsManual.push({ customerId: c.id, customerName: c.name, currentKvk: c.kvk, alreadyLinked: !!c.exactAccountId, reason: hits.length > 1 ? "ambiguous" : "none" });
       }
     }
 
-    return Response.json({ matches, ambiguous, unmatched, exactAccountCount: accounts.length });
+    // The full Exact account list drives the manual-link dropdowns (and is the "overview"
+    // the owner asked for).
+    const accountList = [...accounts]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(a => ({ id: a.id, name: a.name, kvk: a.kvk, code: a.code }));
+
+    return Response.json({ matches, needsManual, accounts: accountList, exactAccountCount: accounts.length });
   } catch (e) { return toResponse(e); }
 }
 

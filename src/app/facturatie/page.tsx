@@ -94,15 +94,20 @@ export default function FacturatiePage() {
 
   // Exact KvK import (match customers to Exact accounts by name, link + fill KvK)
   type ImportMatch = { customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean; exactAccountId: string; exactCustomerCode: string | null; exactName: string; exactKvk: string | null };
+  type ImportManual = { customerId: string; customerName: string; currentKvk: string | null; alreadyLinked: boolean; reason: "none" | "ambiguous" };
+  type ExactAccount = { id: string; name: string; kvk: string | null; code: string | null };
   const [showImport, setShowImport] = useState(false);
-  const [importData, setImportData] = useState<{ matches: ImportMatch[]; ambiguous: { customerName: string; count: number }[]; unmatched: string[]; exactAccountCount: number } | null>(null);
+  const [importData, setImportData] = useState<{ matches: ImportMatch[]; needsManual: ImportManual[]; accounts: ExactAccount[]; exactAccountCount: number } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importSelected, setImportSelected] = useState<Set<string>>(new Set());
+  // Manual links the owner picks for the customers name-match couldn't resolve:
+  // customerId → chosen Exact account id.
+  const [importManual, setImportManual] = useState<Record<string, string>>({});
   const [importApplying, setImportApplying] = useState(false);
   const [importResult, setImportResult] = useState<string>("");
 
   async function openImport() {
-    setShowImport(true); setImportData(null); setImportResult(""); setImportLoading(true);
+    setShowImport(true); setImportData(null); setImportResult(""); setImportManual({}); setImportLoading(true);
     const d = await fetch("/api/exact/import-accounts").then(r => r.json()).catch(() => null);
     setImportLoading(false);
     if (!d || d.error) { setImportResult("Kon Exact-accounts niet ophalen."); return; }
@@ -113,13 +118,21 @@ export default function FacturatiePage() {
   async function applyImport() {
     if (!importData) return;
     setImportApplying(true);
-    const links = importData.matches.filter(m => importSelected.has(m.customerId))
+    const auto = importData.matches.filter(m => importSelected.has(m.customerId))
       .map(m => ({ customerId: m.customerId, exactAccountId: m.exactAccountId, exactCustomerCode: m.exactCustomerCode, kvk: m.exactKvk }));
+    const manual = Object.entries(importManual)
+      .filter(([, accId]) => accId)
+      .map(([customerId, accId]) => {
+        const a = importData.accounts.find(x => x.id === accId)!;
+        return { customerId, exactAccountId: a.id, exactCustomerCode: a.code, kvk: a.kvk };
+      });
+    const links = [...auto, ...manual];
     const d = await fetch("/api/exact/import-accounts", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ links }),
     }).then(r => r.json()).catch(() => null);
     setImportApplying(false);
-    setImportResult(d?.ok ? `✓ ${d.updated} klant(en) gekoppeld aan Exact.` : "Koppelen mislukt.");
+    if (d?.ok) { setImportResult(`✓ ${d.updated} klant(en) gekoppeld aan Exact.`); openImport(); }
+    else setImportResult("Koppelen mislukt.");
   }
 
   // Preview modal
@@ -545,35 +558,56 @@ export default function FacturatiePage() {
               <>
                 <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: 0 }}>
                   {importData.exactAccountCount} Exact-accounts · {importData.matches.length} op naam gematcht ·
-                  {" "}{importData.ambiguous.length} dubbelzinnig · {importData.unmatched.length} zonder match
+                  {" "}{importData.needsManual.length} handmatig te koppelen
                 </p>
 
                 {importData.matches.length > 0 && (
-                  <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 320, overflowY: "auto" }}>
-                    {importData.matches.map(m => (
-                      <label key={m.customerId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: 13, cursor: "pointer" }}>
-                        <input type="checkbox" checked={importSelected.has(m.customerId)}
-                          onChange={e => setImportSelected(prev => { const n = new Set(prev); e.target.checked ? n.add(m.customerId) : n.delete(m.customerId); return n; })} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 500 }}>{m.customerName}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>
-                            → {m.exactName}{m.exactKvk ? ` · KvK ${m.exactKvk}` : " · geen KvK in Exact"}
-                            {m.alreadyLinked && " · al gekoppeld"}
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 600, margin: "0 0 4px" }}>Op naam gematcht</p>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 240, overflowY: "auto" }}>
+                      {importData.matches.map(m => (
+                        <label key={m.customerId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: 13, cursor: "pointer" }}>
+                          <input type="checkbox" checked={importSelected.has(m.customerId)}
+                            onChange={e => setImportSelected(prev => { const n = new Set(prev); e.target.checked ? n.add(m.customerId) : n.delete(m.customerId); return n; })} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500 }}>{m.customerName}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>
+                              → {m.exactName}{m.exactKvk ? ` · KvK ${m.exactKvk}` : " · geen KvK in Exact"}
+                              {m.alreadyLinked && " · al gekoppeld"}
+                            </div>
                           </div>
-                        </div>
-                      </label>
-                    ))}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {(importData.ambiguous.length > 0 || importData.unmatched.length > 0) && (
-                  <details style={{ fontSize: 12, color: "var(--text-subtle)" }}>
-                    <summary style={{ cursor: "pointer" }}>Niet automatisch gekoppeld ({importData.ambiguous.length + importData.unmatched.length}) — handmatig via Klanten</summary>
-                    <div style={{ marginTop: 6 }}>
-                      {importData.ambiguous.map((a, i) => <div key={`a${i}`}>• {a.customerName} — {a.count} Exact-accounts met deze naam</div>)}
-                      {importData.unmatched.map((n, i) => <div key={`u${i}`}>• {n} — geen Exact-account met deze naam</div>)}
+                {importData.needsManual.length > 0 && (
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 600, margin: "0 0 4px" }}>Handmatig koppelen</p>
+                    <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px" }}>
+                      Kies zelf het juiste Exact-account uit de lijst ({importData.accounts.length} accounts).
+                    </p>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 260, overflowY: "auto" }}>
+                      {importData.needsManual.map(c => (
+                        <div key={c.customerId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: 13, flexWrap: "wrap" }}>
+                          <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                            <span style={{ fontWeight: 500 }}>{c.customerName}</span>
+                            {c.alreadyLinked && <span style={{ fontSize: 10, color: "var(--text-subtle)" }}> · al gekoppeld</span>}
+                            {c.reason === "ambiguous" && <span style={{ fontSize: 10, color: "#b45309" }}> · meerdere met deze naam</span>}
+                          </div>
+                          <select value={importManual[c.customerId] ?? ""}
+                            onChange={e => setImportManual(prev => ({ ...prev, [c.customerId]: e.target.value }))}
+                            style={{ flex: "1 1 200px", fontSize: 12, padding: "5px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}>
+                            <option value="">— kies Exact-account —</option>
+                            {importData.accounts.map(a => (
+                              <option key={a.id} value={a.id}>{a.name}{a.kvk ? ` (KvK ${a.kvk})` : ""}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
                     </div>
-                  </details>
+                  </div>
                 )}
               </>
             )}
@@ -582,11 +616,14 @@ export default function FacturatiePage() {
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
               <button onClick={() => setShowImport(false)} className="btn-secondary" style={{ fontSize: 13 }}>Sluiten</button>
-              {importData && importData.matches.length > 0 && (
-                <button onClick={applyImport} disabled={importApplying || importSelected.size === 0} className="btn-primary" style={{ fontSize: 13 }}>
-                  {importApplying ? "Koppelen…" : `Koppel ${importSelected.size} klant(en)`}
-                </button>
-              )}
+              {importData && (() => {
+                const total = importSelected.size + Object.values(importManual).filter(Boolean).length;
+                return (
+                  <button onClick={applyImport} disabled={importApplying || total === 0} className="btn-primary" style={{ fontSize: 13 }}>
+                    {importApplying ? "Koppelen…" : `Koppel ${total} klant(en)`}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
