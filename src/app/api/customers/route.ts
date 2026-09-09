@@ -56,7 +56,6 @@ const CreateCustomerSchema = z.object({
   // of creating a duplicate.
   exactAccountId: z.string().optional().nullable(),
   exactCustomerCode: z.string().optional().nullable(),
-  customerNumber: z.number().int().nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -89,7 +88,6 @@ export async function POST(req: Request) {
         ...(input.lat != null && input.lng != null && { lat: input.lat, lng: input.lng }),
         ...(input.exactAccountId !== undefined && { exactAccountId: input.exactAccountId }),
         ...(input.exactCustomerCode !== undefined && { exactCustomerCode: input.exactCustomerCode }),
-        ...(input.customerNumber !== undefined && { customerNumber: input.customerNumber }),
       },
     });
     return Response.json(customer, { status: 201 });
@@ -111,7 +109,6 @@ const UpdateCustomerSchema = z.object({
   preferredBread: z.string().optional(),
   active: z.boolean().optional(),
   discountPercent: z.number().int().min(0).max(100).optional(),
-  customerNumber: z.number().int().nullable().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
   exactAccountId: z.string().optional().nullable(),
@@ -142,7 +139,6 @@ export async function PATCH(req: Request) {
         ...(data.preferredBread !== undefined && { preferredBread: data.preferredBread || null }),
         ...(data.active !== undefined && { active: data.active }),
         ...(data.discountPercent !== undefined && { discountPercent: data.discountPercent }),
-        ...(data.customerNumber !== undefined && { customerNumber: data.customerNumber }),
         ...(data.lat !== undefined && { lat: data.lat }),
         ...(data.lng !== undefined && { lng: data.lng }),
         ...(data.exactAccountId !== undefined && { exactAccountId: data.exactAccountId }),

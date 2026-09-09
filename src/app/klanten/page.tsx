@@ -16,7 +16,6 @@ type Customer = {
   lat: number | null; lng: number | null;
   active: boolean; userId: string | null; user: User;
   discountPercent: number;
-  customerNumber: number | null;
   exactAccountId: string | null;
   exactCustomerCode: string | null;
   deliveryAddresses: DeliveryAddress[];
@@ -112,16 +111,18 @@ function CustomerForm({ initial, onSave, onCancel }: {
   const [kvk, setKvk]               = useState(initial?.kvk ?? "");
   const [notes, setNotes]           = useState(initial?.notes ?? "");
   const [preferredBread, setPreferredBread] = useState(initial?.preferredBread ?? "");
-  const [customerNumber, setCustomerNumber] = useState(initial?.customerNumber ?? null as number | null);
 
-  // Exact account link — typing in Naam or KvK-nummer suggests matches from the connected
-  // Exact administration (fetched once, filtered client-side); picking one links the
-  // account and fills KvK, so invoices attach to the existing Exact relatie (and its SEPA
-  // mandate) instead of creating a duplicate. Empty when Exact isn't connected.
+  // Exact account link — one dedicated search, matched on klantnummer (Exact's own
+  // authoritative customer number) or name — a more reliable key than piggybacking on
+  // Sirdough's own free-text name/KvK fields. Picking a result links the account and
+  // fills KvK from it, so invoices attach to the existing Exact relatie (and its SEPA
+  // mandate) instead of creating a duplicate. Empty account list when Exact isn't
+  // connected — search then just shows nothing, no error.
   const [exactAccountId, setExactAccountId]     = useState(initial?.exactAccountId ?? null as string | null);
   const [exactCustomerCode, setExactCustomerCode] = useState(initial?.exactCustomerCode ?? null as string | null);
   const [exactAccounts, setExactAccounts]       = useState<ExactAccount[]>([]);
-  const [suggestField, setSuggestField]         = useState<"name" | "kvk" | null>(null);
+  const [exactSearch, setExactSearch]           = useState("");
+  const [exactSearchOpen, setExactSearchOpen]   = useState(false);
   const exactFetched = useRef(false);
 
   function ensureExactAccountsLoaded() {
@@ -130,27 +131,24 @@ function CustomerForm({ initial, onSave, onCancel }: {
     fetch("/api/exact/accounts").then(r => r.json()).then(d => setExactAccounts(d.accounts ?? [])).catch(() => {});
   }
 
-  const nameQuery = name.trim().toLowerCase();
-  const kvkQuery = kvk.trim();
-  // Word-based, not a single contiguous substring — a plain substring match misses common
-  // real-world mismatches between Sirdough and Exact naming: legal suffixes ("B.V."),
-  // different word order ("Café Johannes" vs "Johannes Café B.V."), or extra punctuation.
-  // Every word the owner typed just has to appear somewhere in the account name.
-  const nameWords = nameQuery.split(/\s+/).filter(w => w.length >= 2);
-  const suggestions = suggestField === "name" && nameWords.length > 0
-    ? exactAccounts.filter(a => { const n = a.name.toLowerCase(); return nameWords.every(w => n.includes(w)); }).slice(0, 8)
-    : suggestField === "kvk" && kvkQuery.length >= 2
-    ? exactAccounts.filter(a => a.kvk?.includes(kvkQuery)).slice(0, 8)
+  // Word-based on name (a single contiguous substring misses common real-world mismatches:
+  // legal suffixes, different word order) plus a plain substring match on the klantnummer
+  // itself, so typing either a number or a name works from the same box.
+  const exactQuery = exactSearch.trim().toLowerCase();
+  const exactQueryWords = exactQuery.split(/\s+/).filter(Boolean);
+  const exactSuggestions = exactSearchOpen && exactQueryWords.length > 0
+    ? exactAccounts.filter(a => {
+        const n = a.name.toLowerCase();
+        return exactQueryWords.every(w => n.includes(w)) || (!!a.code && a.code.includes(exactQuery));
+      }).slice(0, 8)
     : [];
 
   function pickExactAccount(a: ExactAccount) {
-    setKvk(a.kvk ?? kvk);
     setExactAccountId(a.id);
     setExactCustomerCode(a.code);
-    // Also carry Exact's relatienummer into Sirdough's own klantnummer, but only if one
-    // isn't already set — never silently overwrite a number the owner already assigned.
-    if (!customerNumber && a.code && /^\d+$/.test(a.code)) setCustomerNumber(parseInt(a.code, 10));
-    setSuggestField(null);
+    setKvk(a.kvk ?? kvk);
+    setExactSearch("");
+    setExactSearchOpen(false);
   }
   function unlinkExactAccount() {
     setExactAccountId(null);
@@ -211,7 +209,7 @@ function CustomerForm({ initial, onSave, onCancel }: {
         lat: foundLat,
         lng: foundLng,
         email, phone, kvk, notes, preferredBread,
-        exactAccountId, exactCustomerCode, customerNumber,
+        exactAccountId, exactCustomerCode,
       });
     } catch (e: any) {
       setError(e.message ?? "Opslaan mislukt.");
@@ -221,20 +219,36 @@ function CustomerForm({ initial, onSave, onCancel }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ position: "relative" }}>
+      <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam *</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes"
-          onFocus={() => { ensureExactAccountsLoaded(); setSuggestField("name"); }}
-          onBlur={() => setTimeout(() => setSuggestField(f => f === "name" ? null : f), 150)} />
-        {suggestField === "name" && suggestions.length > 0 && (
-          <div style={{ position: "absolute", zIndex: 10, top: "100%", left: 0, right: 0, marginTop: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", maxHeight: 200, overflowY: "auto" }}>
-            {suggestions.map(a => (
+        <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Café Johannes" />
+      </div>
+      <div style={{ position: "relative" }}>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Koppel aan Exact-klant</label>
+        <input value={exactSearch} onChange={e => setExactSearch(e.target.value)} style={inp} placeholder="Zoek op klantnummer of naam…"
+          onFocus={() => { ensureExactAccountsLoaded(); setExactSearchOpen(true); }}
+          onBlur={() => setTimeout(() => setExactSearchOpen(false), 150)} />
+        {exactSearchOpen && exactSuggestions.length > 0 && (
+          <div style={{ position: "absolute", zIndex: 10, top: "100%", left: 0, right: 0, marginTop: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", maxHeight: 220, overflowY: "auto" }}>
+            {exactSuggestions.map(a => (
               <button key={a.id} type="button" onMouseDown={() => pickExactAccount(a)}
                 style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text)" }}>
-                {a.name}{a.kvk ? <span style={{ color: "var(--text-subtle)" }}> · KvK {a.kvk}</span> : ""}
+                <strong>{a.code ?? "—"}</strong> — {a.name}{a.kvk ? <span style={{ color: "var(--text-subtle)" }}> · KvK {a.kvk}</span> : ""}
               </button>
             ))}
           </div>
+        )}
+        {exactAccountId ? (
+          <p style={{ fontSize: 11, color: "var(--success)", margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8 }}>
+            🔗 Gekoppeld aan Exact{exactCustomerCode ? ` (klant ${exactCustomerCode})` : ""}
+            <button type="button" onClick={unlinkExactAccount} style={{ fontSize: 11, background: "none", border: "none", color: "var(--text-subtle)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+              ontkoppelen
+            </button>
+          </p>
+        ) : (
+          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "6px 0 0" }}>
+            Typ een klantnummer of naam om te koppelen — vult KvK automatisch aan.
+          </p>
         )}
       </div>
       <div>
@@ -275,38 +289,9 @@ function CustomerForm({ initial, onSave, onCancel }: {
           <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="+31 6 12345678" />
         </div>
       </div>
-      <div style={{ position: "relative" }}>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>KvK-nummer</label>
-        <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678"
-          onFocus={() => { ensureExactAccountsLoaded(); setSuggestField("kvk"); }}
-          onBlur={() => setTimeout(() => setSuggestField(f => f === "kvk" ? null : f), 150)} />
-        {suggestField === "kvk" && suggestions.length > 0 && (
-          <div style={{ position: "absolute", zIndex: 10, top: "100%", left: 0, right: 0, marginTop: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", maxHeight: 200, overflowY: "auto" }}>
-            {suggestions.map(a => (
-              <button key={a.id} type="button" onMouseDown={() => pickExactAccount(a)}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text)" }}>
-                {a.name}{a.kvk ? <span style={{ color: "var(--text-subtle)" }}> · KvK {a.kvk}</span> : ""}
-              </button>
-            ))}
-          </div>
-        )}
-        {exactAccountId ? (
-          <p style={{ fontSize: 11, color: "var(--success)", margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8 }}>
-            🔗 Gekoppeld aan Exact{exactCustomerCode ? ` (klant ${exactCustomerCode})` : ""}
-            <button type="button" onClick={unlinkExactAccount} style={{ fontSize: 11, background: "none", border: "none", color: "var(--text-subtle)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>
-              ontkoppelen
-            </button>
-          </p>
-        ) : (
-          <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "6px 0 0" }}>
-            Typ om te zoeken in Exact — kies een resultaat om te koppelen.
-          </p>
-        )}
-      </div>
       <div>
-        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Klantnummer</label>
-        <input type="number" value={customerNumber ?? ""} onChange={e => setCustomerNumber(e.target.value ? parseInt(e.target.value, 10) : null)}
-          style={inp} placeholder="wordt ingevuld bij koppelen aan Exact, of vul zelf in" />
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>KvK-nummer</label>
+        <input value={kvk} onChange={e => setKvk(e.target.value)} style={inp} placeholder="12345678" />
       </div>
       <div>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Opmerkingen</label>
@@ -644,25 +629,6 @@ export default function KlantenPage() {
                   })()}
                 </div>
 
-                {/* Customer number */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 64 }}>
-                  <label style={{ fontSize: 10, color: "var(--text-subtle)", textTransform: "uppercase" }}>Klantnr.</label>
-                  <input
-                    type="number"
-                    value={c.customerNumber ?? ""}
-                    placeholder="—"
-                    onBlur={async e => {
-                      const val = e.target.value === "" ? null : Number(e.target.value);
-                      await fetch("/api/customers", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: c.id, customerNumber: val }),
-                      });
-                      setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, customerNumber: val } : x));
-                    }}
-                    style={{ fontSize: 13, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "4px 6px", width: 60, textAlign: "center" }}
-                  />
-                </div>
 
                 {/* Discount — free numeric percentage (0–100), saved on blur */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 80 }}>
