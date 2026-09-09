@@ -131,14 +131,20 @@ function CustomerForm({ initial, onSave, onCancel }: {
     fetch("/api/exact/accounts").then(r => r.json()).then(d => setExactAccounts(d.accounts ?? [])).catch(() => {});
   }
 
+  // Strip accents ("Café" → "cafe") so a typo-free typed name still matches an accented
+  // Exact name (or vice versa) — a very common real mismatch that plain .toLowerCase()
+  // doesn't fix.
+  function foldAccents(s: string): string {
+    return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  }
   // Word-based on name (a single contiguous substring misses common real-world mismatches:
   // legal suffixes, different word order) plus a plain substring match on the klantnummer
   // itself, so typing either a number or a name works from the same box.
-  const exactQuery = exactSearch.trim().toLowerCase();
+  const exactQuery = foldAccents(exactSearch.trim());
   const exactQueryWords = exactQuery.split(/\s+/).filter(Boolean);
   const exactSuggestions = exactSearchOpen && exactQueryWords.length > 0
     ? exactAccounts.filter(a => {
-        const n = a.name.toLowerCase();
+        const n = foldAccents(a.name);
         return exactQueryWords.every(w => n.includes(w)) || (!!a.code && a.code.includes(exactQuery));
       }).slice(0, 8)
     : [];
@@ -248,6 +254,13 @@ function CustomerForm({ initial, onSave, onCancel }: {
         ) : (
           <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "6px 0 0" }}>
             Typ een klantnummer of naam om te koppelen — vult KvK automatisch aan.
+            {exactFetched.current && (
+              // Diagnostic: if this number is far below the real customer count in Exact,
+              // that points to a pagination or wrong-administration (division) issue on
+              // the Exact side, not a matching problem — worth checking against Exact's
+              // own relatie-overzicht if names "should" be there but never show up.
+              <> {exactAccounts.length} Exact-klanten geladen.</>
+            )}
           </p>
         )}
       </div>
