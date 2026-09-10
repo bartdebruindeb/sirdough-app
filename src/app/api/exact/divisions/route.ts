@@ -35,6 +35,15 @@ export async function GET(req: Request) {
     const row = await (prisma as any).exactToken.findUnique({ where: { tenantId: tid }, select: { expiresAt: true } });
     const tokenExpiresAt = row?.expiresAt ?? null;
 
+    // current/Me needs no extra scope. DivisionCustomer = the administration the identity's
+    // *licence* belongs to, which is often the real "home" administration when
+    // CurrentDivision has drifted to a demo/trial one. If it differs from currentDivision,
+    // that's very likely the number to switch to (POST below, no scope needed).
+    const meRes = await fetch(`${BASE}/api/v1/current/Me?$select=CurrentDivision,DivisionCustomer,UserName`, {
+      headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" },
+    });
+    const me = meRes.ok ? (await meRes.json()).d?.results?.[0] ?? null : null;
+
     const res = await fetch(
       `${BASE}/api/v1/${currentDivision}/system/Divisions?$select=Code,Description,Country,Currency`,
       { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } }
@@ -44,6 +53,8 @@ export async function GET(req: Request) {
       const scopeIssue = detail.includes("organization.administration");
       return Response.json({
         currentDivision,
+        divisionCustomer: me?.DivisionCustomer ?? null,
+        userName: me?.UserName ?? null,
         tokenExpiresAt,
         error: scopeIssue ? "MISSING_SCOPE" : "EXACT_QUERY_FAILED",
         hint: scopeIssue
@@ -53,7 +64,13 @@ export async function GET(req: Request) {
       }, { status: scopeIssue ? 400 : 502 });
     }
     const data = await res.json();
-    return Response.json({ currentDivision, tokenExpiresAt, divisions: data.d?.results ?? [] });
+    return Response.json({
+      currentDivision,
+      divisionCustomer: me?.DivisionCustomer ?? null,
+      userName: me?.UserName ?? null,
+      tokenExpiresAt,
+      divisions: data.d?.results ?? [],
+    });
   } catch (e) { return toResponse(e); }
 }
 
