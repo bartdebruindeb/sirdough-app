@@ -7,11 +7,11 @@ import { prisma } from "@/server/config/db";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/exact/divisions — diagnostic. Just reports which administration (division) this
-// connection currently reads/writes. Listing *all* accessible divisions needs the
-// organization.administration scope, which the app registration doesn't have — get the
-// right division number from Exact Online's own UI instead (it's in the URL while
-// browsing an administration, and under Instellingen → Mijn Exact Online → Abonnementen).
+// GET /api/exact/divisions — lists every administration (division) this connected identity
+// can access, plus which one is currently in use. Listing needs the
+// organization.administration read scope; if the app registration doesn't have it yet,
+// this says so with the fix instead of a raw error. Add that scope in the Exact App
+// Centre, then Ontkoppel + Koppel Exact again to re-consent.
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -26,7 +26,25 @@ export async function GET(req: Request) {
       currentDivision = await getDivision(auth.token);
       await (prisma as any).exactToken.update({ where: { tenantId: tid }, data: { division: currentDivision } });
     }
-    return Response.json({ currentDivision });
+
+    const res = await fetch(
+      `${BASE}/api/v1/${currentDivision}/system/Divisions?$select=Code,Description,Country,Currency`,
+      { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } }
+    );
+    if (!res.ok) {
+      const detail = await res.text();
+      const scopeIssue = detail.includes("organization.administration");
+      return Response.json({
+        currentDivision,
+        error: scopeIssue ? "MISSING_SCOPE" : "EXACT_QUERY_FAILED",
+        hint: scopeIssue
+          ? "Voeg in de Exact App Centre de scope 'organization → administration (Lezen)' toe, klik dan op Facturatie op Ontkoppel en opnieuw Koppel Exact om opnieuw toestemming te geven."
+          : undefined,
+        detail,
+      }, { status: scopeIssue ? 400 : 502 });
+    }
+    const data = await res.json();
+    return Response.json({ currentDivision, divisions: data.d?.results ?? [] });
   } catch (e) { return toResponse(e); }
 }
 
