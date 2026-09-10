@@ -27,6 +27,14 @@ export async function GET(req: Request) {
       await (prisma as any).exactToken.update({ where: { tenantId: tid }, data: { division: currentDivision } });
     }
 
+    // Token expiry, so you can see the connection is live (Exact access tokens last ~10h;
+    // a future value here = connected, whether via reconnect or the auto-refresh). The
+    // OAuth URL sends no scope param, so a token always carries the app's full
+    // App-Centre-configured scope set — the real "did the new scope land" test is whether
+    // the divisions list below succeeds.
+    const row = await (prisma as any).exactToken.findUnique({ where: { tenantId: tid }, select: { expiresAt: true } });
+    const tokenExpiresAt = row?.expiresAt ?? null;
+
     const res = await fetch(
       `${BASE}/api/v1/${currentDivision}/system/Divisions?$select=Code,Description,Country,Currency`,
       { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } }
@@ -36,6 +44,7 @@ export async function GET(req: Request) {
       const scopeIssue = detail.includes("organization.administration");
       return Response.json({
         currentDivision,
+        tokenExpiresAt,
         error: scopeIssue ? "MISSING_SCOPE" : "EXACT_QUERY_FAILED",
         hint: scopeIssue
           ? "Voeg in de Exact App Centre de scope 'organization → administration (Lezen)' toe, klik dan op Facturatie op Ontkoppel en opnieuw Koppel Exact om opnieuw toestemming te geven."
@@ -44,7 +53,7 @@ export async function GET(req: Request) {
       }, { status: scopeIssue ? 400 : 502 });
     }
     const data = await res.json();
-    return Response.json({ currentDivision, divisions: data.d?.results ?? [] });
+    return Response.json({ currentDivision, tokenExpiresAt, divisions: data.d?.results ?? [] });
   } catch (e) { return toResponse(e); }
 }
 
