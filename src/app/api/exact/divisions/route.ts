@@ -7,11 +7,11 @@ import { prisma } from "@/server/config/db";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/exact/divisions — diagnostic. Lists every administration (division) this
-// connected Exact identity has access to, and which one we're currently reading/writing
-// (exactToken.division). Use this to find the administration that actually holds the
-// bakery's real clients when the cached division looks wrong (see lookup-kvk finding
-// nothing for a KvK the owner insists exists).
+// GET /api/exact/divisions — diagnostic. Just reports which administration (division) this
+// connection currently reads/writes. Listing *all* accessible divisions needs the
+// organization.administration scope, which the app registration doesn't have — get the
+// right division number from Exact Online's own UI instead (it's in the URL while
+// browsing an administration, and under Instellingen → Mijn Exact Online → Abonnementen).
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -26,24 +26,13 @@ export async function GET(req: Request) {
       currentDivision = await getDivision(auth.token);
       await (prisma as any).exactToken.update({ where: { tenantId: tid }, data: { division: currentDivision } });
     }
-
-    // system/Divisions needs a valid division in the URL path to call at all, but returns
-    // every division the identity can access, not just that one.
-    const res = await fetch(
-      `${BASE}/api/v1/${currentDivision}/system/Divisions?$select=Code,Description,Country,Currency`,
-      { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } }
-    );
-    if (!res.ok) return Response.json({ error: "EXACT_QUERY_FAILED", detail: await res.text() }, { status: 502 });
-    const data = await res.json();
-
-    return Response.json({ currentDivision, divisions: data.d?.results ?? [] });
+    return Response.json({ currentDivision });
   } catch (e) { return toResponse(e); }
 }
 
 // POST /api/exact/divisions { division: number } — switch which administration this
-// connection reads/writes, once the correct one is identified from the GET list above.
-// Every future customer match, invoice creation, and GL/item lookup uses this division
-// from then on.
+// connection reads/writes. Every future customer match, invoice creation, and GL/item
+// lookup uses this division from then on.
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -57,10 +46,11 @@ export async function POST(req: Request) {
     const auth = await getAccessToken(tid);
     if (!auth) return Response.json({ error: "NOT_CONNECTED" }, { status: 400 });
 
-    // Confirm the identity actually has access to this division before switching —
-    // refuses a typo'd or inaccessible number instead of silently breaking the connection.
+    // Verify the identity can actually reach this division before switching — probe with
+    // crm/Accounts (already in the app's scope, unlike system/Divisions), so a typo'd or
+    // inaccessible number is refused instead of silently breaking every Exact call.
     const check = await fetch(
-      `${BASE}/api/v1/${division}/system/Divisions?$select=Code&$filter=${encodeURIComponent(`Code eq ${division}`)}`,
+      `${BASE}/api/v1/${division}/crm/Accounts?$top=1&$select=ID`,
       { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } }
     );
     if (!check.ok) return Response.json({ error: "DIVISION_NOT_ACCESSIBLE", detail: await check.text() }, { status: 400 });
