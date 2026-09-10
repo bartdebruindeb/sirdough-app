@@ -30,7 +30,9 @@ export async function GET(req: Request) {
       await (prisma as any).exactToken.update({ where: { tenantId: tid }, data: { division } });
     }
 
-    const q = `${BASE}/api/v1/${division}/crm/Accounts?$filter=${encodeURIComponent(`ChamberOfCommerce eq '${kvk}'`)}&$select=ID,Code,Name,IsSupplier,ChamberOfCommerce,Status`;
+    // substringof, not eq — Exact often stores the KvK with the 12-digit establishment
+    // number appended or with spaces, so an exact match silently misses.
+    const q = `${BASE}/api/v1/${division}/crm/Accounts?$filter=${encodeURIComponent(`substringof('${kvk}', ChamberOfCommerce)`)}&$select=ID,Code,Name,IsSupplier,ChamberOfCommerce,Status`;
     const res = await fetch(q, { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } });
     if (!res.ok) return Response.json({ error: "EXACT_QUERY_FAILED", detail: await res.text() }, { status: 502 });
     const data = await res.json();

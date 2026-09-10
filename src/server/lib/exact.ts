@@ -161,13 +161,16 @@ export async function listExactAccounts(tenantId: string): Promise<ExactAccount[
 
   const out: ExactAccount[] = [];
   // Exact paginates ~60/page and returns the next page URL in d.__next; follow it until
-  // exhausted. The guard caps runaway loops (100 pages ≈ 10k accounts, far more than any
+  // exhausted. The guard caps runaway loops (200 pages ≈ 12k accounts, far more than any
   // single bakery has).
+  // NO $top: in Exact's OData, $top is a hard cap on total rows returned, not a page size
+  // — $top=100 silently truncated the whole account list at 100 and dropped every account
+  // past it. Server-driven paging via __next is the only correct way to get them all.
   // Filtering client-side (not via OData $filter) — safer than assuming Exact accepts a
   // server-side filter on this exact field across every administration's API version.
-  let url: string | null = `${BASE}/api/v1/${division}/crm/Accounts?$select=ID,Code,Name,Email,ChamberOfCommerce,IsSupplier&$top=100`;
+  let url: string | null = `${BASE}/api/v1/${division}/crm/Accounts?$select=ID,Code,Name,Email,ChamberOfCommerce,IsSupplier`;
   let guard = 0;
-  while (url && guard++ < 100) {
+  while (url && guard++ < 200) {
     const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } });
     if (!res.ok) throw new Error(`Exact accounts list failed: ${await res.text()}`);
     const data = await res.json();
