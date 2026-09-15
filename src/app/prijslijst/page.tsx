@@ -48,6 +48,12 @@ export default function PrijslijstPage() {
 
   return (
     <div style={{ padding: "2rem", maxWidth: 680 }}>
+      {/* Hide the number-input spin buttons on price fields — they sit right next to the
+          text and an accidental click/scroll nudges the price without the user noticing. */}
+      <style>{`
+        .no-spinner::-webkit-inner-spin-button, .no-spinner::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .no-spinner { -moz-appearance: textfield; }
+      `}</style>
       <h1 style={{ fontSize: 26, marginBottom: "0.25rem" }}>Prijslijst</h1>
       <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: "2rem" }}>
         Prijzen zijn excl. BTW. Klanten zien hun persoonlijke prijs na eventuele korting.
@@ -68,7 +74,9 @@ export default function PrijslijstPage() {
               <input
                 type="number" min={0} step={0.01} value={minDelivery}
                 onChange={e => setMinDelivery(e.target.value)}
+                onWheel={e => e.currentTarget.blur()}
                 placeholder="bijv. 25.00"
+                className="no-spinner"
                 style={inp}
               />
             </div>
@@ -91,7 +99,9 @@ export default function PrijslijstPage() {
                     <input
                       type="number" min={0} step={0.01} value={prices[b.id] ?? ""}
                       onChange={e => setPrices(p => ({ ...p, [b.id]: e.target.value }))}
+                      onWheel={e => e.currentTarget.blur()}
                       placeholder="—"
+                      className="no-spinner"
                       style={{ ...inp, textAlign: "right" }}
                     />
                   </div>
