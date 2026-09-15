@@ -57,5 +57,5 @@ export const bakeryConfig = {
   exactRevenueGLCode: "8000",
   /** The 9% (laag tarief) BTW code in the bakery's Exact administration. Read it off
    * Exact's BTW-codes list. Leave "" to send no VAT code (Exact then applies its default). */
-  exactVatCodeLow: "",
+  exactVatCodeLow: "20",
 } as const;
