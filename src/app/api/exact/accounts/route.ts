@@ -6,10 +6,9 @@ import { listExactAccounts } from "@/server/lib/exact";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/exact/accounts — every Exact CRM account (customers only, suppliers filtered
-// out — see listExactAccounts), for the KvK/name typeahead on the Klanten customer form.
-// Returns [] if Exact isn't connected, so the form just shows no suggestions rather than
-// erroring.
+// GET /api/exact/accounts — every Exact CRM account, for the KvK/name typeahead on the
+// Klanten customer form. Returns [] if Exact isn't connected, so the form just shows no
+// suggestions rather than erroring.
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);

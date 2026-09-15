@@ -7,10 +7,10 @@ import { prisma } from "@/server/config/db";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/exact/lookup-kvk?kvk=76045587 — diagnostic only. Queries Exact directly for one
-// KvK number, with NO local filtering (not even the IsSupplier exclusion), to answer
-// definitively: is this account visible to our connection at all, and if so why didn't it
-// show up in the customer typeahead (IsSupplier flag, wrong division, ...)?
+// GET /api/exact/lookup-kvk?kvk=76045587  OR  ?code=103 — diagnostic only. Queries Exact
+// directly for one account, with NO local filtering (not even the IsSupplier exclusion),
+// to answer definitively: is this account visible to our connection at all, and if so why
+// didn't it show up in the customer typeahead (IsSupplier flag, wrong division, ...)?
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -20,7 +20,8 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const kvk = (url.searchParams.get("kvk") ?? "").trim();
-    if (!kvk) return Response.json({ error: "kvk query param required" }, { status: 400 });
+    const code = (url.searchParams.get("code") ?? "").trim();
+    if (!kvk && !code) return Response.json({ error: "kvk or code query param required" }, { status: 400 });
 
     const auth = await getAccessToken(tid);
     if (!auth) return Response.json({ error: "NOT_CONNECTED" }, { status: 400 });
@@ -31,8 +32,10 @@ export async function GET(req: Request) {
     }
 
     // substringof, not eq — Exact often stores the KvK with the 12-digit establishment
-    // number appended or with spaces, so an exact match silently misses.
-    const q = `${BASE}/api/v1/${division}/crm/Accounts?$filter=${encodeURIComponent(`substringof('${kvk}', ChamberOfCommerce)`)}&$select=ID,Code,Name,IsSupplier,ChamberOfCommerce,Status`;
+    // number appended or with spaces, so an exact match silently misses. Code (klantnummer)
+    // is matched exactly since it's an unambiguous identifier.
+    const filter = code ? `Code eq '${code}'` : `substringof('${kvk}', ChamberOfCommerce)`;
+    const q = `${BASE}/api/v1/${division}/crm/Accounts?$filter=${encodeURIComponent(filter)}&$select=ID,Code,Name,IsSupplier,ChamberOfCommerce,Status`;
     const res = await fetch(q, { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } });
     if (!res.ok) return Response.json({ error: "EXACT_QUERY_FAILED", detail: await res.text() }, { status: 502 });
     const data = await res.json();

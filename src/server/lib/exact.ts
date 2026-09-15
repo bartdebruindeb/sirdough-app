@@ -138,17 +138,14 @@ export async function disconnectExact(tenantId: string): Promise<void> {
 
 export type ExactAccount = { id: string; code: string | null; name: string; email: string | null; kvk: string | null };
 
-/** Every CRM account in the connected Exact administration that ISN'T flagged as a
- * supplier (leverancier), with its KvK number (ChamberOfCommerce). Used to match Sirdough
- * customers — who the bakery invoices — to their existing Exact account so invoices attach
- * to the right relatie (and its SEPA mandate) instead of a duplicate.
+/** Every CRM account in the connected Exact administration, with its KvK number
+ * (ChamberOfCommerce). Used to match Sirdough customers to their existing Exact account so
+ * invoices attach to the right relatie (and its SEPA mandate) instead of a duplicate.
  *
- * Exact's crm/Accounts endpoint returns every relation regardless of type — suppliers the
- * bakery PAYS (flour, packaging, ...) alongside customers who pay the bakery. There's no
- * reliable "IsCustomer" flag to filter IN by (an Account only becomes a customer once a
- * sales invoice exists against it), but IsSupplier is a real flag — so we filter those OUT.
- * An account that's both a customer and a supplier is rare for a bakery and would be
- * excluded here too; if that happens, link it by KvK in Klanten instead. */
+ * ponytail: no supplier/customer filtering — Exact's IsSupplier flag isn't reliable enough
+ * to filter on (a real customer account, e.g. one the bakery also buys something from, can
+ * be flagged IsSupplier too, silently hiding it here). Owner picks the right one manually
+ * from the list, so a stray supplier showing up is harmless; a hidden customer isn't. */
 export async function listExactAccounts(tenantId: string): Promise<ExactAccount[]> {
   if (!CLIENT_ID) return [];
   const auth = await getAccessToken(tenantId);
@@ -168,14 +165,13 @@ export async function listExactAccounts(tenantId: string): Promise<ExactAccount[
   // past it. Server-driven paging via __next is the only correct way to get them all.
   // Filtering client-side (not via OData $filter) — safer than assuming Exact accepts a
   // server-side filter on this exact field across every administration's API version.
-  let url: string | null = `${BASE}/api/v1/${division}/crm/Accounts?$select=ID,Code,Name,Email,ChamberOfCommerce,IsSupplier`;
+  let url: string | null = `${BASE}/api/v1/${division}/crm/Accounts?$select=ID,Code,Name,Email,ChamberOfCommerce`;
   let guard = 0;
   while (url && guard++ < 200) {
     const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" } });
     if (!res.ok) throw new Error(`Exact accounts list failed: ${await res.text()}`);
     const data = await res.json();
     for (const a of data.d?.results ?? []) {
-      if (a.IsSupplier === true) continue;
       out.push({ id: a.ID, code: a.Code ?? null, name: (a.Name ?? "").trim(), email: a.Email ?? null, kvk: (a.ChamberOfCommerce ?? "").trim() || null });
     }
     url = data.d?.__next ?? null;
