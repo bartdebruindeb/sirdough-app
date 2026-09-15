@@ -5,7 +5,7 @@ import { useRole } from "@/lib/role-context";
 
 type InvoiceLine = { name: string; quantity: number; unitPrice: number; lineTotal: number; date: string };
 type CustomerRow = { customerId: string; customerName: string; customerEmail: string | null; discountPercent: number; lines: InvoiceLine[]; total: number; orderIds: string[] };
-type SentInvoice = { id: string; customerId: string; invoiceNumber: string | null; sentAt: string | null; totalAmountExcl: string };
+type SentInvoice = { id: string; customerId: string; customerName: string | null; invoiceNumber: string | null; sentAt: string | null; totalAmountExcl: string };
 type Undelivered = { customerName: string; city: string | null; date: string };
 type BillingEntity = { id: string; name: string; companyAddress?: string; companyPostal?: string; companyCity?: string; kvk?: string; btwNumber?: string; iban?: string; bic?: string; companyPhone?: string; companyEmail?: string; companyWebsite?: string; paymentTermDays?: number; paymentCondition?: string; isDefault?: boolean };
 
@@ -89,9 +89,6 @@ export default function FacturatiePage() {
   const [editingEntity, setEditingEntity] = useState<Partial<BillingEntity> | null>(null);
   const [savingEntity, setSavingEntity] = useState(false);
 
-  // BV picker — shown before generating
-  const [pickingCustomer, setPickingCustomer] = useState<CustomerRow | null>(null);
-
   // Preview modal
   const [previewCustomer, setPreviewCustomer] = useState<CustomerRow | null>(null);
   const [previewEntityId, setPreviewEntityId] = useState<string | null>(null);
@@ -125,13 +122,14 @@ export default function FacturatiePage() {
   }, [loadEntities]);
 
   function requestGenerate(c: CustomerRow) {
-    if (entities.length > 1) { setPickingCustomer(c); return; }
-    // 0 or 1 entity — skip picker
-    generate(c, entities[0]?.id ?? null);
+    // Default straight to the standard BV — no more picker to click through every time.
+    // The entity stays adaptable via the dropdown next to "Aanmaken in Exact" in the
+    // preview modal, which regenerates the preview under the newly picked entity.
+    const defaultEntity = entities.find(e => e.isDefault) ?? entities[0];
+    generate(c, defaultEntity?.id ?? null);
   }
 
   async function generate(c: CustomerRow, entityId: string | null) {
-    setPickingCustomer(null);
     setGenerating(c.customerId);
     const res = await fetch("/api/facturen/generate", {
       method: "POST",
@@ -141,7 +139,7 @@ export default function FacturatiePage() {
     if (!res.ok) { setGenerating(null); alert("Genereren mislukt."); return; }
     const blob = await res.blob();
     previewBlobRef.current = blob;
-    setPreviewUrl(URL.createObjectURL(blob));
+    setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
     setPreviewCustomer(c);
     setPreviewEntityId(entityId);
     setGenerating(null);
@@ -411,7 +409,8 @@ export default function FacturatiePage() {
           {sent.map(inv => (
             <div key={inv.id} className="card" style={{ padding: "0.75rem 1.25rem", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <span style={{ fontWeight: 500, fontSize: 13 }}>{inv.invoiceNumber ?? `DBK-${inv.id.slice(-6).toUpperCase()}`}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{inv.customerName ?? "Onbekende klant"}</span>
+                <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>{inv.invoiceNumber ?? `DBK-${inv.id.slice(-6).toUpperCase()}`}</span>
                 {inv.sentAt
                   ? <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>verstuurd {new Date(inv.sentAt).toLocaleDateString("nl-NL")}</span>
                   : <span style={{ fontSize: 12, color: "#f97316", marginLeft: 8 }}>nog niet verstuurd</span>}
@@ -443,33 +442,6 @@ export default function FacturatiePage() {
         </div>
       )}
 
-      {/* ── BV picker modal ───────────────────────── */}
-      {pickingCustomer && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div className="card" style={{ width: "100%", maxWidth: 420, padding: "1.5rem" }}>
-            <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 6 }}>Factuur voor {pickingCustomer.customerName}</h2>
-            <p style={{ fontSize: 13, color: "var(--text-subtle)", marginBottom: 16 }}>Van welke entiteit wil je factureren?</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {entities.map(e => (
-                <button key={e.id} onClick={() => generate(pickingCustomer, e.id)}
-                  disabled={generating === pickingCustomer.customerId}
-                  style={{ textAlign: "left", padding: "12px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", opacity: generating ? 0.6 : 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{e.name}</div>
-                  {(e.companyCity || e.kvk) && (
-                    <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2 }}>
-                      {[e.companyCity, e.kvk ? `KvK ${e.kvk}` : null].filter(Boolean).join(" · ")}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-              <button onClick={() => setPickingCustomer(null)} className="btn-secondary" style={{ fontSize: 12 }}>Annuleer</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Preview modal ──────────────────────────── */}
       {previewUrl && previewCustomer && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", flexDirection: "column", padding: 24 }}>
@@ -477,10 +449,18 @@ export default function FacturatiePage() {
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
               <div>
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{previewCustomer.customerName}</span>
-                {previewEntityId && <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 8 }}>van {entities.find(e => e.id === previewEntityId)?.name}</span>}
                 {!previewCustomer.customerEmail && <span style={{ fontSize: 12, color: "#f97316", marginLeft: 10 }}>⚠ geen e-mail</span>}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {/* Defaults to the standard BV on open (see requestGenerate) — still
+                    adaptable here: switching regenerates the preview under the new entity. */}
+                {entities.length > 1 && (
+                  <select value={previewEntityId ?? ""} disabled={generating === previewCustomer.customerId}
+                    onChange={e => generate(previewCustomer, e.target.value)}
+                    style={{ fontSize: 12, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}>
+                    {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                )}
                 <button onClick={downloadPreview} className="btn-secondary" style={{ fontSize: 12 }}>Download voorbeeld</button>
                 <button onClick={createInvoice} disabled={sending} className="btn-primary" style={{ fontSize: 12 }}>
                   {sending ? "Aanmaken…" : "Aanmaken in Exact"}

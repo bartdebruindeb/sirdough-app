@@ -78,7 +78,7 @@ export async function GET(req: Request) {
     // Already invoiced order IDs this week
     const invoiced = await (prisma as any).invoice.findMany({
       where: { tenantId: tid, periodStart: { lte: end }, periodEnd: { gte: start } },
-      include: { orders: true },
+      include: { orders: true, customer: { select: { name: true } } },
     });
     const invoicedOrderIds = new Set(invoiced.flatMap((inv: any) => inv.orders.map((o: any) => o.orderId)));
 
@@ -182,7 +182,11 @@ export async function GET(req: Request) {
       }
     }
 
-    return Response.json({ week, customers: result, invoiced: invoiced.map((inv: any) => ({ ...inv, orders: undefined })), undelivered });
+    return Response.json({
+      week, customers: result,
+      invoiced: invoiced.map((inv: any) => ({ ...inv, customerName: inv.customer?.name ?? null, orders: undefined, customer: undefined })),
+      undelivered,
+    });
   } catch (e) { return toResponse(e); }
 }
 
