@@ -81,6 +81,7 @@ const s = StyleSheet.create({
   // Footer
   footer: { position: "absolute", bottom: 24, left: 40, right: 40, borderTop: `0.5pt solid ${C.border}`, paddingTop: 6 },
   footerText: { fontSize: 7.5, color: C.lightGrey, textAlign: "center" },
+  footerPage: { fontSize: 7.5, color: C.lightGrey, textAlign: "center", marginTop: 2 },
 });
 
 export interface PdfInvoiceData {
@@ -173,7 +174,6 @@ function InvoiceDoc({ d }: { d: PdfInvoiceData }) {
           <View style={s.col}>
             {d.customerNumber != null && <View style={s.metaRow}><Text style={s.metaLabel}>Klantnummer</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>{d.customerNumber}</Text></View>}
             <View style={s.metaRow}><Text style={s.metaLabel}>Betalingstermijn</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>{d.paymentCondition}</Text></View>
-            <View style={s.metaRow}><Text style={s.metaLabel}>Pagina</Text><Text style={s.metaColon}>:</Text><Text style={s.metaValue}>1/1</Text></View>
           </View>
         </View>
 
@@ -229,6 +229,9 @@ function InvoiceDoc({ d }: { d: PdfInvoiceData }) {
           <Text style={s.footerText}>
             Wij verzoeken u vriendelijk het verschuldigde bedrag binnen {d.paymentTermDays} dagen over te maken naar IBAN {d.iban ?? "—"} ten name van {d.companyName} onder vermelding van {d.invoiceNumber}.
           </Text>
+          {/* render (not a static value) is react-pdf's way to get the real page count —
+              it's re-evaluated per rendered page, unlike the old hardcoded "1/1". */}
+          <Text style={s.footerPage} render={({ pageNumber, totalPages }) => `Pagina ${pageNumber}/${totalPages}`} fixed />
         </View>
 
       </Page>
