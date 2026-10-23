@@ -1,6 +1,6 @@
 import { prisma } from "@/server/config/db";
 import { resolveTenantId, getTenantFromRequest } from "@/server/config/tenant";
-import { sendPakbon } from "@/server/lib/email";
+import { sendPakbon, bakeryReplyTo } from "@/server/lib/email";
 import { z } from "zod";
 
 export async function POST(req: Request) {
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     const formattedDate = new Date(date + "T12:00:00Z").toLocaleDateString("nl-NL", {
       weekday: "long", day: "numeric", month: "long",
     });
-    await sendPakbon({ to: email!, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines, deviations });
+    await sendPakbon({ to: email!, customerName: customer.name, deliveryDate: formattedDate, tenantName, lines, deviations, replyTo: await bakeryReplyTo(tid) });
   }
 
   // Pakbon sent = delivery is final; can no longer be reverted (see /api/delivery-status).

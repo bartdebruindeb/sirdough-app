@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
-import { exactConnected, disconnectExact } from "@/server/lib/exact";
+import { exactTokenState, disconnectExact } from "@/server/lib/exact";
 import { resolveTenantId, getTenantFromRequest } from "@/server/config/tenant";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export async function GET(req: Request) {
 
   const { tenantId, tenantSlug } = getTenantFromRequest(req);
   const tid = await resolveTenantId({ tenantId, tenantSlug });
-  const connected = await exactConnected(tid);
-  return Response.json({ connected });
+  const state = await exactTokenState(tid);
+  return Response.json({ connected: state === "connected", expired: state === "expired" });
 }
 
 export async function DELETE(req: Request) {

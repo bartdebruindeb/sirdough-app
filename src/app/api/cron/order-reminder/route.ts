@@ -1,6 +1,7 @@
 import { prisma } from "@/server/config/db";
 import { resolveTenantId } from "@/server/config/tenant";
-import { sendOrderReminder } from "@/server/lib/email";
+import { sendOrderReminder, bakeryReplyTo } from "@/server/lib/email";
+import { exactConnected, getAccessToken } from "@/server/lib/exact";
 
 // Reminds customers of a delivery 2 days out (e.g. run on Monday → reminds Wednesday's
 // deliveries). Call at 12:00 from VPS cron so the Monday-noon → Wednesday timing holds:
@@ -17,6 +18,12 @@ export async function GET(req: Request) {
   const tid = await resolveTenantId({ tenantId: process.env.TENANT_SLUG ?? "dev-tenant" });
   const tenant = await prisma.tenant.findUnique({ where: { id: tid }, select: { name: true } });
   const tenantName = tenant?.name ?? "De bakkerij";
+  const replyTo = await bakeryReplyTo(tid);
+
+  // Exact keep-alive: the access token (10 min) is always stale by now, so this refreshes it,
+  // which also restarts Exact's 30-day refresh-token window. Without it, a month without
+  // invoicing silently kills the connection. Fails quietly when not connected.
+  if (await exactConnected(tid)) await getAccessToken(tid).catch(() => {});
 
   // Target: delivery date = today + 2 days
   const target = new Date();
@@ -51,7 +58,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName, replyTo });
     sent++;
   }
 
@@ -75,7 +82,7 @@ export async function GET(req: Request) {
       .filter((l: { quantity: number }) => l.quantity > 0)
       .map((l: { breadType: { name: string }; quantity: number }) => ({ name: l.breadType.name, quantity: l.quantity }));
     if (lines.length === 0) continue;
-    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName });
+    await sendOrderReminder({ to: email, customerName: order.customer.name, deliveryDate: formattedDate, cutoffLabel, lines, tenantName, replyTo });
     sent++;
   }
 

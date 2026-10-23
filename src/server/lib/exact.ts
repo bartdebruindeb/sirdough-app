@@ -127,9 +127,34 @@ export async function getDivision(token: string): Promise<number> {
   return data.d?.results?.[0]?.CurrentDivision ?? data.CurrentDivision;
 }
 
-export async function exactConnected(tenantId: string): Promise<boolean> {
+// Exact refresh tokens die 30 days after they were issued (= with the last access token, which
+// lives 10 min). A stored token past that is a dead connection — report it as disconnected so
+// the UI offers "Koppel Exact" instead of a green check while every Exact call fails.
+const REFRESH_TOKEN_LIFETIME_MS = 30 * 24 * 3600_000 - 10 * 60_000;
+
+export async function exactTokenState(tenantId: string): Promise<"connected" | "expired" | "none"> {
   const row = await (prisma as any).exactToken.findUnique({ where: { tenantId } });
-  return !!row;
+  if (!row) return "none";
+  return new Date(row.expiresAt).getTime() + REFRESH_TOKEN_LIFETIME_MS > Date.now() ? "connected" : "expired";
+}
+
+export async function exactConnected(tenantId: string): Promise<boolean> {
+  return (await exactTokenState(tenantId)) === "connected";
+}
+
+/** On (re)connect: copy the Exact login's e-mail into the bakery's company e-mail and the
+ * default BV's, where those are still empty — it becomes the reply-to address on pakbon,
+ * invoice and reminder e-mails. Never overwrites an address the owner set themselves. */
+export async function importExactEmail(tenantId: string, token: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/v1/current/Me?$select=Email`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!res.ok) return;
+  const email = (await res.json()).d?.results?.[0]?.Email;
+  if (!email) return;
+  const empty = { OR: [{ companyEmail: null }, { companyEmail: "" }] };
+  await prisma.tenant.updateMany({ where: { id: tenantId, ...empty }, data: { companyEmail: email } });
+  await (prisma as any).billingEntity.updateMany({ where: { tenantId, isDefault: true, ...empty }, data: { companyEmail: email } });
 }
 
 export async function disconnectExact(tenantId: string): Promise<void> {

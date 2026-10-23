@@ -8,6 +8,33 @@ import { bakeryConfig } from "@/config/bakery.config";
 
 const PUBLIC_PATHS = ["/login", "/uitnodiging", "/privacy"];
 
+// Owner-only pop-up when a previously working Exact connection has lapsed (Exact's refresh
+// token dies after 30 days unused). "Later" hides it for this browser session only.
+function ExactReconnectPrompt() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    try { if (sessionStorage.getItem("exact-reconnect-dismissed")) return; } catch {}
+    fetch("/api/exact/status").then(r => r.json()).then(d => setShow(!!d.expired)).catch(() => {});
+  }, []);
+  if (!show) return null;
+  const dismiss = () => { try { sessionStorage.setItem("exact-reconnect-dismissed", "1"); } catch {} setShow(false); };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div className="card" role="dialog" aria-modal="true" aria-labelledby="exact-reconnect-title" style={{ maxWidth: 420, padding: "1.5rem" }}>
+        <h2 id="exact-reconnect-title" style={{ fontSize: 17, marginTop: 0 }}>Exact Online opnieuw koppelen</h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          De koppeling met Exact is verlopen. Facturen worden pas weer naar Exact gestuurd, en klanten
+          uit Exact pas weer gevonden, nadat je opnieuw inlogt bij Exact.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={dismiss} className="btn-secondary" style={{ fontSize: 13 }}>Later</button>
+          <a href="/api/exact/connect" className="btn-primary" style={{ fontSize: 13, textDecoration: "none" }}>Opnieuw koppelen</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,6 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="app-main" style={{ flex: 1, marginLeft: 220, minHeight: "100vh", overflow: "auto" }}>
         {children}
       </main>
+      {role === "OWNER" && <ExactReconnectPrompt />}
     </div>
   );
 }

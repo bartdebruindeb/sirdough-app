@@ -1,6 +1,16 @@
 import { Resend } from "resend";
+import { prisma } from "@/server/config/db";
 
 const FROM = process.env.RESEND_FROM ?? "Sirdough <onboarding@resend.dev>";
+
+/** Where customer replies to pakbon/invoice/reminder e-mails land (they're sent from a
+ * noreply address): the default BV's e-mail, else the bakery's own — both filled from the
+ * Exact login on connect if still empty (see importExactEmail). */
+export async function bakeryReplyTo(tenantId: string): Promise<string | undefined> {
+  const be = await (prisma as any).billingEntity.findFirst({ where: { tenantId, isDefault: true }, select: { companyEmail: true } });
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { companyEmail: true } });
+  return be?.companyEmail || t?.companyEmail || undefined;
+}
 function getResend() {
   const key = process.env.RESEND_API_KEY;
   if (!key) return null;
@@ -8,10 +18,10 @@ function getResend() {
 }
 
 export async function sendOrderReminder({
-  to, customerName, deliveryDate, cutoffLabel, lines, tenantName,
+  to, customerName, deliveryDate, cutoffLabel, lines, tenantName, replyTo,
 }: {
   to: string; customerName: string; deliveryDate: string; cutoffLabel: string;
-  lines: { name: string; quantity: number }[]; tenantName: string;
+  lines: { name: string; quantity: number }[]; tenantName: string; replyTo?: string;
 }) {
   const lineRows = lines.map(l => `<tr><td style="padding:4px 0">${l.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${l.quantity}×</td></tr>`).join("");
   const html = `
@@ -28,13 +38,13 @@ export async function sendOrderReminder({
     </div>`;
   const resend = getResend();
   if (!resend) return;
-  await resend.emails.send({ from: FROM, to, subject: `Herinnering bestelling ${deliveryDate}`, html });
+  await resend.emails.send({ from: FROM, to, replyTo, subject: `Herinnering bestelling ${deliveryDate}`, html });
 }
 
 export async function sendPakbon({
-  to, customerName, deliveryDate, tenantName, lines, deviations = [],
+  to, customerName, deliveryDate, tenantName, lines, deviations = [], replyTo,
 }: {
-  to: string; customerName: string; deliveryDate: string; tenantName: string;
+  to: string; customerName: string; deliveryDate: string; tenantName: string; replyTo?: string;
   lines: { name: string; quantity: number }[];
   deviations?: { name: string; ordered: number; delivered: number }[];
 }) {
@@ -67,7 +77,7 @@ export async function sendPakbon({
     </div>`;
   const resend = getResend();
   if (!resend) return;
-  await resend.emails.send({ from: FROM, to, subject: `Pakbon bezorging ${deliveryDate}`, html });
+  await resend.emails.send({ from: FROM, to, replyTo, subject: `Pakbon bezorging ${deliveryDate}`, html });
 }
 
 export async function sendPasswordReset({

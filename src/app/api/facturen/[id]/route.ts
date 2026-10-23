@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/config/auth";
 import { prisma } from "@/server/config/db";
 import { Resend } from "resend";
+import { bakeryReplyTo } from "@/server/lib/email";
 import { toResponse } from "@/server/lib/errors";
 import { deleteExactInvoice } from "@/server/lib/exact";
 import { getTenantFromRequest, resolveTenantId } from "@/server/config/tenant";
@@ -65,6 +66,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await resend.emails.send({
       from,
       to,
+      replyTo: await bakeryReplyTo(tid),
       subject: `Factuur ${number} – Sirdough`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
         <p style="font-size:18px;font-weight:700">Sirdough</p>
