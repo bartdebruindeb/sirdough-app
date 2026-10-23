@@ -568,7 +568,7 @@ export default function MijnBestellingenPage() {
             const sunStr = (() => { const d = new Date(monStr+"T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10); })();
             // Show the full Mon–Sun range for every week, including the current one — past
             // days now show their real delivery status/deviation note instead of just hiding.
-            const showFrom = monStr;
+            const showFrom = monStr < bakeryConfig.goLiveDate ? bakeryConfig.goLiveDate : monStr;
 
             type WeekItem = { date: string; lines: { name: string; quantity: number; price: number | null }[]; source: "vast"|"eenmalig"; locked: boolean; pickup: string | null; deviationNote: string | null };
             const weekItems: WeekItem[] = [];

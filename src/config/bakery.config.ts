@@ -31,6 +31,13 @@ export const bakeryConfig = {
   orderCutoffHour: 4,
 
   /**
+   * First day this bakery used the app for real. Recurring orders and winkel templates
+   * have no start date of their own, so history views (logboek, customer week overview,
+   * shop invoicing) would otherwise "compute" deliveries for every week before go-live.
+   */
+  goLiveDate: "2026-10-18",
+
+  /**
    * Email of the permanent admin/developer account for this deployment.
    * This account can never be deleted, deactivated, or have its role
    * changed away from OWNER, regardless of how many other owners exist —

@@ -3,6 +3,7 @@ import { toResponse } from "@/server/lib/errors";
 import { getRoleFromRequest, requirePermission } from "@/server/middleware/authz";
 import { prisma } from "@/server/config/db";
 import { getShops } from "@/server/lib/shops";
+import { bakeryConfig } from "@/config/bakery.config";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,9 @@ export async function GET(req: Request) {
     const tid = await resolveTenantId({ tenantId, tenantSlug });
 
     const url = new URL(req.url);
-    const from = url.searchParams.get("from") ?? "2020-01-01";
+    // Never before go-live — recurring orders/winkel templates would otherwise fill every past week
+    const requestedFrom = url.searchParams.get("from") ?? bakeryConfig.goLiveDate;
+    const from = requestedFrom < bakeryConfig.goLiveDate ? bakeryConfig.goLiveDate : requestedFrom;
     // Default to 3 months in future for one-off, today for recurring cutoff
     const today = new Date().toISOString().slice(0, 10);
     const futureDate = new Date(); futureDate.setMonth(futureDate.getMonth() + 3);

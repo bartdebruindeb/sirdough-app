@@ -1,4 +1,5 @@
 import { prisma } from "@/server/config/db";
+import { bakeryConfig } from "@/config/bakery.config";
 
 function getWeekday(dateStr: string): number {
   const j = new Date(dateStr + "T12:00:00Z").getUTCDay();
@@ -15,6 +16,9 @@ export type ShopDayLines = { date: string; lines: { breadTypeId: string; breadTy
  * invoiceable quantities are derived for /api/facturen.
  */
 export async function buildShopDeliveryLines(tenantId: string, shopName: string, start: Date, end: Date): Promise<ShopDayLines[]> {
+  // Templates have no start date — don't invoice shop deliveries from before go-live
+  const goLive = new Date(bakeryConfig.goLiveDate + "T00:00:00Z");
+  if (start < goLive) start = goLive;
   const breadTypes = await prisma.breadType.findMany({ where: { tenantId, active: true } });
 
   const templates = await prisma.winkelTemplate.findMany({
