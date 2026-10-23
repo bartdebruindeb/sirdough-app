@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
 
     const tenant = await (prisma as any).tenant.findUnique({ where: { id: tid }, select: { minDeliveryAmount: true } });

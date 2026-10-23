@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
     return Response.json({ breadTypes });
   } catch (e) {
@@ -33,7 +33,8 @@ const CreateBreadTypeSchema = z.object({
   basketStyle: z.string().optional().nullable(),
   showInProduction: z.boolean().optional().default(true),
   mixerGroup: z.string().optional().nullable(),
-  sortOrder: z.number().int().default(99),
+  sortOrder: z.number().int().optional(),
+  availableWeekdays: z.string().nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -53,8 +54,16 @@ export async function POST(req: Request) {
       return Response.json({ error: "CONFLICT", message: "Slug already exists" }, { status: 409 });
     }
 
+    // New bread types: available Tuesday–Saturday unless told otherwise (null = every day),
+    // and a sortOrder at the end — a shared default (99) left several types tied, and tied
+    // rows come back in arbitrary order.
+    const last = await prisma.breadType.aggregate({ where: { tenantId: tid }, _max: { sortOrder: true } });
     const bt = await prisma.breadType.create({
-      data: { tenantId: tid, ...input },
+      data: {
+        tenantId: tid, ...input,
+        sortOrder: input.sortOrder ?? (last._max.sortOrder ?? 0) + 1,
+        availableWeekdays: input.availableWeekdays === undefined ? "2,3,4,5,6" : input.availableWeekdays,
+      },
     });
     return Response.json(bt, { status: 201 });
   } catch (e) {

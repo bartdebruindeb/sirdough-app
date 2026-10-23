@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     // Bread types for column headers
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: { recipe: { select: { id: true } } },
     });
 
@@ -71,7 +71,7 @@ export async function GET(req: Request) {
         weatherCode: l.weatherCode,
         weatherIcon: l.weatherCode != null ? weatherIcon(l.weatherCode) : null,
       })),
-      breadTypes: breadTypes.map(bt => ({ id: bt.id, slug: bt.slug, name: bt.name, hasRecipe: !!bt.recipe, customerOrderable: bt.customerOrderable, winkelOrderable: bt.winkelOrderable, availableWeekdays: bt.availableWeekdays })),
+      breadTypes: breadTypes.map(bt => ({ id: bt.id, slug: bt.slug, name: bt.name, category: bt.category, sortOrder: bt.sortOrder, hasRecipe: !!bt.recipe, customerOrderable: bt.customerOrderable, winkelOrderable: bt.winkelOrderable, availableWeekdays: bt.availableWeekdays })),
       templateByWeekday,
     });
   } catch (e) {

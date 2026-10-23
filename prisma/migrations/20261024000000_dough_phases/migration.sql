@@ -1,0 +1,1 @@
+ALTER TABLE "DoughType" ADD COLUMN "phases" JSONB;

@@ -24,7 +24,7 @@ export async function GET(req: Request) {
           },
           doughType: { include: { flourLines: { orderBy: { sortOrder: "asc" } }, extras: { orderBy: { sortOrder: "asc" } } } },
         },
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       }),
       prisma.doughType.findMany({
         where: { tenantId: resolvedTenantId },

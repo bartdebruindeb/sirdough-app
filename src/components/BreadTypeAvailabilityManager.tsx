@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
+import { sortLikeRecepten } from "@/lib/breadOrder";
 
 const DAYS_NL = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
 
-type BreadType = { id: string; name: string; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
+type BreadType = { id: string; name: string; category: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
 
 export function BreadTypeAvailabilityManager({ breadTypes, onChanged }: { breadTypes: BreadType[]; onChanged: () => void }) {
   const [saving, setSaving] = useState<string|null>(null);
@@ -20,9 +21,11 @@ export function BreadTypeAvailabilityManager({ breadTypes, onChanged }: { breadT
   }
 
   function toggleDayForBread(bt: BreadType, day: number) {
-    const current = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
-    const updated = current.includes(day) ? current.filter(d => d !== day) : [...current, day].sort();
-    patch(bt.id, { availableWeekdays: updated.length > 0 && updated.length < 7 ? updated.join(",") : null });
+    // null = available every day, so clicking a (green) day must switch that day OFF, not leave only it on
+    const current = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [1,2,3,4,5,6,7];
+    const updated = current.includes(day) ? current.filter(d => d !== day) : [...current, day].sort((a, b) => a - b);
+    if (updated.length === 0) return; // a bread that's available on no day is just "inactive" — don't allow it here
+    patch(bt.id, { availableWeekdays: updated.length < 7 ? updated.join(",") : null });
   }
 
   return (
@@ -40,7 +43,7 @@ export function BreadTypeAvailabilityManager({ breadTypes, onChanged }: { breadT
             </tr>
           </thead>
           <tbody>
-            {breadTypes.map(bt => {
+            {sortLikeRecepten(breadTypes).map(bt => {
               const days = bt.availableWeekdays ? bt.availableWeekdays.split(",").map(Number) : [];
               const allDays = days.length === 0;
               return (

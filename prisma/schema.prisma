@@ -104,6 +104,9 @@ model DoughType {
   slug       String  // "boeren", "baguette", "spelt", "volkoren", "rogge"
   notes      String?
   updatedAt  DateTime @updatedAt
+  /// Optional multi-step method (e.g. 3-fase rogge): ordered DoughPhase[] — per phase its own
+  /// ingredients (grams per loaf), timing, instructions. See src/lib/dough-phases.ts.
+  phases     Json?
 
   // Baker's percentages (bloem = 100%)
   waterPct   Float @default(71.5)

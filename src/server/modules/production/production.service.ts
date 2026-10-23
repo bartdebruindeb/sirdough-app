@@ -1,5 +1,6 @@
 import { prisma } from "@/server/config/db";
 import { getShops } from "@/server/lib/shops";
+import { type DoughPhase, parsePhases } from "@/lib/dough-phases";
 
 export type FlourComponent = { name: string; percentage: number };
 export type Topping = { name: string; gramsPerLoaf: number; waterRatio?: number | null };
@@ -39,6 +40,8 @@ export type MixerGroup = {
   totalDoughNoFillingsKg: number; // dough without fillings (base deeg)
   flourWeightKg: number;
   recipe: RecipeInfo | null;
+  /** Multi-step method of the dough type (per-loaf amounts) — empty for normal one-step doughs. */
+  phases: DoughPhase[];
   lines: BreadLine[];
 };
 
@@ -77,7 +80,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
         },
       },
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
   // Winkel quantities: prefer WinkelLog for delivery date if saved, else fall back to template
@@ -238,7 +241,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
     spelt: "Spelt", volkoren: "Volkoren", rogge: "Rogge", buns: "Buns",
   };
 
-  const groupMap = new Map<string, { lines: BreadLine[]; recipe: RecipeInfo | null }>();
+  const groupMap = new Map<string, { lines: BreadLine[]; recipe: RecipeInfo | null; phases: DoughPhase[]; name: string | null }>();
   for (const line of breadLines) {
     const bt = breadTypes.find(b => b.id === line.breadTypeId);
     // Skip buns — not in deeg calculator
@@ -267,14 +270,14 @@ export async function getProductionPlan(tenantId: string, productionDate: string
         flourLines: (dt?.flourLines ?? r?.flourLines ?? []).map(f => ({ name: f.name, percentage: f.percentage })),
         extras: (dt?.extras ?? []).map(e => ({ name: e.name, percentage: e.percentage })),
       } : null;
-      groupMap.set(group, { lines: [], recipe: recipeInfo });
+      groupMap.set(group, { lines: [], recipe: recipeInfo, phases: parsePhases(dt?.phases), name: dt?.name ?? null });
     }
     groupMap.get(group)!.lines.push(line);
   }
 
   const mixerGroups: MixerGroup[] = Array.from(groupMap.entries())
     .filter(([, { lines }]) => lines.some(l => l.totalQty > 0))
-    .map(([group, { lines, recipe }]) => {
+    .map(([group, { lines, recipe, phases, name }]) => {
       // Only count lines that have actual dough weight (exclude buns with no recipe)
       const activeLines = lines.filter(l => l.doughWeightTotal > 0 || l.totalQty === 0);
       const totalDoughKg = activeLines.reduce((s, l) => s + l.doughWeightTotal, 0) / 1000;
@@ -282,12 +285,13 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       const flourWeightKg = activeLines.reduce((s, l) => s + l.flourWeightTotal, 0) / 1000;
       return {
         group,
-        label: groupLabels[group] ?? group,
+        label: groupLabels[group] ?? name ?? group,
         totalLoaves: activeLines.filter(l => l.doughWeightTotal > 0).reduce((s, l) => s + l.totalQty, 0),
         totalDoughKg,
         totalDoughNoFillingsKg: totalDoughKg - totalToppingKg,
         flourWeightKg,
         recipe,
+        phases,
         lines,
       };
     });

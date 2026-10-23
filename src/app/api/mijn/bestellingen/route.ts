@@ -87,7 +87,7 @@ export async function GET(req: Request) {
       }),
       (prisma as any).breadType.findMany({
         where: { tenantId: customer.tenantId, customerOrderable: true, active: true },
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       }),
       prisma.recurringOrder.findMany({
         where: { tenantId: customer.tenantId, customerId: customer.id },

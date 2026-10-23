@@ -2,6 +2,11 @@
 import { useRole } from "@/lib/role-context";
 import { useEffect, useRef, useState } from "react";
 import { breadImageUrls } from "@/lib/breadImage";
+import { NumInput } from "@/components/NumInput";
+import { sortLikeRecepten } from "@/lib/breadOrder";
+import { type DoughPhase, parsePhases } from "@/lib/dough-phases";
+import { PhaseEditor } from "@/components/PhaseEditor";
+import { PhaseView } from "@/components/PhaseView";
 
 
 type RecipeFlour  = { id?: string; name: string; percentage: number; sortOrder?: number };
@@ -12,7 +17,7 @@ type Recipe = {
   flourLines: RecipeFlour[]; toppings: RecipeTopping[];
 };
 type DoughType = {
-  id: string; name: string; slug: string; notes?: string | null;
+  id: string; name: string; slug: string; notes?: string | null; phases?: unknown;
   waterPct: number; desemPct: number; zoutPct: number; inwasPct: number;
   flourLines: RecipeFlour[]; extras: RecipeFlour[];
 };
@@ -44,6 +49,7 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
   const extrasPct = extras.reduce((s, e) => s + e.percentage, 0);
   const totalPct = 100 + waterPct + desemPct + zoutPct + inwasPct + extrasPct;
   const flourTotal = (totalDough / totalPct) * 100;
+  const phases = parsePhases(dt?.phases);
 
   return (
     <div style={{ fontSize: 13 }}>
@@ -52,6 +58,9 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
           Basisrecept: <strong>{dt.name}</strong> (gedeeld met andere broodsoorten)
         </p>
       )}
+      {phases.length > 0 ? (
+        <div style={{ marginBottom: 8 }}><PhaseView phases={phases} loaves={n} /></div>
+      ) : (
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
         <tbody>
           {flourLines.map((f, i) => (
@@ -86,6 +95,15 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
           ))}
         </tbody>
       </table>
+      )}
+      {dt?.notes?.trim() && (
+        <div style={{ margin: "0 0 8px" }}>
+          <p style={{ fontWeight: 500, color: "var(--text-muted)", margin: "0 0 4px" }}>Werkwijze</p>
+          <ul style={{ margin: 0, paddingLeft: 18, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            {dt.notes.split("\n").map(l => l.trim()).filter(Boolean).map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        </div>
+      )}
       {r.toppings.length > 0 && (
         <>
           <p style={{ fontWeight: 500, color: "var(--text-muted)", marginBottom: 4, marginTop: 8 }}>Toevoegingen</p>
@@ -108,6 +126,7 @@ function RecipeWorkerView({ bt, qty }: { bt: BreadType; qty: number }) {
 
 function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketTypeOptions, doughTypes }: { bt: BreadType; onSaved: () => void; allCategories: string[]; allBreadTypes: BreadType[]; basketTypeOptions: string[]; doughTypes: DoughType[] }) {
   const r = bt.recipe;
+  const [breadName, setBreadName] = useState(bt.name);
   const [doughTypeId, setDoughTypeId] = useState(bt.doughTypeId ?? "");
   const [waterPct,  setWater]  = useState(r?.waterPct  ?? 71.5);
   const [desemPct,  setDesem]  = useState(r?.desemPct  ?? 15);
@@ -130,12 +149,13 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
   const selectedDoughType = doughTypes.find(d => d.id === doughTypeId) ?? null;
 
   async function save() {
+    if (!breadName.trim()) return;
     setSaving(true);
-    if (basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true) || mixerGroup !== ((bt as any).mixerGroup ?? "") || doughTypeId !== (bt.doughTypeId ?? "")) {
+    if (breadName.trim() !== bt.name || basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true) || mixerGroup !== ((bt as any).mixerGroup ?? "") || doughTypeId !== (bt.doughTypeId ?? "")) {
       await fetch("/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, basketType, basketStyle: basketStyle || null, category, showInProduction, mixerGroup: mixerGroup || null, doughTypeId: doughTypeId || null }),
+        body: JSON.stringify({ id: bt.id, name: breadName.trim(), basketType, basketStyle: basketStyle || null, category, showInProduction, mixerGroup: mixerGroup || null, doughTypeId: doughTypeId || null }),
       });
     }
     await fetch("/api/recipes", {
@@ -156,6 +176,13 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
 
   return (
     <div style={{ fontSize: 13 }}>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Naam broodsoort</label>
+        <input value={breadName} onChange={e => setBreadName(e.target.value)} style={{ ...inputStyle, width: "100%", fontWeight: 600 }} />
+        <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "4px 0 0" }}>
+          Dit is de naam die overal zichtbaar is (bestellingen, klantportaal, bezorging). Bestaande bestellingen blijven gekoppeld.
+        </p>
+      </div>
       {/* Shared base recipe (dough type) */}
       <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Basisrecept</label>
@@ -203,7 +230,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
                     style={{ ...inputStyle, width: "160px" }} />
                 </td>
                 <td style={{ padding: "7px 0", textAlign: "right" }}>
-                  <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage} onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
+                  <NumInput max={999} value={f.percentage} onChange={n => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:n} : x))}
                     style={inputStyle} />
                 </td>
               </tr>
@@ -224,7 +251,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
               <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
                 <td style={{ padding: "7px 0", color: "var(--text-muted)" }}>{label}</td>
                 <td style={{ padding: "7px 0", textAlign: "right" }}>
-                  <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(Math.min(999,parseFloat(e.target.value)||0))} style={inputStyle} />
+                  <NumInput max={999} step="0.5" value={val} onChange={setter} style={inputStyle} />
                 </td>
               </tr>
             ))}
@@ -235,7 +262,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
         <div>
           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Totaalgewicht / brood (g, incl. vulling)</label>
-          <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={doughWeight} onChange={e => setDough(parseFloat(e.target.value)||0)} style={{ ...inputStyle, width: "100%" }} />
+          <NumInput max={100000} value={doughWeight} onChange={setDough} style={{ ...inputStyle, width: "100%" }} />
         </div>
         <div>
           {/* total% removed — auto-computed from water+desem+zout+inwas+100 */}
@@ -254,8 +281,8 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
                     placeholder="bijv. Sesam" style={{ ...inputStyle, width: "130px" }} />
                 </td>
                 <td style={{ padding: "5px 4px" }}>
-                  <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={t.gramsPerLoaf}
-                    onChange={e => setToppings(ts => ts.map((x,j) => j===i ? {...x,gramsPerLoaf:Math.min(999,parseFloat(e.target.value)||0)} : x))}
+                  <NumInput max={999} value={t.gramsPerLoaf}
+                    onChange={n => setToppings(ts => ts.map((x,j) => j===i ? {...x,gramsPerLoaf:n} : x))}
                     style={{ ...inputStyle, width: "70px" }} title="Gram per brood" />
                 </td>
                 <td style={{ padding: "5px 4px", fontSize: 11, color: "var(--text-subtle)" }}>g/brood</td>
@@ -321,7 +348,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
         </label>
       </div>
 
-      <button onClick={save} disabled={saving || flourSum !== 100} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
+      <button onClick={save} disabled={saving || !breadName.trim() || (!selectedDoughType && flourSum !== 100)} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
         {saving ? "Opslaan…" : "Recept opslaan"}
       </button>
     </div>
@@ -383,7 +410,7 @@ function NewBreadTypeModal({ onClose, onSaved, existingCategories, basketTypeOpt
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Deeggewicht per brood (g)</label>
-          <input type="number" onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={weightGrams} onChange={e=>setWeightGrams(parseInt(e.target.value)||1000)} style={inp} />
+          <NumInput int min={1} max={100000} value={weightGrams} onChange={setWeightGrams} style={inp} />
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text-subtle)",textTransform:"uppercase",display:"block",marginBottom:5}}>Mandformaat</label>
@@ -473,6 +500,8 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
   const [extras, setExtras] = useState<{name:string;percentage:number}[]>(
     (dt.extras ?? []).map(e => ({ name: e.name, percentage: e.percentage }))
   );
+  const [instructions, setInstructions] = useState(dt.notes ?? "");
+  const [phases, setPhases] = useState<DoughPhase[]>(parsePhases(dt.phases));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
@@ -487,6 +516,7 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
       body: JSON.stringify({
         id: dt.id, name, slug: dt.slug, waterPct, desemPct, zoutPct, inwasPct,
+        notes: instructions, phases,
         flourLines: flourLines.map((f, i) => ({ ...f, sortOrder: i })),
         extras: extras.map((e, i) => ({ ...e, sortOrder: i })),
       }),
@@ -526,8 +556,8 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
                   style={{ ...inputStyle, width: "160px" }} />
               </td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" min={0} max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} value={f.percentage}
-                  onChange={e => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
+                <NumInput max={999} value={f.percentage}
+                  onChange={n => setFlourLines(fl => fl.map((x,j) => j===i ? {...x,percentage:n} : x))}
                   style={inputStyle} />
               </td>
               <td style={{ padding: "6px 0 6px 4px", textAlign: "right" }}>
@@ -552,7 +582,7 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
             <tr key={label} style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "6px 0", color: "var(--text-muted)" }}>{label}</td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={val} onChange={e => setter(Math.min(999,parseFloat(e.target.value)||0))} style={inputStyle} />
+                <NumInput max={999} step="0.5" value={val} onChange={setter} style={inputStyle} />
               </td>
               <td />
             </tr>
@@ -564,8 +594,8 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
                   placeholder="bijv. Boter" style={{ ...inputStyle, width: "160px" }} />
               </td>
               <td style={{ padding: "6px 0", textAlign: "right" }}>
-                <input type="number" max={999} onKeyDown={e=>{if(["e","E","-","+"].includes(e.key))e.preventDefault()}} step="0.5" value={ex.percentage}
-                  onChange={e => setExtras(xs => xs.map((x,j) => j===i ? {...x,percentage:Math.min(999,parseFloat(e.target.value)||0)} : x))}
+                <NumInput max={999} step="0.5" value={ex.percentage}
+                  onChange={n => setExtras(xs => xs.map((x,j) => j===i ? {...x,percentage:n} : x))}
                   style={inputStyle} />
               </td>
               <td style={{ padding: "6px 0 6px 4px", textAlign: "right" }}>
@@ -585,6 +615,12 @@ function DoughTypeEditor({ dt, onSaved, onDeleted }: { dt: DoughType; onSaved: (
           </tr>
         </tbody>
       </table>
+      <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Werkwijze / instructies (optioneel)</label>
+      <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={3}
+        placeholder={"Eén stap per regel, bijv.\nDeeg 18 uur in de koeling\nVoor bakken 30 min op kamertemperatuur"}
+        style={{ ...inputStyle, width: "100%", resize: "vertical", fontFamily: "inherit" }} />
+      <PhaseEditor phases={phases} onChange={setPhases} />
+      <div style={{ height: 12 }} />
       {error && <p style={{ color: "var(--danger)", fontSize: 12, margin: "0 0 8px" }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={del} style={{ fontSize: 12, padding: "6px 12px", background: "none", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", color: "var(--danger)" }}>
@@ -683,7 +719,7 @@ export default function ReceptenPage() {
     setLoading(true);
     fetch("/api/recipes", { headers: { "x-role": role ?? "" } })
       .then(r => r.json())
-      .then(d => { setBreadTypes(d.breadTypes ?? []); setDoughTypes(d.doughTypes ?? []); setLoading(false); })
+      .then(d => { setBreadTypes(sortLikeRecepten<BreadType>(d.breadTypes ?? [])); setDoughTypes(d.doughTypes ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   }
 

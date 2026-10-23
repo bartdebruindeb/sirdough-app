@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 
     const [cityRoutes, breadTypes, recurring, oneOff] = await Promise.all([
       prisma.cityRoute.findMany({ where: { tenantId: tid }, orderBy: { sortOrder: "asc" } }),
-      prisma.breadType.findMany({ where: { tenantId: tid, active: true }, orderBy: { sortOrder: "asc" } }),
+      prisma.breadType.findMany({ where: { tenantId: tid, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
       prisma.recurringOrder.findMany({
         where: { tenantId: tid, weekday, active: true },
         include: { customer: true, lines: { include: { breadType: true } } },

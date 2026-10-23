@@ -27,11 +27,26 @@ export async function GET(req: Request) {
   } catch (e) { return toResponse(e); }
 }
 
+const PhaseSchema = z.object({
+  name: z.string().min(1).max(60),
+  kind: z.enum(["mix", "bake"]).default("mix"),
+  daysBefore: z.union([z.literal(0), z.literal(1)]).default(0),
+  timing: z.string().max(200).default(""),
+  instructions: z.string().max(4000).default(""),
+  ingredients: z.array(z.object({
+    name: z.string().max(80).default(""),
+    grams: z.number().min(0).max(100000).default(0),
+    carryOver: z.boolean().default(false),
+  })).max(30).default([]),
+});
+
 const UpsertDoughSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1),
   slug: z.string().min(1),
-  notes: z.string().optional(),
+  notes: z.string().max(4000).optional(),
+  // undefined = leave the stored phases alone (older clients don't send it); [] = clear them
+  phases: z.array(PhaseSchema).max(12).optional(),
   waterPct: z.number(),
   desemPct: z.number(),
   zoutPct: z.number(),
@@ -51,8 +66,8 @@ export async function POST(req: Request) {
 
     const dt = await prisma.$transaction(async tx => {
       const d = input.id
-        ? await tx.doughType.update({ where: { id: input.id }, data: { name: input.name, notes: input.notes, waterPct: input.waterPct, desemPct: input.desemPct, zoutPct: input.zoutPct, inwasPct: input.inwasPct } })
-        : await tx.doughType.create({ data: { tenantId: tid, name: input.name, slug: input.slug, notes: input.notes, waterPct: input.waterPct, desemPct: input.desemPct, zoutPct: input.zoutPct, inwasPct: input.inwasPct } });
+        ? await tx.doughType.update({ where: { id: input.id }, data: { name: input.name, notes: input.notes, ...(input.phases && { phases: input.phases }), waterPct: input.waterPct, desemPct: input.desemPct, zoutPct: input.zoutPct, inwasPct: input.inwasPct } })
+        : await tx.doughType.create({ data: { tenantId: tid, name: input.name, slug: input.slug, notes: input.notes, ...(input.phases && { phases: input.phases }), waterPct: input.waterPct, desemPct: input.desemPct, zoutPct: input.zoutPct, inwasPct: input.inwasPct } });
       await tx.doughFlour.deleteMany({ where: { doughTypeId: d.id } });
       await tx.doughFlour.createMany({ data: input.flourLines.map(f => ({ doughTypeId: d.id, ...f })) });
       await tx.doughExtra.deleteMany({ where: { doughTypeId: d.id } });

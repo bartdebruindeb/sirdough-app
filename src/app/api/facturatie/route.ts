@@ -32,7 +32,7 @@ export async function GET(req: Request) {
 
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
 
     type DeliveryLine = { breadTypeId: string; breadTypeName: string; quantity: number };

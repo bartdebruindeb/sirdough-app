@@ -10,7 +10,7 @@ const MAX_WEEKS_AHEAD = 4;
 const WEEKDAYS_SHORT = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
 const WEEKDAYS_FULL  = ["", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
 
-type BreadType = { id: string; slug: string; name: string; hasRecipe?: boolean; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
+type BreadType = { id: string; slug: string; name: string; category: string; sortOrder: number; hasRecipe?: boolean; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null };
 type LogEntry  = {
   id: string; date: string;
   quantities: Record<string, number>;

@@ -1,6 +1,6 @@
 "use client";
 import { useRole } from "@/lib/role-context";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useUndoStack } from "@/hooks/useUndoStack";
 import { BreadTypeAvailabilityManager } from "@/components/BreadTypeAvailabilityManager";
 
@@ -9,7 +9,7 @@ const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zater
 // weekday from JS Date: 0=Sun,1=Mon...6=Sat → convert to 1=Mon...7=Sun
 function jsWeekdayToISO(d: Date): number { return d.getDay() === 0 ? 7 : d.getDay(); }
 
-type BreadType = { id: string; slug: string; name: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null; price?: number | null };
+type BreadType = { id: string; slug: string; name: string; category: string; sortOrder: number; customerOrderable: boolean; winkelOrderable: boolean; availableWeekdays: string | null; imageFile?: string | null; price?: number | null };
 type Customer  = { id: string; name: string; city: string | null; preferredBread?: string | null; discountPercent?: number };
 type OrderLine = { breadTypeId: string; quantity: number; breadType: { id: string; name: string } };
 type OneOffOrder = { id: string; customerId: string; deliveryDate: string; notes: string | null; customer: Customer; lines: OrderLine[] };
@@ -628,9 +628,24 @@ export default function BestellingenPage() {
   const [minDeliveryAmount, setMinDeliveryAmount] = useState<number | null>(null);
   const [shopPickup, setShopPickup] = useState<{ id: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fromDate, setFromDate] = useState(today);
-  const toDefault = new Date(today); toDefault.setDate(toDefault.getDate()+7);
-  const [toDate, setToDate] = useState(toDefault.toISOString().slice(0,10));
+  // Default window: Monday of this week through the end of next week, so orders from earlier
+  // this week are visible without having to pick dates first.
+  const [defaultFrom, defaultTo] = (() => {
+    const d = new Date(); d.setHours(12,0,0,0);
+    d.setDate(d.getDate() - ((d.getDay()||7) - 1));
+    const from = d.toISOString().slice(0,10);
+    d.setDate(d.getDate() + 13);
+    return [from, d.toISOString().slice(0,10)];
+  })();
+  const [fromDate, setFromDate] = useState(defaultFrom);
+  const [toDate, setToDate] = useState(defaultTo);
+  // The date inputs edit a draft; the list only reloads when "Filter" is pressed. Reloading on
+  // every keystroke fired a request per partial date (clearing a field sent an invalid range and
+  // the list silently came back empty) and let slow old responses overwrite newer ones.
+  const [draftFrom, setDraftFrom] = useState(defaultFrom);
+  const [draftTo, setDraftTo] = useState(defaultTo);
+  const [loadError, setLoadError] = useState("");
+  const oneOffReq = useRef(0);
   const [editingOrderId, setEditingOrderId] = useState<string|null>(null);
   const [editOrderQty, setEditOrderQty, undoEditOrderQty, canUndoEditOrderQty] = useUndoStack<Record<string,number>>({});
   const [savingEdit, setSavingEdit] = useState(false);
@@ -715,11 +730,17 @@ export default function BestellingenPage() {
   const [weekEditMsg, setWeekEditMsg] = useState<{ok:boolean;text:string}|null>(null);
 
   function loadOneOff() {
+    const req = ++oneOffReq.current;
+    setLoadError("");
     fetch(`/api/bestellingen?from=${fromDate}&to=${toDate}`,{headers:{"x-role":role ?? ""}})
-      .then(r=>r.json()).then(d=>{ setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
+      .then(r=>{ if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(d=>{
+        if (req !== oneOffReq.current) return; // a newer request is in flight — ignore this one
+        setOrders(d.orders??[]); setBreadTypes(d.breadTypes??[]); setLoading(false);
         setMinDeliveryAmount(d.minDeliveryAmount ?? null);
         if (d.customers?.length) setCustomers(d.customers);
-      });
+      })
+      .catch(()=>{ if (req === oneOffReq.current) { setLoadError("Bestellingen laden mislukt — probeer het opnieuw."); setLoading(false); } });
   }
   function loadRecurring() {
     fetch("/api/bestellingen/recurring",{headers:{"x-role":role ?? ""}})
@@ -866,7 +887,18 @@ export default function BestellingenPage() {
   function dateOffset(days: number) {
     const d = new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10);
   }
-  function setDay(days: number) { const d=dateOffset(days); setFromDate(d); setToDate(d); }
+  function applyRange(from: string, to: string) { setDraftFrom(from); setDraftTo(to); setFromDate(from); setToDate(to); }
+  function setDay(days: number) { const d=dateOffset(days); applyRange(d, d); }
+  // Monday–Sunday of the current week, shifted by `weeks`
+  function setWeek(weeks: number) {
+    const d = new Date(); const wd = d.getDay()===0 ? 7 : d.getDay();
+    d.setDate(d.getDate() - (wd-1) + weeks*7);
+    const mon = d.toISOString().slice(0,10); d.setDate(d.getDate()+6);
+    applyRange(mon, d.toISOString().slice(0,10));
+  }
+  const draftValid = /^\d{4}-\d{2}-\d{2}$/.test(draftFrom) && /^\d{4}-\d{2}-\d{2}$/.test(draftTo) && draftFrom <= draftTo;
+  const draftChanged = draftFrom !== fromDate || draftTo !== toDate;
+  function applyFilter() { if (draftValid) { setFromDate(draftFrom); setToDate(draftTo); } }
 
   // Also get recurring for a specific weekday
   function recurringForDate(dateStr: string): RecurringOrder[] {
@@ -965,15 +997,20 @@ export default function BestellingenPage() {
 
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <span style={{ fontSize:13, color:"var(--text-muted)" }}>Van</span>
-            <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="input" style={{ width:140 }} />
+            <input type="date" value={draftFrom} onChange={e=>setDraftFrom(e.target.value)} onKeyDown={e=>{ if (e.key==="Enter") applyFilter(); }} className="input" style={{ width:140 }} />
             <span style={{ fontSize:13, color:"var(--text-muted)" }}>tot</span>
-            <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="input" style={{ width:140 }} />
-            <div style={{ display:"flex", gap:5 }}>
+            <input type="date" value={draftTo} onChange={e=>setDraftTo(e.target.value)} onKeyDown={e=>{ if (e.key==="Enter") applyFilter(); }} className="input" style={{ width:140 }} />
+            <button onClick={applyFilter} disabled={!draftValid} className="btn-primary" style={{ fontSize:12, padding:"6px 14px", opacity:draftValid?1:0.5 }}>
+              Filter{draftChanged ? " ●" : ""}
+            </button>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
               {[["Vandaag",0],["Morgen",1],["Overmorgen",2]].map(([label,days])=>(
                 <button key={label as string} onClick={()=>setDay(days as number)} className="btn-secondary" style={{ fontSize:12, padding:"6px 10px", whiteSpace:"nowrap" }}>
                   {label as string}
                 </button>
               ))}
+              <button onClick={()=>setWeek(-1)} className="btn-secondary" style={{ fontSize:12, padding:"6px 10px", whiteSpace:"nowrap" }}>Vorige week</button>
+              <button onClick={()=>setWeek(0)} className="btn-secondary" style={{ fontSize:12, padding:"6px 10px", whiteSpace:"nowrap" }}>Deze week</button>
             </div>
             <select value={eenmaligCustomerFilter} onChange={e=>setEenmaligCustomerFilter(e.target.value)}
               style={{ border:"1px solid var(--border)", borderRadius:7, padding:"6px 10px", fontSize:13, background:"var(--surface)" }}>
@@ -1009,7 +1046,12 @@ export default function BestellingenPage() {
           })()}
 
           {loading && <p style={{ color:"var(--text-subtle)", fontSize:13 }}>Laden…</p>}
-          {!loading&&sortedDates.length===0&&!(fromDate===toDate)&&(
+          {loadError && (
+            <p style={{ color:"var(--danger)", background:"var(--danger-bg)", padding:"8px 12px", borderRadius:8, fontSize:13, margin:0 }}>
+              {loadError} <button onClick={loadOneOff} style={{ background:"none", border:"none", color:"var(--danger)", textDecoration:"underline", cursor:"pointer", fontSize:13 }}>Opnieuw</button>
+            </p>
+          )}
+          {!loading&&!loadError&&sortedDates.length===0&&!(fromDate===toDate)&&(
             <div className="card" style={{ padding:"2.5rem", textAlign:"center", color:"var(--text-subtle)" }}>
               Geen bestellingen in deze periode.
             </div>

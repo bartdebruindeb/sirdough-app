@@ -1,6 +1,8 @@
 ﻿"use client";
 import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
+import { type DoughPhase } from "@/lib/dough-phases";
+import { PhaseView } from "@/components/PhaseView";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -20,7 +22,7 @@ type BreadLine = {
 type MixerGroup = {
   group: string; label: string; totalLoaves: number;
   totalDoughKg: number; totalDoughNoFillingsKg: number; flourWeightKg: number;
-  recipe: RecipeInfo | null; lines: BreadLine[];
+  recipe: RecipeInfo | null; phases?: DoughPhase[]; lines: BreadLine[];
 };
 type Plan = {
   productionDate: string; deliveryDate: string; weekday: number;
@@ -318,8 +320,35 @@ function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup 
           </tbody>
         </table>
       )}
-      <MixerIngredients mg={virtualMg} mixers={1} />
+      {virtualMg.phases && virtualMg.phases.length > 0
+        ? <div style={{ marginTop: 12 }}><PhaseView phases={virtualMg.phases} loaves={loaves} /></div>
+        : <MixerIngredients mg={virtualMg} mixers={1} />}
       <VullingenCalculator mg={virtualMg} mixers={1} />
+    </div>
+  );
+}
+
+// ─── VoorMorgen ───────────────────────────────────────────────────────────────
+// Phases marked "de dag ervoor" (e.g. the overnight voordeeg of a 3-fasen rogge) belong to
+// tomorrow's production but have to be started today — list them here, scaled to tomorrow's count.
+function VoorMorgen({ groups, productionDate }: { groups: MixerGroup[]; productionDate?: string }) {
+  const rows = groups.filter(mg => mg.totalLoaves > 0 && (mg.phases ?? []).some(p => p.daysBefore === 1));
+  if (rows.length === 0) return null;
+  const label = productionDate ? new Date(productionDate + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" }) : null;
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "#fef3c7" }}>
+        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Vandaag klaarzetten voor morgen</h2>
+        {label && <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Voor de productie van {label}</p>}
+      </div>
+      <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 14 }}>
+        {rows.map(mg => (
+          <div key={mg.group}>
+            <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{mg.label} <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>— {mg.totalLoaves} broden</span></p>
+            <PhaseView phases={mg.phases ?? []} loaves={mg.totalLoaves} only={p => p.daysBefore === 1} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1084,6 +1113,7 @@ export default function ProductiePage() {
           {/* ── Desem + Manden ── */}
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
             <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
+            <VoorMorgen groups={nextPlan?.mixerGroups ?? []} productionDate={nextPlan?.productionDate} />
             {hasAny && <MandenTotaal lines={planLines} />}
           </section>
 

@@ -32,7 +32,7 @@ export async function GET(req: Request) {
 
     const breadTypes = await prisma.breadType.findMany({
       where: { tenantId: tid, active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
 
     // All one-off orders (past + future)
@@ -199,7 +199,7 @@ async function addWinkelEntries(
   const logsByDate = new Map<string, Record<string, number>>();
   for (const l of logs) logsByDate.set(l.date.toISOString().slice(0, 10), l.quantities as Record<string, number>);
 
-  const breadTypes = await prisma.breadType.findMany({ where: { tenantId: tid, active: true }, orderBy: { sortOrder: "asc" } });
+  const breadTypes = await prisma.breadType.findMany({ where: { tenantId: tid, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
 
   const d = new Date(fromDate);
   while (d <= toDate) {
