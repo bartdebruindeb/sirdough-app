@@ -157,6 +157,33 @@ export async function importExactEmail(tenantId: string, token: string): Promise
   await (prisma as any).billingEntity.updateMany({ where: { tenantId, isDefault: true, ...empty }, data: { companyEmail: email } });
 }
 
+/** On (re)connect: link every Sirdough customer to its Exact account (KvK first, then exact
+ * name match) and fill in what's still empty — e-mail, KvK, account id and relatienummer.
+ * The e-mail is what pakbon/invoice mails go to. Never overwrites a value already set.
+ * Returns how many customers were linked / got an e-mail. */
+export async function importExactCustomerData(tenantId: string): Promise<{ linked: number; emails: number }> {
+  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const accounts = await listExactAccounts(tenantId);
+  const byKvk = new Map<string, ExactAccount>(), byName = new Map<string, ExactAccount | null>();
+  for (const a of accounts) {
+    if (a.kvk) byKvk.set(a.kvk, a);
+    const n = norm(a.name);
+    byName.set(n, byName.has(n) ? null : a); // ponytail: ambiguous names are skipped, owner links those by hand
+  }
+  let linked = 0, emails = 0;
+  for (const c of await prisma.customer.findMany({ where: { tenantId, isShop: false } })) {
+    const a = (c.kvk && byKvk.get(c.kvk.trim())) || (c.exactAccountId ? accounts.find(x => x.id === c.exactAccountId) : null) || byName.get(norm(c.name));
+    if (!a) continue;
+    const data: Record<string, string> = {};
+    if (!c.exactAccountId) data.exactAccountId = a.id;
+    if (!c.exactCustomerCode && a.code) data.exactCustomerCode = a.code.trim();
+    if (!c.kvk && a.kvk) data.kvk = a.kvk;
+    if (!c.email?.trim() && a.email?.trim()) { data.email = a.email.trim(); emails++; }
+    if (Object.keys(data).length) { await prisma.customer.update({ where: { id: c.id }, data }); if (data.exactAccountId) linked++; }
+  }
+  return { linked, emails };
+}
+
 export async function disconnectExact(tenantId: string): Promise<void> {
   await (prisma as any).exactToken.deleteMany({ where: { tenantId } });
 }

@@ -1,5 +1,5 @@
 import { resolveTenantId } from "@/server/config/tenant";
-import { storeTokens, importExactEmail } from "@/server/lib/exact";
+import { storeTokens, importExactEmail, importExactCustomerData } from "@/server/lib/exact";
 
 /**
  * Internal endpoint: receives Exact OAuth tokens handed off by the relay host after it
@@ -19,5 +19,6 @@ export async function POST(req: Request) {
   await storeTokens(tid, data);
   // Best-effort — a failed e-mail lookup must not fail the connection itself
   await importExactEmail(tid, data.access_token).catch(() => {});
+  await importExactCustomerData(tid).catch(() => {});
   return new Response(null, { status: 204 });
 }
