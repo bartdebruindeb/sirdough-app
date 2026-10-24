@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { breadImageUrls } from "@/lib/breadImage";
 import { NumInput } from "@/components/NumInput";
 import { sortLikeRecepten } from "@/lib/breadOrder";
-import { type DoughPhase, parsePhases } from "@/lib/dough-phases";
+import { type DoughPhase, parsePhases, resolvePhases, phaseTotals } from "@/lib/dough-phases";
 import { PhaseEditor } from "@/components/PhaseEditor";
 import { PhaseView } from "@/components/PhaseView";
 
@@ -144,6 +144,10 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
     r?.flourLines ?? [{ name: "Tarwebloem", percentage: 100 }]
   );
   const [toppings, setToppings] = useState<RecipeTopping[]>(r?.toppings ?? []);
+  // Phased recipe (stappen): stored on the linked basisrecept; created from the bread's name when none is linked yet
+  const [phases, setPhases] = useState<DoughPhase[]>(parsePhases(bt.doughType?.phases));
+  const [usePhases, setUsePhases] = useState(parsePhases(bt.doughType?.phases).length > 0);
+  const sharedWith = (selectedDt?: DoughType | null) => allBreadTypes.filter(b => selectedDt && b.doughTypeId === selectedDt.id && b.id !== bt.id).length;
 
   const flourSum = flourLines.reduce((s, f) => s + f.percentage, 0);
   const selectedDoughType = doughTypes.find(d => d.id === doughTypeId) ?? null;
@@ -151,11 +155,37 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
   async function save() {
     if (!breadName.trim()) return;
     setSaving(true);
-    if (breadName.trim() !== bt.name || basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true) || mixerGroup !== ((bt as any).mixerGroup ?? "") || doughTypeId !== (bt.doughTypeId ?? "")) {
+    let linkedId = doughTypeId;
+    let weight = doughWeight;
+    // ponytail: phases live on the dough type, so a phased bread without one gets its own, named after the bread
+    if (usePhases || selectedDoughType?.phases) {
+      const dt = selectedDoughType;
+      const res = await fetch("/api/dough-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-role": "OWNER" },
+        body: JSON.stringify({
+          ...(dt ? { id: dt.id } : {}),
+          name: dt?.name ?? breadName.trim(),
+          slug: dt?.slug ?? (breadName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-fases"),
+          notes: dt?.notes ?? "",
+          phases: usePhases ? phases : [],
+          waterPct: dt?.waterPct ?? 71.5, desemPct: dt?.desemPct ?? 15, zoutPct: dt?.zoutPct ?? 2, inwasPct: dt?.inwasPct ?? 6,
+          flourLines: (dt?.flourLines ?? [{ name: "Tarwebloem", percentage: 100 }]).map((f, i) => ({ name: f.name, percentage: f.percentage, sortOrder: i })),
+          extras: (dt?.extras ?? []).map((f, i) => ({ name: f.name, percentage: f.percentage, sortOrder: i })),
+        }),
+      });
+      if (!res.ok) { setSaving(false); alert("Fases opslaan mislukt"); return; }
+      if (usePhases) linkedId = (await res.json()).id;
+    }
+    if (usePhases) {
+      const total = phaseTotals(resolvePhases(phases, 1)).totalGrams;
+      if (total > 0) weight = Math.round(total + toppings.reduce((s, t) => s + (t.gramsPerLoaf || 0), 0));
+    }
+    if (breadName.trim() !== bt.name || basketType !== bt.basketType || category !== bt.category || basketStyle !== (bt.basketStyle ?? "") || showInProduction !== (bt.showInProduction ?? true) || mixerGroup !== ((bt as any).mixerGroup ?? "") || linkedId !== (bt.doughTypeId ?? "")) {
       await fetch("/api/bread-types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-role": "OWNER" },
-        body: JSON.stringify({ id: bt.id, name: breadName.trim(), basketType, basketStyle: basketStyle || null, category, showInProduction, mixerGroup: mixerGroup || null, doughTypeId: doughTypeId || null }),
+        body: JSON.stringify({ id: bt.id, name: breadName.trim(), basketType, basketStyle: basketStyle || null, category, showInProduction, mixerGroup: mixerGroup || null, doughTypeId: linkedId || null }),
       });
     }
     await fetch("/api/recipes", {
@@ -163,7 +193,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
       headers: { "Content-Type": "application/json", "x-role": "OWNER" },
       body: JSON.stringify({
         breadTypeId: bt.id, waterPct, desemPct, zoutPct, inwasPct,
-        doughWeightPerLoaf: doughWeight, notes,
+        doughWeightPerLoaf: weight, notes,
         flourLines: flourLines.map((f, i) => ({ ...f, sortOrder: i })),
         toppings: toppings.map((t, i) => ({ ...t, sortOrder: i })),
       }),
@@ -186,7 +216,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
       {/* Shared base recipe (dough type) */}
       <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Basisrecept</label>
-        <select value={doughTypeId} onChange={e => setDoughTypeId(e.target.value)} style={{ ...inputStyle, width: "100%" }}>
+        <select value={doughTypeId} onChange={e => { setDoughTypeId(e.target.value); const p = parsePhases(doughTypes.find(d => d.id === e.target.value)?.phases); setPhases(p); setUsePhases(p.length > 0); }} style={{ ...inputStyle, width: "100%" }}>
           <option value="">— eigen percentages (niet gedeeld) —</option>
           {doughTypes.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
@@ -195,8 +225,20 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
         </p>
       </div>
 
-      {/* Baker's percentages — editable only when NOT linked to a shared dough type */}
-      {selectedDoughType ? (
+      {/* Recipe kind: percentages or steps */}
+      <div style={{ marginBottom: 12, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {([[false, "Percentages"], [true, "Fases / stappen"]] as const).map(([v, l]) => (
+          <button key={l} onClick={() => { setUsePhases(v); if (v && phases.length === 0) setPhases([{ name: "Stap 1", kind: "mix", daysBefore: 0, timing: "", instructions: "", ingredients: [] }]); }}
+            style={{ border: "1px solid " + (usePhases === v ? "var(--accent)" : "var(--border)"), background: usePhases === v ? "var(--accent)" : "var(--surface)", color: usePhases === v ? "#fff" : "var(--text-muted)", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}>{l}</button>
+        ))}
+        {usePhases && selectedDoughType && sharedWith(selectedDoughType) > 0 && (
+          <span style={{ fontSize: 11, color: "var(--danger)" }}>Let op: basisrecept "{selectedDoughType.name}" wordt ook door {sharedWith(selectedDoughType)} andere broodsoort(en) gebruikt.</span>
+        )}
+      </div>
+
+      {usePhases ? (
+        <PhaseEditor phases={phases} onChange={setPhases} />
+      ) : selectedDoughType ? (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
           <p style={{ fontSize: 11, color: "var(--text-subtle)", margin: "0 0 6px" }}>Percentages van basisrecept "{selectedDoughType.name}" (bewerk via Basisrecepten):</p>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -262,7 +304,9 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
         <div>
           <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Totaalgewicht / brood (g, incl. vulling)</label>
-          <NumInput max={100000} value={doughWeight} onChange={setDough} style={{ ...inputStyle, width: "100%" }} />
+          {usePhases
+            ? <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Volgt uit de fases: {kg(phaseTotals(resolvePhases(phases, 1)).totalGrams + toppings.reduce((s, t) => s + (t.gramsPerLoaf || 0), 0))}</p>
+            : <NumInput max={100000} value={doughWeight} onChange={setDough} style={{ ...inputStyle, width: "100%" }} />}
         </div>
         <div>
           {/* total% removed — auto-computed from water+desem+zout+inwas+100 */}
@@ -348,7 +392,7 @@ function RecipeOwnerEdit({ bt, onSaved, allCategories, allBreadTypes, basketType
         </label>
       </div>
 
-      <button onClick={save} disabled={saving || !breadName.trim() || (!selectedDoughType && flourSum !== 100)} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
+      <button onClick={save} disabled={saving || !breadName.trim() || (!usePhases && !selectedDoughType && flourSum !== 100)} className="btn-primary" style={{ fontSize: 13, padding: "7px 16px" }}>
         {saving ? "Opslaan…" : "Recept opslaan"}
       </button>
     </div>
