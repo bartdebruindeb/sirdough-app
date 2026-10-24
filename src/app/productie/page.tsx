@@ -328,24 +328,35 @@ function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup 
   );
 }
 
-// ─── VoorMorgen ───────────────────────────────────────────────────────────────
-// Phases marked "de dag ervoor" (e.g. the overnight voordeeg of a 3-fasen rogge) belong to
-// tomorrow's production but have to be started today — list them here, scaled to tomorrow's count.
-function VoorMorgen({ groups, productionDate }: { groups: MixerGroup[]; productionDate?: string }) {
-  const rows = groups.filter(mg => mg.totalLoaves > 0 && (mg.phases ?? []).some(p => p.daysBefore === 1));
-  if (rows.length === 0) return null;
-  const label = productionDate ? new Date(productionDate + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" }) : null;
+// ─── Voorbereiding ────────────────────────────────────────────────────────────
+// Phases marked "N dagen ervoor" (overnight voordeeg, germinating rye, ...) belong to a later
+// production day but have to be done today. plans[k] is the plan for today + k days; list the
+// phases of that plan that are due k days ahead, scaled to that day's loaf count.
+function VoorMorgen({ plans }: { plans: Record<number, Plan | undefined> }) {
+  const sections = [1, 2, 3, 4, 5, 6, 7].flatMap(k => {
+    const rows = (plans[k]?.mixerGroups ?? []).filter(mg => mg.totalLoaves > 0 && (mg.phases ?? []).some(p => p.daysBefore === k));
+    return rows.length ? [{ k, date: plans[k]!.productionDate, rows }] : [];
+  });
+  if (sections.length === 0) return null;
+  const fmt = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div className="card" style={{ overflow: "hidden" }}>
       <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "#fef3c7" }}>
-        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Vandaag klaarzetten voor morgen</h2>
-        {label && <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Voor de productie van {label}</p>}
+        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Vandaag klaarzetten voor later</h2>
+        <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Stappen die vooraf moeten, op basis van de bestellingen van de komende dagen</p>
       </div>
-      <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 14 }}>
-        {rows.map(mg => (
-          <div key={mg.group}>
-            <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{mg.label} <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>— {mg.totalLoaves} broden</span></p>
-            <PhaseView phases={mg.phases ?? []} loaves={mg.totalLoaves} only={p => p.daysBefore === 1} />
+      <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 18 }}>
+        {sections.map(({ k, date, rows }) => (
+          <div key={k}>
+            <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase" }}>
+              Voor de productie van {fmt(date)} ({k === 1 ? "morgen" : `over ${k} dagen`})
+            </p>
+            {rows.map(mg => (
+              <div key={mg.group} style={{ marginBottom: 10 }}>
+                <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{mg.label} <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>— {mg.totalLoaves} broden</span></p>
+                <PhaseView phases={mg.phases ?? []} loaves={mg.totalLoaves} only={p => p.daysBefore === k} />
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -629,6 +640,8 @@ export default function ProductiePage() {
   const [date, setDate]       = useState(today);
   const [plan, setPlan]       = useState<Plan | null>(null);
   const [nextPlan, setNextPlan] = useState<Plan | null>(null);
+  // plans for today + 2..7 days, for the "N dagen ervoor" prep steps (index = days ahead; 1 = nextPlan)
+  const [aheadPlans, setAheadPlans] = useState<Record<number, Plan | undefined>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
@@ -673,6 +686,12 @@ export default function ProductiePage() {
       setPlan({ ...data, breadLines: data.breadLines ?? [], mixerGroups: data.mixerGroups ?? [] });
       if (!nextData.error) setNextPlan({ ...nextData, breadLines: nextData.breadLines ?? [], mixerGroups: nextData.mixerGroups ?? [] });
       setLoading(false);
+      const day = (n: number) => { const nd = new Date(d + "T12:00:00Z"); nd.setUTCDate(nd.getUTCDate() + n); return nd.toISOString().slice(0, 10); };
+      setAheadPlans({});
+      [2, 3, 4, 5, 6, 7].forEach(n =>
+        fetch(`/api/production?date=${day(n)}`, { headers: { "x-role": role ?? "" } }).then(r => r.json())
+          .then(pd => { if (!pd.error) setAheadPlans(prev => (d === date ? { ...prev, [n]: { ...pd, breadLines: pd.breadLines ?? [], mixerGroups: pd.mixerGroups ?? [] } } : prev)); })
+          .catch(() => {}));
     }).catch(e => { setError(String(e)); setLoading(false); });
   }
 
@@ -1113,7 +1132,7 @@ export default function ProductiePage() {
           {/* ── Desem + Manden ── */}
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
             <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
-            <VoorMorgen groups={nextPlan?.mixerGroups ?? []} productionDate={nextPlan?.productionDate} />
+            <VoorMorgen plans={{ ...aheadPlans, 1: nextPlan ?? undefined }} />
             {hasAny && <MandenTotaal lines={planLines} />}
           </section>
 

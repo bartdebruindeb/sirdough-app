@@ -25,4 +25,7 @@ const five = resolvePhases(phases, 5);
 assert(five[1].ingredients[2].grams === 1240 && five[1].totalGrams === 4240 && five[2].totalGrams === 9340, "scales linearly with loaves (carry-over too): 5 loaves → 1240 / 4240 / 9340 g");
 assert(five[0].ingredients[0].grams === 750, "5 loaves → 750 g roggemeel in step 1");
 assert(parsePhases("junk").length === 0 && parsePhases([{ nope: 1 }]).length === 0, "garbage JSON parses to no phases");
+const sprout = resolvePhases(parsePhases([mix("Kiem", [{ name: "Droge rogge", grams: 130, noTotal: true }], 5), mix("Deeg", [{ name: "Meel", grams: 100 }])]), 2);
+assert(sprout[0].totalGrams === 0 && sprout[0].ingredients[0].grams === 260 && phaseTotals(sprout).totalGrams === 200, "noTotal ingredient scales but doesn't count in the weight");
+assert(parsePhases([{ name: "x", daysBefore: 5 }])[0].daysBefore === 5 && parsePhases([{ name: "x", daysBefore: 99 }])[0].daysBefore === 7, "daysBefore 0..7, clamped");
 console.log("All checks passed.");

@@ -30,13 +30,14 @@ export async function GET(req: Request) {
 const PhaseSchema = z.object({
   name: z.string().min(1).max(60),
   kind: z.enum(["mix", "bake"]).default("mix"),
-  daysBefore: z.union([z.literal(0), z.literal(1)]).default(0),
+  daysBefore: z.number().int().min(0).max(7).default(0),
   timing: z.string().max(200).default(""),
   instructions: z.string().max(4000).default(""),
   ingredients: z.array(z.object({
     name: z.string().max(80).default(""),
     grams: z.number().min(0).max(100000).default(0),
     carryOver: z.boolean().default(false),
+    noTotal: z.boolean().default(false),
   })).max(30).default([]),
 });
 

@@ -22,7 +22,7 @@ export function PhaseView({ phases, loaves = 1, only, showTotals = true }: {
         <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
             <strong style={{ fontSize: 14 }}>{p.name}</strong>
-            {p.daysBefore === 1 && <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 7px", borderRadius: 8 }}>dag ervoor</span>}
+            {p.daysBefore > 0 && <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 7px", borderRadius: 8 }}>{p.daysBefore === 1 ? "dag ervoor" : `${p.daysBefore} dagen ervoor`}</span>}
             {p.timing && <span style={{ fontSize: 12, color: "var(--accent)" }}>⏱ {p.timing}</span>}
           </div>
           {p.ingredients.length > 0 && (

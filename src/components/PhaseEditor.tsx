@@ -42,9 +42,10 @@ export function PhaseEditor({ phases, onChange }: { phases: DoughPhase[]; onChan
               <option value="mix">Mengen / vormen</option>
               <option value="bake">Bakken (alleen instructies)</option>
             </select>
-            <select value={p.daysBefore} onChange={e => set(i, { daysBefore: e.target.value === "1" ? 1 : 0 })} style={input} title="Wanneer moet deze fase gedaan worden?">
+            <select value={p.daysBefore} onChange={e => set(i, { daysBefore: Number(e.target.value) })} style={input} title="Hoeveel dagen voor de productiedag (de bakdag) moet deze fase gedaan worden?">
               <option value={0}>Op de productiedag</option>
-              <option value={1}>De dag ervoor</option>
+              <option value={1}>1 dag ervoor</option>
+              {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n} dagen ervoor</option>)}
             </select>
             <span style={{ flex: 1 }} />
             <button onClick={() => move(i, -1)} disabled={i === 0} style={iconBtn} title="Omhoog">↑</button>
@@ -72,6 +73,13 @@ export function PhaseEditor({ phases, onChange }: { phases: DoughPhase[]; onChan
                         {ing.carryOver
                           ? <span style={{ fontSize: 13, fontWeight: 600 }}>{fmtGrams(resolved[i].ingredients[k]?.grams ?? 0)}</span>
                           : <NumInput max={100000} step="any" value={ing.grams} onChange={n => setIng(i, k, { grams: n })} style={{ ...input, width: 90, textAlign: "right" }} />}
+                      </td>
+                      <td style={{ padding: "4px 4px", width: 70, textAlign: "right" }}>
+                        {!ing.carryOver && (
+                          <label title="Telt niet mee in het deeggewicht (bijv. droge rogge die eerst gekiemd wordt)" style={{ fontSize: 10, color: "var(--text-subtle)", cursor: "pointer" }}>
+                            <input type="checkbox" checked={!!ing.noTotal} onChange={e => setIng(i, k, { noTotal: e.target.checked })} /> niet in gewicht
+                          </label>
+                        )}
                       </td>
                       <td style={{ padding: "4px 0 4px 4px", width: 28, textAlign: "right" }}>
                         <button onClick={() => set(i, { ingredients: p.ingredients.filter((_, j) => j !== k) })}
