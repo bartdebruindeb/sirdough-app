@@ -325,6 +325,8 @@ export default function WinkelPage() {
   const [saving, setSaving]         = useState<string | null>(null); // date being saved
   const [savedDates, setSavedDates] = useState<string[]>([]);
   const [savingAll, setSavingAll]   = useState(false);
+  // Dates changed by the user but not saved yet — kept across week navigation so all weeks can be saved at once
+  const [dirty, setDirty] = useState<string[]>([]);
 
   // BreadTypeManager visibility toggle
   const [showBreadMgr, setShowBreadMgr] = useState(false);
@@ -357,6 +359,7 @@ export default function WinkelPage() {
     if (!shopData?.logs) return;
     const newQtys: Record<string, Record<string, number>> = {};
     for (const date of weekDays) {
+      if (dirty.includes(date)) continue;
       const wd = getWeekday(date);
       const existing = shopData.logs.find(l => l.date === date);
       if (existing) {
@@ -368,8 +371,7 @@ export default function WinkelPage() {
         newQtys[date] = q;
       }
     }
-    setEditQtys(newQtys);
-    setSavedDates([]);
+    setEditQtys(prev => ({ ...prev, ...newQtys }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopData, weekOffset]);
 
@@ -407,15 +409,21 @@ export default function WinkelPage() {
 
   async function saveAll() {
     setSavingAll(true);
-    for (const date of weekDays) {
+    for (const date of dirty) {
       await saveDay(date);
     }
+    setDirty([]);
     setSavingAll(false);
     // Reload ONCE, after every day is saved — reloading after each day fired
     // overlapping refetches that reset the whole grid to partial/stale server
     // state mid-save, so a just-typed value could flip back to the template value.
     load();
   }
+
+  // Unsaved changes belong to one shop — drop them when switching
+  useEffect(() => { setDirty([]); }, [selectedShop]);
+
+  const markDirty = (dates: string[]) => setDirty(d => [...new Set([...d, ...dates])]);
 
   // ── Copy last week's quantities into the currently viewed week (unsaved until "Alles opslaan") ──
   function copyLastWeek() {
@@ -429,6 +437,7 @@ export default function WinkelPage() {
       });
       return next;
     });
+    markDirty(weekDays.filter((d, i) => !isCutoffPassed(d) && shopData?.logs.some(l => l.date === prevWeekDays[i])));
   }
 
   // ── Active bread types ────────────────────────────────────────────────────
@@ -533,6 +542,26 @@ export default function WinkelPage() {
         <p style={{ color: "var(--text-subtle)" }}>Laden…</p>
       ) : (
         <>
+          {/* ── Save bar (top): one save for every changed day, across all weeks ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14, position: "sticky", top: 0, zIndex: 5, background: "var(--bg, var(--surface))", padding: "8px 0" }}>
+            <button onClick={saveAll} disabled={savingAll || dirty.length === 0} className="btn-primary" style={{ fontSize: 13, padding: "9px 24px" }}>
+              {savingAll ? "Opslaan…" : "Alles opslaan"}
+            </button>
+            <button onClick={undoEditQtys} disabled={!canUndoEditQtys} className="btn-secondary" style={{ fontSize: 13, padding: "9px 16px" }}
+              title="Ongedaan maken (max 5 stappen)">
+              ↩ Ongedaan
+            </button>
+            {dirty.length > 0 && !savingAll && (
+              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600 }}>● {dirty.length} {dirty.length === 1 ? "dag" : "dagen"} gewijzigd, nog niet opgeslagen</span>
+            )}
+            {savedDates.length > 0 && !savingAll && dirty.length === 0 && (
+              <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
+            )}
+            {weekDays.some(d => isCutoffPassed(d)) && (
+              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>🔒 Dagen na de besteldeadline zijn vergrendeld en worden niet opgeslagen.</span>
+            )}
+          </div>
+
           {/* ── Week navigator ── */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <button onClick={() => setWeekOffset(w => w - 1)} className="btn-secondary" style={{ padding: "7px 12px" }}>← Vorige week</button>
@@ -600,6 +629,7 @@ export default function WinkelPage() {
                             placeholder="0"
                             onChange={e => {
                               const v = Math.min(999, parseInt(e.target.value) || 0);
+                              markDirty([date]);
                               setEditQtys(prev => ({
                                 ...prev,
                                 [date]: { ...(prev[date] ?? {}), [bt.slug]: v },
@@ -633,23 +663,6 @@ export default function WinkelPage() {
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          {/* ── Single save button ── */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <button onClick={saveAll} disabled={savingAll} className="btn-primary" style={{ fontSize: 13, padding: "9px 24px" }}>
-              {savingAll ? "Opslaan…" : "Alles opslaan"}
-            </button>
-            <button onClick={undoEditQtys} disabled={!canUndoEditQtys} className="btn-secondary" style={{ fontSize: 13, padding: "9px 16px" }}
-              title="Ongedaan maken (max 5 stappen)">
-              ↩ Ongedaan
-            </button>
-            {savedDates.length > 0 && !savingAll && (
-              <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>✓ Opgeslagen!</span>
-            )}
-            {weekDays.some(d => isCutoffPassed(d)) && (
-              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>🔒 Dagen na de besteldeadline zijn vergrendeld en worden niet opgeslagen.</span>
-            )}
           </div>
 
           {/* ── History ── */}
