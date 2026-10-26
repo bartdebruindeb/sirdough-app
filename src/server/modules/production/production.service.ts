@@ -17,6 +17,8 @@ export type BreadLine = {
   winkelQty: number;
   winkelDelftQty: number;
   winkelDHQty: number;
+  /** Quantity per shop (shop name → pieces), for the "Aantallen" overview — one column per shop. */
+  winkelByShop: Record<string, number>;
   horecaQty: number;
   totalQty: number;
   doughWeightTotal: number;
@@ -52,6 +54,7 @@ export type ProductionPlan = {
   weekday: number;
   breadLines: BreadLine[];
   mixerGroups: MixerGroup[];
+  shopNames: string[];
   notes: string;
 };
 
@@ -216,6 +219,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       winkelQty,
       winkelDelftQty: winkelDelftMap[bt.id] ?? 0,
       winkelDHQty: winkelDHMap[bt.id] ?? 0,
+      winkelByShop: Object.fromEntries(shopNames.map(n => [n, winkelByShop[n]?.[bt.id] ?? 0])),
       horecaQty,
       totalQty,
       doughWeightTotal,
@@ -291,7 +295,7 @@ export async function getProductionPlan(tenantId: string, productionDate: string
       };
     });
 
-  return { tenantId, productionDate, deliveryDate, weekday, breadLines, mixerGroups, notes: "" };
+  return { tenantId, productionDate, deliveryDate, weekday, breadLines, mixerGroups, shopNames, notes: "" };
 }
 
 export type PrepTask = { group: string; label: string; loaves: number; productionDate: string; daysBefore: number; phases: DoughPhase[] };

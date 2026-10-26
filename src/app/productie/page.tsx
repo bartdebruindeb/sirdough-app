@@ -13,7 +13,7 @@ type RecipeInfo = { waterPct: number; desemPct: number; zoutPct: number; inwasPc
 type BreadLine = {
   breadTypeId: string; slug: string; name: string; category: string;
   mixerGroup?: string | null; basketType?: string | null; basketStyle?: string | null;
-  winkelQty: number; winkelDelftQty?: number; winkelDHQty?: number;
+  winkelQty: number; winkelDelftQty?: number; winkelDHQty?: number; winkelByShop?: Record<string, number>;
   horecaQty: number; totalQty: number;
   doughWeightTotal: number; flourWeightTotal: number;
   toppingWeightPerLoaf: number; toppings: Topping[];
@@ -26,7 +26,7 @@ type MixerGroup = {
 };
 type Plan = {
   productionDate: string; deliveryDate: string; weekday: number;
-  breadLines: BreadLine[]; mixerGroups: MixerGroup[];
+  breadLines: BreadLine[]; mixerGroups: MixerGroup[]; shopNames?: string[];
 };
 type Batch = {
   id: string;
@@ -859,8 +859,9 @@ export default function ProductiePage() {
                 <thead>
                   <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
                     <th style={{ textAlign: "left",  padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Broodsoort</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. Delft</th>
-                    <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>W. DH</th>
+                    {(plan?.shopNames ?? []).map(n => (
+                      <th key={n} style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>{n.replace(/^Winkel /, "W. ")}</th>
+                    ))}
                     <th style={{ textAlign: "right", padding: "10px 10px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Horeca</th>
                     <th style={{ textAlign: "right", padding: "10px 20px", color: "var(--text-subtle)", fontWeight: 500, fontSize: 12, textTransform: "uppercase" }}>Totaal</th>
                   </tr>
@@ -869,8 +870,9 @@ export default function ProductiePage() {
                   {planLines.filter(l => l.totalQty > 0).map((line, i) => (
                     <tr key={line.breadTypeId} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
                       <td style={{ padding: "8px 20px" }}>{line.name}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDelftQty ?? line.winkelQty)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt((line as any).winkelDHQty ?? 0)}</td>
+                      {(plan?.shopNames ?? []).map(n => (
+                        <td key={n} style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.winkelByShop?.[n] ?? 0)}</td>
+                      ))}
                       <td style={{ padding: "8px 10px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(line.horecaQty)}</td>
                       <td style={{ padding: "8px 20px", textAlign: "right" }}>
                         <span style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{line.totalQty}</span>
@@ -879,8 +881,7 @@ export default function ProductiePage() {
                   ))}
                   <tr style={{ borderTop: "2px solid var(--border)" }}>
                     <td style={{ padding: "10px 20px", fontWeight: 600 }}>Totaal</td>
-                    <td style={{ padding: "10px 10px" }}></td>
-                    <td style={{ padding: "10px 10px" }}></td>
+                    {(plan?.shopNames ?? []).map(n => <td key={n} style={{ padding: "10px 10px" }}></td>)}
                     <td style={{ padding: "10px 10px" }}></td>
                     <td style={{ padding: "10px 20px", textAlign: "right" }}>
                       <span style={{ fontWeight: 800, fontSize: 16, color: "var(--accent)" }}>
