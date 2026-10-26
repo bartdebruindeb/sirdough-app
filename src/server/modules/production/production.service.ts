@@ -299,6 +299,32 @@ export async function getProductionPlan(tenantId: string, productionDate: string
   return { tenantId, productionDate, deliveryDate, weekday, breadLines, mixerGroups, notes: "" };
 }
 
+export type PrepTask = { group: string; label: string; loaves: number; productionDate: string; daysBefore: number; phases: DoughPhase[] };
+export type PrepDay = { date: string; tasks: PrepTask[] };
+
+const addDays = (d: string, n: number) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+
+/**
+ * Week-ahead schedule for phased doughs (e.g. gekiemde rogge): for each of the next `days` days, the
+ * steps that have to be done that day. A phase with daysBefore = k is done k days before the
+ * production day it serves, scaled to THAT production day's loaf count — so every day's work is
+ * derived backwards from the orders that make it necessary.
+ */
+export async function getPrepSchedule(tenantId: string, from: string, days = 7): Promise<PrepDay[]> {
+  const MAX_BEFORE = 7;
+  const dates = Array.from({ length: days + MAX_BEFORE }, (_, j) => addDays(from, j));
+  const plans: ProductionPlan[] = [];
+  for (let i = 0; i < dates.length; i += 4) // small batches: each plan is a handful of queries
+    plans.push(...await Promise.all(dates.slice(i, i + 4).map(d => getProductionPlan(tenantId, d))));
+  return Array.from({ length: days }, (_, t) => ({
+    date: dates[t],
+    tasks: Array.from({ length: MAX_BEFORE + 1 }, (_, k) => k).flatMap(k =>
+      plans[t + k].mixerGroups
+        .filter(mg => mg.totalLoaves > 0 && mg.phases.some(p => p.daysBefore === k))
+        .map(mg => ({ group: mg.group, label: mg.label, loaves: mg.totalLoaves, productionDate: plans[t + k].productionDate, daysBefore: k, phases: mg.phases }))),
+  }));
+}
+
 export async function getTenantIdBySlug(slug: string): Promise<string | null> {
   const tenant = await prisma.tenant.findUnique({ where: { slug } });
   return tenant?.id ?? null;

@@ -329,32 +329,30 @@ function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup 
 }
 
 // ─── Voorbereiding ────────────────────────────────────────────────────────────
-// Phases marked "N dagen ervoor" (overnight voordeeg, germinating rye, ...) belong to a later
-// production day but have to be done today. plans[k] is the plan for today + k days; list the
-// phases of that plan that are due k days ahead, scaled to that day's loaf count.
-function VoorMorgen({ plans }: { plans: Record<number, Plan | undefined> }) {
-  const sections = [1, 2, 3, 4, 5, 6, 7].flatMap(k => {
-    const rows = (plans[k]?.mixerGroups ?? []).filter(mg => mg.totalLoaves > 0 && (mg.phases ?? []).some(p => p.daysBefore === k));
-    return rows.length ? [{ k, date: plans[k]!.productionDate, rows }] : [];
-  });
-  if (sections.length === 0) return null;
+// Week-ahead prep for phased doughs (gekiemde rogge, 3-fasen rogge): per day the steps due that day,
+// each scaled to the loaf count of the production day it serves (computed server-side, backwards
+// from the orders).
+type PrepDay = { date: string; tasks: { group: string; label: string; loaves: number; productionDate: string; daysBefore: number; phases: DoughPhase[] }[] };
+function VoorMorgen({ days, today }: { days: PrepDay[]; today: string }) {
+  const busy = days.filter(d => d.tasks.length > 0);
+  if (busy.length === 0) return null;
   const fmt = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
   return (
-    <div className="card" style={{ overflow: "hidden" }}>
+    <div className="card" style={{ overflow: "hidden", gridColumn: "1 / -1" }}>
       <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "#fef3c7" }}>
-        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Vandaag klaarzetten voor later</h2>
-        <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Stappen die vooraf moeten, op basis van de bestellingen van de komende dagen</p>
+        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Voorbereiding komende week</h2>
+        <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Per dag de stappen die gedaan moeten worden, teruggerekend vanaf de bestellingen</p>
       </div>
-      <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 18 }}>
-        {sections.map(({ k, date, rows }) => (
-          <div key={k}>
-            <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase" }}>
-              Voor de productie van {fmt(date)} ({k === 1 ? "morgen" : `over ${k} dagen`})
+      <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 20 }}>
+        {busy.map(day => (
+          <div key={day.date}>
+            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, textTransform: "capitalize" }}>
+              {fmt(day.date)}{day.date === today && <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent)", color: "#fff", padding: "1px 8px", borderRadius: 8, textTransform: "none" }}>vandaag</span>}
             </p>
-            {rows.map(mg => (
-              <div key={mg.group} style={{ marginBottom: 10 }}>
-                <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{mg.label} <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>— {mg.totalLoaves} broden</span></p>
-                <PhaseView phases={mg.phases ?? []} loaves={mg.totalLoaves} only={p => p.daysBefore === k} />
+            {day.tasks.map(t => (
+              <div key={`${t.group}-${t.productionDate}`} style={{ marginBottom: 10 }}>
+                <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{t.label} <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>— {t.loaves} broden voor de productie van {fmt(t.productionDate)}</span></p>
+                <PhaseView phases={t.phases} loaves={t.loaves} only={p => p.daysBefore === t.daysBefore} />
               </div>
             ))}
           </div>
@@ -640,8 +638,7 @@ export default function ProductiePage() {
   const [date, setDate]       = useState(today);
   const [plan, setPlan]       = useState<Plan | null>(null);
   const [nextPlan, setNextPlan] = useState<Plan | null>(null);
-  // plans for today + 2..7 days, for the "N dagen ervoor" prep steps (index = days ahead; 1 = nextPlan)
-  const [aheadPlans, setAheadPlans] = useState<Record<number, Plan | undefined>>({});
+  const [prepDays, setPrepDays] = useState<PrepDay[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
@@ -686,12 +683,8 @@ export default function ProductiePage() {
       setPlan({ ...data, breadLines: data.breadLines ?? [], mixerGroups: data.mixerGroups ?? [] });
       if (!nextData.error) setNextPlan({ ...nextData, breadLines: nextData.breadLines ?? [], mixerGroups: nextData.mixerGroups ?? [] });
       setLoading(false);
-      const day = (n: number) => { const nd = new Date(d + "T12:00:00Z"); nd.setUTCDate(nd.getUTCDate() + n); return nd.toISOString().slice(0, 10); };
-      setAheadPlans({});
-      [2, 3, 4, 5, 6, 7].forEach(n =>
-        fetch(`/api/production?date=${day(n)}`, { headers: { "x-role": role ?? "" } }).then(r => r.json())
-          .then(pd => { if (!pd.error) setAheadPlans(prev => (d === date ? { ...prev, [n]: { ...pd, breadLines: pd.breadLines ?? [], mixerGroups: pd.mixerGroups ?? [] } } : prev)); })
-          .catch(() => {}));
+      fetch(`/api/production/prep?date=${d}`, { headers: { "x-role": role ?? "" } }).then(r => r.json())
+        .then(pd => setPrepDays(pd.days ?? [])).catch(() => setPrepDays([]));
     }).catch(e => { setError(String(e)); setLoading(false); });
   }
 
@@ -1132,7 +1125,7 @@ export default function ProductiePage() {
           {/* ── Desem + Manden ── */}
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
             <DesemTotaal groups={nextPlan?.mixerGroups ?? planGroups} deliveryDate={nextPlan?.deliveryDate ?? plan.deliveryDate} />
-            <VoorMorgen plans={{ ...aheadPlans, 1: nextPlan ?? undefined }} />
+            <VoorMorgen days={prepDays} today={date} />
             {hasAny && <MandenTotaal lines={planLines} />}
           </section>
 
