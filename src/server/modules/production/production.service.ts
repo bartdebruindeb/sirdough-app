@@ -317,7 +317,7 @@ export async function getPrepSchedule(tenantId: string, from: string, days = 7):
   for (let i = 0; i < dates.length; i += 4) // small batches: each plan is a handful of queries
     plans.push(...await Promise.all(dates.slice(i, i + 4).map(d => getProductionPlan(tenantId, d))));
   return Array.from({ length: days }, (_, t) => ({
-    date: dates[t],
+    date: addDays(from, t),
     tasks: Array.from({ length: MAX_BEFORE + 2 }, (_, i) => i - 1).flatMap(k =>
       plans[t + k + 1].mixerGroups
         .filter(mg => mg.totalLoaves > 0 && mg.phases.some(p => p.daysBefore === k))
