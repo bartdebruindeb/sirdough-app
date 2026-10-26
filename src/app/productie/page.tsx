@@ -136,7 +136,7 @@ type VullingMode = "mixer" | "hand" | "none";
 function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number }) {
   if (mg.group === "rogge") return null;
 
-  type BreadEntry = { key: string; label: string; totalLoaves: number; totalDough: number; totalFilling: number };
+  type BreadEntry = { key: string; label: string; qty: number; totalLoaves: number; totalDough: number; totalFilling: number };
   const breadMap = new Map<string, BreadEntry>();
 
   for (const line of mg.lines) {
@@ -148,8 +148,9 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
     const totalFilling  = line.toppings.reduce((s, t) => s + t.gramsPerLoaf * line.totalQty, 0);
     const doughKgPerLoaf = line.totalQty > 0 ? (line.doughWeightTotal / line.totalQty) / 1000 : 1;
     const loavesEq = line.totalQty * (doughKgPerLoaf > 1.2 ? 1.5 : 1);
-    if (!breadMap.has(key)) breadMap.set(key, { key, label, totalLoaves: 0, totalDough: 0, totalFilling: 0 });
+    if (!breadMap.has(key)) breadMap.set(key, { key, label, qty: 0, totalLoaves: 0, totalDough: 0, totalFilling: 0 });
     const e = breadMap.get(key)!;
+    e.qty          += line.totalQty;
     e.totalLoaves  += loavesEq;
     e.totalDough   += pureDough;
     e.totalFilling += totalFilling;
@@ -186,7 +187,7 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
           {entries.map(e => (
             <tr key={e.key} style={{ borderBottom: "1px solid var(--border)" }}>
               <td style={{ padding: "8px 0" }}>{e.label}</td>
-              <td style={{ padding: "8px", textAlign: "right", fontWeight: 600 }}>{Number.isFinite(e.totalLoaves) ? Math.round(e.totalLoaves) : "—"}</td>
+              <td style={{ padding: "8px", textAlign: "right", fontWeight: 600 }}>{e.qty}{Math.round(e.totalLoaves) !== e.qty && <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-subtle)" }}> (≈ {Math.round(e.totalLoaves)} × 1 kg)</span>}</td>
               <td style={{ padding: "8px", textAlign: "right", color: "var(--text-muted)" }}>{g(e.totalFilling)}</td>
               <td style={{ padding: "8px", textAlign: "center" }}>
                 <input type="checkbox" checked={getMode(e.key) === "mixer"} onChange={ev => setMode(e.key, ev.target.checked ? "mixer" : "none")} />
