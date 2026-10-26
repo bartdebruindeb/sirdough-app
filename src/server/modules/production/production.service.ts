@@ -110,25 +110,20 @@ export async function getProductionPlan(tenantId: string, productionDate: string
   for (const shop of shops) winkelByShop[shop.name] = {};
   const winkelMap: Record<string, number> = {};
 
-  if (winkelLogs.length > 0) {
-    for (const log of winkelLogs) {
-      const quantities = log.quantities as Record<string, number>;
-      if (!winkelByShop[log.shopName]) winkelByShop[log.shopName] = {};
-      for (const [slug, qty] of Object.entries(quantities)) {
-        const btId = slugToId[slug];
-        if (!btId) continue;
-        winkelMap[btId] = (winkelMap[btId] ?? 0) + qty;
-        winkelByShop[log.shopName][btId] = (winkelByShop[log.shopName][btId] ?? 0) + qty;
-      }
-    }
-  } else {
-    shops.forEach((shop, i) => {
-      for (const row of shopTemplates[i]) {
-        winkelByShop[shop.name][row.breadTypeId] = (winkelByShop[shop.name][row.breadTypeId] ?? 0) + row.quantity;
-        winkelMap[row.breadTypeId] = (winkelMap[row.breadTypeId] ?? 0) + row.quantity;
-      }
-    });
-  }
+  // Per shop: a saved log wins, otherwise that shop's weekly template. (Deciding this once for all
+  // shops meant a single saved shop hid every other shop's template, e.g. for next week's forecast.)
+  const logByShop = new Map(winkelLogs.map(l => [l.shopName, l.quantities as Record<string, number>]));
+  const addWinkel = (shopName: string, btId: string, qty: number) => {
+    if (!winkelByShop[shopName]) winkelByShop[shopName] = {};
+    winkelMap[btId] = (winkelMap[btId] ?? 0) + qty;
+    winkelByShop[shopName][btId] = (winkelByShop[shopName][btId] ?? 0) + qty;
+  };
+  for (const [shopName, quantities] of logByShop)
+    for (const [slug, qty] of Object.entries(quantities)) if (slugToId[slug]) addWinkel(shopName, slugToId[slug], qty);
+  shops.forEach((shop, i) => {
+    if (logByShop.has(shop.name)) return;
+    for (const row of shopTemplates[i]) addWinkel(shop.name, row.breadTypeId, row.quantity);
+  });
 
   // Backwards-compat: first two shops (alphabetical) map to the "aantallen" table's
   // two fixed columns. Bakeries with 1 or >2 shops still get correct grand totals via
