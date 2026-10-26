@@ -3,6 +3,8 @@ import { useRole } from "@/lib/role-context";
 import React, { useEffect, useState, useCallback } from "react";
 import { type DoughPhase } from "@/lib/dough-phases";
 import { PhaseView } from "@/components/PhaseView";
+import { NumInput } from "@/components/NumInput";
+import { parsePhases } from "@/lib/dough-phases";
 
 const WEEKDAYS = ["","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
 
@@ -632,6 +634,86 @@ function BatchAdvanceButton({ batch, onUpdated }: { batch: Batch; onUpdated: () 
   );
 }
 
+// ─── HandmatigDeeg ───────────────────────────────────────────────────────────
+// Scratch calculator for test breads and one-offs: pick a bread, an amount and a mixer, get the
+// ingredients. Nothing is saved and it never touches the plan or the orders.
+type ManualBread = {
+  id: string; name: string;
+  doughType?: { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; flourLines: { name: string; percentage: number }[]; extras: { name: string; percentage: number }[]; phases?: unknown } | null;
+  recipe?: { waterPct: number; desemPct: number; zoutPct: number; inwasPct: number; doughWeightPerLoaf: number; flourLines: { name: string; percentage: number }[]; toppings: { name: string; gramsPerLoaf: number }[] } | null;
+};
+function HandmatigDeeg({ role }: { role: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [breads, setBreads] = useState<ManualBread[]>([]);
+  const [breadId, setBreadId] = useState("");
+  const [amount, setAmount] = useState(1);
+  const [mixer, setMixer] = useState(1);
+  useEffect(() => {
+    if (!open || breads.length > 0) return;
+    fetch("/api/recipes", { headers: { "x-role": role ?? "" } }).then(r => r.json())
+      .then(d => setBreads((d.breadTypes ?? []).filter((b: ManualBread) => b.recipe || b.doughType))).catch(() => {});
+  }, [open, role, breads.length]);
+  const bread = breads.find(b => b.id === breadId);
+  const r = bread?.recipe, dt = bread?.doughType;
+  const src = dt ?? r;
+  let calc: React.ReactNode = null;
+  if (bread && src && r && amount > 0) {
+    const fillingsG = r.toppings.reduce((s, t) => s + t.gramsPerLoaf, 0) * amount;
+    const doughNoFill = Math.max(0, r.doughWeightPerLoaf * amount - fillingsG);
+    const phases = parsePhases(dt?.phases);
+    const mg: MixerGroup = {
+      group: "manual", label: bread.name, totalLoaves: amount, totalDoughKg: (doughNoFill + fillingsG) / 1000, totalDoughNoFillingsKg: doughNoFill / 1000,
+      flourWeightKg: 0, phases, lines: [],
+      recipe: { waterPct: src.waterPct, desemPct: src.desemPct, zoutPct: src.zoutPct, inwasPct: src.inwasPct, flourLines: dt?.flourLines ?? r.flourLines, extras: dt?.extras ?? [] },
+    };
+    calc = phases.length > 0
+      ? <PhaseView phases={phases} loaves={amount} />
+      : (<>
+          <MixerIngredients mg={mg} mixers={1} />
+          {r.toppings.length > 0 && (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "10px 0 0" }}>
+              Vullingen: {r.toppings.map(t => `${t.name} ${g(t.gramsPerLoaf * amount)}`).join(" · ")}
+            </p>
+          )}
+        </>);
+  }
+  const field: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--surface)" };
+  return (
+    <div className="card" style={{ padding: "1rem 1.5rem", marginTop: 16 }}>
+      <button onClick={() => setOpen(o => !o)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 14, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 11, transform: open ? "rotate(90deg)" : "none", display: "inline-block", transition: "0.15s" }}>▶</span>
+        Handmatig berekenen <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-subtle)" }}>(testbroden e.d. — wordt nergens opgeslagen)</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase" }}>Broodsoort<br />
+              <select value={breadId} onChange={e => setBreadId(e.target.value)} style={{ ...field, minWidth: 200, marginTop: 4 }}>
+                <option value="">— kies —</option>
+                {breads.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase" }}>Aantal<br />
+              <NumInput int min={1} max={9999} value={amount} onChange={setAmount} style={{ ...field, width: 90, marginTop: 4 }} />
+            </label>
+            <label style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase" }}>Mixer<br />
+              <select value={mixer} onChange={e => setMixer(Number(e.target.value))} style={{ ...field, marginTop: 4 }}>
+                {[1, 2, 3, 4].map(n => <option key={n} value={n}>Mixer {n}</option>)}
+              </select>
+            </label>
+          </div>
+          {calc && (
+            <div style={{ marginTop: 6 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 0" }}>{bread!.name} × {amount} — Mixer {mixer}</p>
+              {calc}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ProductiePage() {
   const { role } = useRole();
@@ -1115,14 +1197,15 @@ export default function ProductiePage() {
           )}
 
           {/* ── Deeg calculator (always visible) ── */}
-          {planGroups.length > 0 && (
-            <section>
-              <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
+          <section>
+            <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
+            {planGroups.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
                 {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughKg]} assignment={additiveAssignment[mg.group] ?? {}} />)}
               </div>
-            </section>
-          )}
+            )}
+            <HandmatigDeeg role={role} />
+          </section>
 
           {/* ── Desem + Manden ── */}
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
