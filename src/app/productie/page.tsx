@@ -329,19 +329,20 @@ function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup 
 }
 
 // ─── Voorbereiding ────────────────────────────────────────────────────────────
-// Week-ahead prep for phased doughs (gekiemde rogge, 3-fasen rogge): per day the steps due that day,
+// Prep for phased doughs (gekiemde rogge, 3-fasen rogge): only the steps due on the selected day —
+// one block per wave in progress (e.g. gekiemde rogge is baked twice a week, so two waves overlap) —
 // each scaled to the loaf count of the production day it serves (computed server-side, backwards
 // from the orders).
 type PrepDay = { date: string; tasks: { group: string; label: string; loaves: number; productionDate: string; daysBefore: number; phases: DoughPhase[] }[] };
 function VoorMorgen({ days, today }: { days: PrepDay[]; today: string }) {
-  const busy = days.filter(d => d.tasks.length > 0);
+  const busy = days.filter(d => d.date === today && d.tasks.length > 0);
   if (busy.length === 0) return null;
   const fmt = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div className="card" style={{ overflow: "hidden", gridColumn: "1 / -1" }}>
       <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", background: "#fef3c7" }}>
-        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Voorbereiding komende week</h2>
-        <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Per dag de stappen die gedaan moeten worden, teruggerekend vanaf de bestellingen</p>
+        <h2 style={{ fontSize: 16, margin: 0, color: "var(--accent)" }}>Voorbereiding vandaag</h2>
+        <p style={{ fontSize: 12, color: "var(--accent)", margin: "3px 0 0", fontWeight: 500 }}>Alleen de stappen voor deze dag, teruggerekend vanaf de bestellingen</p>
       </div>
       <div style={{ padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: 20 }}>
         {busy.map(day => (
