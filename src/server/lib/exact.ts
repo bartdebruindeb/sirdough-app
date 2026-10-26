@@ -127,15 +127,17 @@ export async function getDivision(token: string): Promise<number> {
   return data.d?.results?.[0]?.CurrentDivision ?? data.CurrentDivision;
 }
 
-// Exact refresh tokens die 30 days after they were issued (= with the last access token, which
-// lives 10 min). A stored token past that is a dead connection — report it as disconnected so
-// the UI offers "Koppel Exact" instead of a green check while every Exact call fails.
-const REFRESH_TOKEN_LIFETIME_MS = 30 * 24 * 3600_000 - 10 * 60_000;
-
+// The only reliable test of a connection is the refresh itself: Exact's refresh token can die well
+// before the "30 days" the docs promise, so a date calculation showed a green check (and never
+// the reconnect pop-up) while every Exact call failed. A stale access token is therefore refreshed
+// here — which doubles as a keep-alive — and only a rejected refresh counts as "expired".
+// Network hiccups don't: they leave the state "connected" so nobody is nagged for nothing.
 export async function exactTokenState(tenantId: string): Promise<"connected" | "expired" | "none"> {
   const row = await (prisma as any).exactToken.findUnique({ where: { tenantId } });
   if (!row) return "none";
-  return new Date(row.expiresAt).getTime() + REFRESH_TOKEN_LIFETIME_MS > Date.now() ? "connected" : "expired";
+  if (new Date(row.expiresAt).getTime() - Date.now() >= 60_000) return "connected";
+  try { await getAccessToken(tenantId); return "connected"; }
+  catch (e: any) { return /refresh failed/i.test(String(e?.message)) ? "expired" : "connected"; }
 }
 
 export async function exactConnected(tenantId: string): Promise<boolean> {

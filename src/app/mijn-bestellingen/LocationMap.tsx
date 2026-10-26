@@ -24,7 +24,7 @@ export function LocationMap({ lat, lng, label }: { lat: number; lng: number; lab
       });
       if (!map.current) {
         map.current = L.map(el.current, { zoomControl: false, scrollWheelZoom: false, attributionControl: false });
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", { subdomains: "abcd", maxZoom: 19 }).addTo(map.current);
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { subdomains: "abcd", maxZoom: 19 }).addTo(map.current);
       }
       map.current.setView([lat, lng], 15);
       // Clear the previous marker (keep the tile layer, which has _url) and re-add.

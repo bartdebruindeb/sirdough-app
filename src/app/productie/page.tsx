@@ -321,7 +321,7 @@ function MixerCard({ label, virtualMg }: { label: string; virtualMg: MixerGroup 
         </table>
       )}
       {virtualMg.phases && virtualMg.phases.length > 0
-        ? <div style={{ marginTop: 12 }}><PhaseView phases={virtualMg.phases} loaves={loaves} /></div>
+        ? <div style={{ marginTop: 12 }}><PhaseView phases={virtualMg.phases} loaves={loaves} only={p => p.daysBefore === 0} /></div>
         : <MixerIngredients mg={virtualMg} mixers={1} />}
       <VullingenCalculator mg={virtualMg} mixers={1} />
     </div>

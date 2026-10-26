@@ -269,9 +269,9 @@ function DeliveryMapWidget({ role }: { role: string | null }) {
       if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
       const map = L.map(mapRef.current, { zoomControl: true, scrollWheelZoom: true }).setView([51.92, 4.47], 12);
       leafletRef.current = map;
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-        attribution: "© OpenStreetMap contributors, © CartoDB",
-        subdomains: "abcd", maxZoom: 19,
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 19,
       }).addTo(map);
       setMapReady(true);
 

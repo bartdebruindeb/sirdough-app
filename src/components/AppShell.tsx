@@ -19,7 +19,7 @@ function ExactReconnectPrompt() {
   if (!show) return null;
   const dismiss = () => { try { sessionStorage.setItem("exact-reconnect-dismissed", "1"); } catch {} setShow(false); };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div className="card" role="dialog" aria-modal="true" aria-labelledby="exact-reconnect-title" style={{ maxWidth: 420, padding: "1.5rem" }}>
         <h2 id="exact-reconnect-title" style={{ fontSize: 17, marginTop: 0 }}>Exact Online opnieuw koppelen</h2>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>

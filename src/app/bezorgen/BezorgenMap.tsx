@@ -153,8 +153,8 @@ export default function BezorgenMap({ rows }: Props) {
 
       if (!leafletMap.current) {
         leafletMap.current = L.map(mapRef.current!, { zoomControl: true, scrollWheelZoom: true });
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-          attribution: "© OpenStreetMap contributors, © CartoDB",
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
           subdomains: "abcd", maxZoom: 19,
         }).addTo(leafletMap.current);
       }
