@@ -39,6 +39,8 @@ type Batch = {
 
 const ADDITIVE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn","morning-buns","kaneel-buns","kardemom-buns","baguette-kaas"]);
 // Only these get distributed across mixers; morning/kaneel/kardemom buns go in bulk
+// Mixing loss: the basic recipe is made 0.5% heavier than the dough that ends up in the loaves
+const WASTE = 0.005;
 const DISTRIBUTE_SLUGS = new Set(["sesam","sesam-15kg","zaden","zaden-15kg","olijf","rozijn"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,13 +78,13 @@ function MixerIngredients({ mg, mixers }: { mg: MixerGroup; mixers: number }) {
   if (!r || mg.totalDoughNoFillingsKg === 0) return null;
   const extras = r.extras ?? [];
   const extrasPct = extras.reduce((s, e) => s + e.percentage, 0);
-  const baseDough  = (mg.totalDoughNoFillingsKg * 1000) / mixers;
+  const baseDough  = (mg.totalDoughNoFillingsKg * 1000 * (1 + WASTE)) / mixers;
   const totalPct   = 100 + r.waterPct + r.desemPct + r.zoutPct + r.inwasPct + extrasPct;
   const flour      = (baseDough / totalPct) * 100;
   return (
     <div style={{ marginTop: 12 }}>
       <p style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
-        Ingrediënten per mixer ({mixers}x)
+        Ingrediënten per mixer ({mixers}x) · basisdeeg incl. {WASTE * 100}% verlies
       </p>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -242,33 +244,29 @@ function VullingenCalculator({ mg, mixers }: { mg: MixerGroup; mixers: number })
 // instead of stacking mixers inside a single shared card.
 function MixerGroupCard({ mg, weightsKg, assignment }: { mg: MixerGroup; weightsKg: number[]; assignment: Record<string, number> }) {
   const mixers = weightsKg.length || 1;
+  // Fillings (sesam/zaden/olijf/rozijn breads) are assigned to ONE mixer and go in whole; the other
+  // breads are split over the mixers. A mixer's weight is the total incl. fillings, so what's left
+  // for the regular breads is weight − the assigned fillings' dough, and the basic recipe is the
+  // mixer weight minus ONLY the fillings that actually go into that mixer.
+  const kgOf = (ls: typeof mg.lines, f: (l: typeof mg.lines[number]) => number) => ls.reduce((a, l) => a + f(l), 0) / 1000;
+  const dist = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug));
+  const regular = mg.lines.filter(l => !DISTRIBUTE_SLUGS.has(l.slug));
+  const regularDoughKg = kgOf(regular, l => l.doughWeightTotal);
+  const regularFillKg  = kgOf(regular, l => l.toppingWeightPerLoaf * l.totalQty);
   return (
     <>
       {weightsKg.map((wKg, i) => {
         const batchNum = i + 1;
-        // wKg is the mixer's TOTAL dough weight incl. fillings; the dough without fillings follows from it
-        const frac = mg.totalDoughKg > 0 ? wKg / mg.totalDoughKg : 0;
-        const mixerLines = mg.lines.map(l => {
-          // Additives (sesam/zaden/olijf/rozijn) are explicitly assigned to one mixer via
-          // "Verdeel vullingen" — that mixer gets the FULL amount, others get none. Only
-          // regular dough lines are split proportionally by mixer weight.
-          if (DISTRIBUTE_SLUGS.has(l.slug)) {
-            const assignedTo = assignment[l.breadTypeId] ?? 1;
-            if (assignedTo !== batchNum) return { ...l, totalQty: 0, doughWeightTotal: 0, flourWeightTotal: 0 };
-            return l;
-          }
-          return {
-            ...l,
-            totalQty: Math.round(l.totalQty * frac),
-            doughWeightTotal: l.doughWeightTotal * frac,
-            flourWeightTotal: l.flourWeightTotal * frac,
-          };
-        });
-        const fillingsKg = mg.totalDoughKg - mg.totalDoughNoFillingsKg;
+        const mine = dist.filter(l => (assignment[l.breadTypeId] ?? 1) === batchNum);
+        const share = regularDoughKg > 0 ? Math.max(0, (wKg - kgOf(mine, l => l.doughWeightTotal)) / regularDoughKg) : 0;
+        const mixerLines = mg.lines.map(l => DISTRIBUTE_SLUGS.has(l.slug)
+          ? ((assignment[l.breadTypeId] ?? 1) === batchNum ? l : { ...l, totalQty: 0, doughWeightTotal: 0, flourWeightTotal: 0 })
+          : { ...l, totalQty: Math.round(l.totalQty * share), doughWeightTotal: l.doughWeightTotal * share, flourWeightTotal: l.flourWeightTotal * share });
+        const fillingsKg = kgOf(mine, l => l.toppingWeightPerLoaf * l.totalQty) + regularFillKg * share;
         const virtualMg: MixerGroup = {
           ...mg,
           lines: mixerLines,
-          totalDoughNoFillingsKg: wKg - fillingsKg * frac,
+          totalDoughNoFillingsKg: Math.max(0, wKg - fillingsKg),
           totalDoughKg: wKg,
         };
         const label = mixers > 1 ? `${mg.label} ${i + 1}` : mg.label;
