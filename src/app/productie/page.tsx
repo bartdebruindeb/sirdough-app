@@ -246,7 +246,8 @@ function MixerGroupCard({ mg, weightsKg, assignment }: { mg: MixerGroup; weights
     <>
       {weightsKg.map((wKg, i) => {
         const batchNum = i + 1;
-        const frac = mg.totalDoughNoFillingsKg > 0 ? wKg / mg.totalDoughNoFillingsKg : 0;
+        // wKg is the mixer's TOTAL dough weight incl. fillings; the dough without fillings follows from it
+        const frac = mg.totalDoughKg > 0 ? wKg / mg.totalDoughKg : 0;
         const mixerLines = mg.lines.map(l => {
           // Additives (sesam/zaden/olijf/rozijn) are explicitly assigned to one mixer via
           // "Verdeel vullingen" — that mixer gets the FULL amount, others get none. Only
@@ -267,8 +268,8 @@ function MixerGroupCard({ mg, weightsKg, assignment }: { mg: MixerGroup; weights
         const virtualMg: MixerGroup = {
           ...mg,
           lines: mixerLines,
-          totalDoughNoFillingsKg: wKg,
-          totalDoughKg: wKg + fillingsKg * frac,
+          totalDoughNoFillingsKg: wKg - fillingsKg * frac,
+          totalDoughKg: wKg,
         };
         const label = mixers > 1 ? `${mg.label} ${i + 1}` : mg.label;
         return <MixerCard key={i} label={label} virtualMg={virtualMg} />;
@@ -733,7 +734,7 @@ export default function ProductiePage() {
     for (const mg of plan.mixerGroups) {
       const c = mg.group === "boeren" ? 3 : 1;
       defaults[mg.group] = c;
-      weightDefaults[mg.group] = Array.from({ length: c }, () => Number((mg.totalDoughNoFillingsKg / c).toFixed(2)));
+      weightDefaults[mg.group] = Array.from({ length: c }, () => Number((mg.totalDoughKg / c).toFixed(2)));
     }
     setMixerCounts(defaults);
     setMixerWeights(weightDefaults);
@@ -757,7 +758,7 @@ export default function ProductiePage() {
       const count = Math.max(1, mixerCounts[mg.group] ?? 1);
       const weightsKg = mixerWeights[mg.group]?.length === count
         ? mixerWeights[mg.group]
-        : Array.from({ length: count }, () => mg.totalDoughNoFillingsKg / count);
+        : Array.from({ length: count }, () => mg.totalDoughKg / count);
       const weightSum = weightsKg.reduce((s, v) => s + v, 0) || 1;
       const assignment = additiveAssignment[mg.group] ?? {};
       let loavesAssigned = 0;
@@ -811,7 +812,7 @@ export default function ProductiePage() {
     } else if (mixerWeights[mg.group]?.length) {
       weightsByGroup[mg.group] = mixerWeights[mg.group];
     } else {
-      weightsByGroup[mg.group] = [mg.totalDoughNoFillingsKg];
+      weightsByGroup[mg.group] = [mg.totalDoughKg];
     }
   }
 
@@ -926,9 +927,9 @@ export default function ProductiePage() {
                   const count    = Math.max(1, mixerCounts[mg.group] ?? 1);
                   const weightsKg = mixerWeights[mg.group]?.length === count
                     ? mixerWeights[mg.group]
-                    : Array.from({ length: count }, () => Number((mg.totalDoughNoFillingsKg / count).toFixed(2)));
+                    : Array.from({ length: count }, () => Number((mg.totalDoughKg / count).toFixed(2)));
                   const weightSum = weightsKg.reduce((s, v) => s + v, 0);
-                  const weightWarn = Math.abs(weightSum - mg.totalDoughNoFillingsKg) > 0.05;
+                  const weightWarn = Math.abs(weightSum - mg.totalDoughKg) > 0.05;
                   const additiveLinesInGroup = mg.lines.filter(l => DISTRIBUTE_SLUGS.has(l.slug) && l.totalQty > 0);
                   // Each product (incl. size variants like sesam / sesam-15kg) gets its own row
                   const additiveLinesDisplay = additiveLinesInGroup;
@@ -936,16 +937,16 @@ export default function ProductiePage() {
                   return (
                     <div key={mg.group} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
                       <p style={{ fontWeight: 600, margin: "0 0 2px", fontSize: 15 }}>{mg.label}</p>
-                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 8px" }}>{mg.totalLoaves} stuks · {mg.totalDoughNoFillingsKg.toFixed(2)} kg deeg</p>
+                      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 8px" }}>{mg.totalLoaves} stuks · {mg.totalDoughKg.toFixed(2)} kg deeg (incl. vullingen)</p>
                       <div style={{ fontSize: 12, color: "var(--text-subtle)", marginBottom: 10 }}>
                         {mg.lines.filter(l => l.totalQty > 0).map(l => `${l.name} ×${l.totalQty}`).join(" · ")}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Mixers:</span>
-                        <button onClick={() => { const nc = Math.max(1, count - 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughNoFillingsKg); }}
+                        <button onClick={() => { const nc = Math.max(1, count - 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughKg); }}
                           style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>−</button>
                         <span style={{ fontWeight: 700, fontSize: 18, minWidth: 24, textAlign: "center" }}>{count}</span>
-                        <button onClick={() => { const nc = Math.min(10, count + 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughNoFillingsKg); }}
+                        <button onClick={() => { const nc = Math.min(10, count + 1); setMixerCounts(c => ({ ...c, [mg.group]: nc })); syncWeights(mg.group, nc, mg.totalDoughKg); }}
                           style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: 17 }}>+</button>
                       </div>
                       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
@@ -953,7 +954,7 @@ export default function ProductiePage() {
                         {weightsKg.map((wKg, i) => {
                           const isLast = i === weightsKg.length - 1;
                           const othersSum = weightsKg.reduce((s, w, j) => j !== i ? s + w : s, 0);
-                          const fillKg = Number(Math.max(0, mg.totalDoughNoFillingsKg - othersSum).toFixed(2));
+                          const fillKg = Number(Math.max(0, mg.totalDoughKg - othersSum).toFixed(2));
                           return (
                             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 4 }}>
                               <span style={{ color: "var(--text-muted)" }}>Mixer {i + 1}</span>
@@ -982,7 +983,7 @@ export default function ProductiePage() {
                         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
                           <span style={{ color: "var(--text-muted)" }}>Totaal ingevoerd</span>
                           <strong style={{ color: weightWarn ? "var(--warn)" : "inherit" }}>
-                            {weightSum.toFixed(2)} kg{weightWarn ? ` (benodigd ${mg.totalDoughNoFillingsKg.toFixed(2)} kg)` : ""}
+                            {weightSum.toFixed(2)} kg{weightWarn ? ` (benodigd ${mg.totalDoughKg.toFixed(2)} kg)` : ""}
                           </strong>
                         </div>
                         {weightWarn && (
@@ -1124,7 +1125,7 @@ export default function ProductiePage() {
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 600, padding: "0 0 12px", color: "var(--text)", margin: 0 }}>Deeg calculator</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))", gap: 16 }}>
-                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughNoFillingsKg]} assignment={additiveAssignment[mg.group] ?? {}} />)}
+                {planGroups.map(mg => <MixerGroupCard key={mg.group} mg={mg} weightsKg={weightsByGroup[mg.group] ?? [mg.totalDoughKg]} assignment={additiveAssignment[mg.group] ?? {}} />)}
               </div>
             </section>
           )}
