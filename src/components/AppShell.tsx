@@ -9,15 +9,14 @@ import { bakeryConfig } from "@/config/bakery.config";
 const PUBLIC_PATHS = ["/login", "/uitnodiging", "/privacy"];
 
 // Owner-only pop-up when a previously working Exact connection has lapsed (Exact's refresh
-// token dies after 30 days unused). "Later" hides it for this browser session only.
+// token dies after 30 days unused). "Later" only hides it until the app is opened or reloaded again.
 function ExactReconnectPrompt() {
   const [show, setShow] = useState(false);
   useEffect(() => {
-    try { if (sessionStorage.getItem("exact-reconnect-dismissed")) return; } catch {}
     fetch("/api/exact/status").then(r => r.json()).then(d => setShow(!!d.expired)).catch(() => {});
   }, []);
   if (!show) return null;
-  const dismiss = () => { try { sessionStorage.setItem("exact-reconnect-dismissed", "1"); } catch {} setShow(false); };
+  const dismiss = () => setShow(false);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div className="card" role="dialog" aria-modal="true" aria-labelledby="exact-reconnect-title" style={{ maxWidth: 420, padding: "1.5rem" }}>
