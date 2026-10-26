@@ -43,6 +43,7 @@ export function PhaseEditor({ phases, onChange }: { phases: DoughPhase[]; onChan
               <option value="bake">Bakken (alleen instructies)</option>
             </select>
             <select value={p.daysBefore} onChange={e => set(i, { daysBefore: Number(e.target.value) })} style={input} title="Hoeveel dagen voor de productiedag (de bakdag) moet deze fase gedaan worden?">
+              <option value={-1}>Op de bezorgdag (dag na productie)</option>
               <option value={0}>Op de productiedag</option>
               <option value={1}>1 dag ervoor</option>
               {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n} dagen ervoor</option>)}

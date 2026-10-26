@@ -17,7 +17,7 @@ export type PhaseIngredient = {
 export type DoughPhase = {
   name: string;            // "Stap 1", "Bakken"
   kind: "mix" | "bake";    // bake = instructions only, no ingredients
-  /** Days before the production day this phase is done: 0 = production day, 1..7 = that many days earlier. */
+  /** Days before the production day this phase is done: 0 = production day, 1..7 = that many days earlier, -1 = the day after (= delivery/bake day, production is the day before delivery). */
   daysBefore: number;
   timing: string;          // free text: "overnacht 15-18 uur", "3 uur laten staan"
   instructions: string;    // one step per line
@@ -36,7 +36,7 @@ export function parsePhases(raw: unknown): DoughPhase[] {
     return [{
       name: p.name,
       kind,
-      daysBefore: Math.min(7, Math.max(0, Math.round(Number(p.daysBefore)) || 0)),
+      daysBefore: Math.min(7, Math.max(-1, Math.round(Number(p.daysBefore)) || 0)),
       timing: typeof p.timing === "string" ? p.timing : "",
       instructions: typeof p.instructions === "string" ? p.instructions : "",
       ingredients: kind === "bake" || !Array.isArray(p.ingredients) ? [] : p.ingredients.flatMap((i: any): PhaseIngredient[] =>

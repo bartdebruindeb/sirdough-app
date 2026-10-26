@@ -311,16 +311,17 @@ const addDays = (d: string, n: number) => { const x = new Date(d + "T12:00:00Z")
  */
 export async function getPrepSchedule(tenantId: string, from: string, days = 7): Promise<PrepDay[]> {
   const MAX_BEFORE = 7;
-  const dates = Array.from({ length: days + MAX_BEFORE }, (_, j) => addDays(from, j));
+  // plans[i] is the production day from − 1 + i: phases with daysBefore −1 (bake on delivery day) look one day back
+  const dates = Array.from({ length: days + MAX_BEFORE + 1 }, (_, j) => addDays(from, j - 1));
   const plans: ProductionPlan[] = [];
   for (let i = 0; i < dates.length; i += 4) // small batches: each plan is a handful of queries
     plans.push(...await Promise.all(dates.slice(i, i + 4).map(d => getProductionPlan(tenantId, d))));
   return Array.from({ length: days }, (_, t) => ({
     date: dates[t],
-    tasks: Array.from({ length: MAX_BEFORE + 1 }, (_, k) => k).flatMap(k =>
-      plans[t + k].mixerGroups
+    tasks: Array.from({ length: MAX_BEFORE + 2 }, (_, i) => i - 1).flatMap(k =>
+      plans[t + k + 1].mixerGroups
         .filter(mg => mg.totalLoaves > 0 && mg.phases.some(p => p.daysBefore === k))
-        .map(mg => ({ group: mg.group, label: mg.label, loaves: mg.totalLoaves, productionDate: plans[t + k].productionDate, daysBefore: k, phases: mg.phases }))),
+        .map(mg => ({ group: mg.group, label: mg.label, loaves: mg.totalLoaves, productionDate: plans[t + k + 1].productionDate, daysBefore: k, phases: mg.phases }))),
   }));
 }
 
