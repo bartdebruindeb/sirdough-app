@@ -139,6 +139,12 @@ export async function GET(req: Request) {
         include: { breadType: true },
       }),
     ]);
+    // A saved day entry (Winkel page / owner's last-minute change) wins over the weekly template, per shop
+    const dayLogs = await prisma.winkelLog.findMany({
+      where: { tenantId: tid, shopName: { in: shopNames }, date: { gte: new Date(date + "T00:00:00Z"), lte: new Date(date + "T23:59:59Z") } },
+    });
+    const logLines = new Map(dayLogs.map(l => [l.shopName, Object.entries(l.quantities as Record<string, number>)
+      .flatMap(([slug, quantity]) => { const bt = breadTypes.find(b => b.slug === slug); return bt && quantity > 0 ? [{ breadTypeId: bt.id, quantity }] : []; })]));
     const winkelByShop = new Map<string, typeof allWinkelRows>();
     for (const r of allWinkelRows) {
       if (!winkelByShop.has(r.shopName)) winkelByShop.set(r.shopName, []);
@@ -147,7 +153,7 @@ export async function GET(req: Request) {
     for (const shopName of shopNames) {
       const shopCustomer = shopCustomers.get(shopName);
       if (!shopCustomer) continue;
-      const lines = (winkelByShop.get(shopName) ?? [])
+      const lines = logLines.get(shopName) ?? (winkelByShop.get(shopName) ?? [])
         .map(r => ({ breadTypeId: r.breadTypeId, quantity: r.quantity }))
         .filter(l => l.quantity > 0);
       if (lines.length > 0) {
